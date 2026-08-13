@@ -1,0 +1,124 @@
+name: Windows build
+
+# Flutter cannot cross-compile Windows from macOS or Linux, so the .exe is built
+# on a GitHub-hosted Windows machine. Free for public repositories; private ones
+# draw on the monthly Actions allowance, and Windows minutes count double.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  # Lets you build a .exe on demand from the Actions tab without pushing.
+  workflow_dispatch:
+
+defaults:
+  run:
+    working-directory: rmf_desktop
+
+jobs:
+  test:
+    name: Analyze and test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          # Matches .fvmrc so CI and the developer machine agree.
+          flutter-version: 3.38.5
+          channel: stable
+          cache: true
+
+      - run: flutter pub get
+
+      - run: flutter analyze
+
+      # Includes the migration tests, which prove an installed copy can be
+      # upgraded without losing the gym's members and payments.
+      - run: flutter test
+
+  build-windows:
+    name: Build Windows .exe
+    needs: test
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.38.5
+          channel: stable
+          cache: true
+
+      - run: flutter config --enable-windows-desktop
+
+      - run: flutter pub get
+
+      # Downloads SQLite for Windows and pdfium (used to turn the receipt PDF
+      # into the PNG sent over WhatsApp), so the build needs network access.
+      - name: Build release
+        run: flutter build windows --release
+
+      - name: Show what was produced
+        run: |
+          Get-ChildItem -Recurse build\windows\x64\runner\Release |
+            Select-Object Name, Length
+        shell: pwsh
+
+      # Fail loudly rather than publishing an archive missing its native
+      # libraries, which would crash on first launch on the owner's machine.
+      - name: Check the native libraries shipped
+        run: |
+          $dir = "build\windows\x64\runner\Release"
+          $exe = Join-Path $dir "Rich Man Fitness.exe"
+          if (-not (Test-Path $exe)) { throw "Executable missing: $exe" }
+          $sqlite = Get-ChildItem $dir -Filter "sqlite3*.dll" -Recurse
+          if (-not $sqlite) { throw "sqlite3 DLL missing - the app cannot open its database" }
+          $pdfium = Get-ChildItem $dir -Filter "pdfium*.dll" -Recurse
+          if (-not $pdfium) { throw "pdfium DLL missing - receipts cannot be rendered" }
+          Write-Host "Executable, SQLite and pdfium are all present."
+        shell: pwsh
+
+      - name: Upload the app folder
+        uses: actions/upload-artifact@v4
+        with:
+          name: RichManFitness-windows-portable
+          path: rmf_desktop/build/windows/x64/runner/Release/
+          # The whole folder is required: the .exe will not start without the
+          # DLLs beside it.
+          if-no-files-found: error
+          retention-days: 30
+
+      # --- Installer -------------------------------------------------------
+      # Turns that folder into one setup .exe the gym owner can double-click.
+      - name: Read the app version
+        id: version
+        run: |
+          $line = Select-String -Path rmf_desktop\pubspec.yaml -Pattern '^version:\s*(.+)$'
+          $version = $line.Matches[0].Groups[1].Value.Split('+')[0].Trim()
+          "value=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          Write-Host "App version: $version"
+        shell: pwsh
+        working-directory: .
+
+      - name: Install Inno Setup
+        run: choco install innosetup --no-progress -y
+        shell: pwsh
+        working-directory: .
+
+      - name: Build the installer
+        run: |
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" `
+            "/DAppVersion=${{ steps.version.outputs.value }}" `
+            "/DSourceDir=..\rmf_desktop\build\windows\x64\runner\Release" `
+            installer\rich_man_fitness.iss
+        shell: pwsh
+        working-directory: .
+
+      - name: Upload the installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: RichManFitness-Setup
+          path: dist/*.exe
+          if-no-files-found: error
+          retention-days: 90

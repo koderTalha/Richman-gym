@@ -1,0 +1,29 @@
+# macOS
+.DS_Store
+
+# Flutter / Dart
+**/build/
+**/.dart_tool/
+**/.packages
+**/.flutter-plugins
+**/.flutter-plugins-dependencies
+**/generated_plugin_registrant.*
+
+# fvm: the pin file (.fvmrc) is committed, the SDK symlink is not
+.fvm/flutter_sdk
+.fvm/versions
+
+# IDE
+.idea/
+*.iml
+*.iws
+.vscode/*
+!.vscode/settings.json
+
+# Local data: never commit a gym's members, payments or receipts
+**/data/
+**/storage/
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+dist/
