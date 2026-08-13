@@ -20,10 +20,16 @@
 .vscode/*
 !.vscode/settings.json
 
-# Local data: never commit a gym's members, payments or receipts
-**/data/
-**/storage/
+# Installer output
+dist/
+
+# Local data: never commit a gym's members, payments or receipts.
+#
+# These are matched by file type and by exact path, NOT by a bare `**/data/`
+# pattern — that also matches lib/data/, the source folder holding the database
+# layer, and silently leaves it out of the repository.
 *.sqlite
 *.sqlite-wal
 *.sqlite-shm
-dist/
+/rmf_desktop/data/
+/rmf_desktop/storage/
