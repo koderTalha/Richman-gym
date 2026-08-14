@@ -1,9 +1,12 @@
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
+import 'package:logging/logging.dart';
 
 import '../../data/database.dart';
 import 'whatsapp_client.dart';
+
+final _log = Logger('whatsapp');
 
 const _graphVersion = 'v21.0';
 
@@ -74,7 +77,8 @@ class MetaWhatsAppClient implements WhatsAppClient {
     try {
       final mediaId = await _uploadMedia(input);
       return await _sendImage(input, mediaId);
-    } catch (e) {
+    } catch (e, s) {
+      _log.severe('WhatsApp send failed', e, s);
       return WhatsAppSendFailure('$e');
     }
   }
@@ -102,7 +106,8 @@ class MetaWhatsAppClient implements WhatsAppClient {
         displayPhoneNumber: body['display_phone_number'] as String?,
         qualityRating: body['quality_rating'] as String?,
       );
-    } catch (e) {
+    } catch (e, s) {
+      _log.severe('WhatsApp credential check failed', e, s);
       return MetaVerification.failure('$e');
     }
   }

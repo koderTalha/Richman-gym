@@ -1,10 +1,12 @@
 import 'dart:math';
 
-import 'package:flutter/foundation.dart';
+import 'package:logging/logging.dart';
 
 import '../../data/database.dart';
 import '../../domain/phone.dart';
 import 'whatsapp_client.dart';
+
+final _log = Logger('whatsapp');
 
 /// Development provider. Nothing leaves the machine — it records a realistic
 /// success so the whole payment → receipt → WhatsApp flow can be built and
@@ -38,7 +40,7 @@ class MockWhatsAppClient implements WhatsAppClient {
       return const WhatsAppSendFailure('Receipt image was empty');
     }
 
-    debugPrint('[whatsapp:mock] would send ${input.fileName} '
+    _log.info('[mock] would send ${input.fileName} '
         '(${input.imageBytes.length} bytes) to ${input.to}');
 
     final suffix = Random().nextInt(1 << 32).toRadixString(16);

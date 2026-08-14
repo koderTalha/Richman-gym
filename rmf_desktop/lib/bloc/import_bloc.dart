@@ -4,11 +4,14 @@ import 'package:equatable/equatable.dart';
 import 'package:excel/excel.dart' show Excel;
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:logging/logging.dart';
 
 import '../data/database.dart';
 import '../data/member_repository.dart';
 import '../services/import_service.dart';
 import '../services/ledger_import.dart';
+
+final _log = Logger('import');
 
 sealed class ImportEvent extends Equatable {
   const ImportEvent();
@@ -178,7 +181,8 @@ class ImportBloc extends Bloc<ImportEvent, ImportState> {
       if (sheets.isNotEmpty) {
         add(ImportSheetSelected(sheets.keys.first));
       }
-    } catch (e) {
+    } catch (e, s) {
+      _log.severe('Reading the import file failed', e, s);
       emit(state.copyWith(busy: false, error: 'Could not read that file: $e'));
     }
   }
@@ -252,7 +256,8 @@ class ImportBloc extends Bloc<ImportEvent, ImportState> {
         recordedById: event.recordedById,
       );
       emit(state.copyWith(busy: false, summary: summary));
-    } catch (e) {
+    } catch (e, s) {
+      _log.severe('Import failed', e, s);
       emit(state.copyWith(busy: false, error: 'Import failed: $e'));
     }
   }

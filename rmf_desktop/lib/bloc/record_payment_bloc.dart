@@ -2,9 +2,12 @@ import 'dart:math';
 
 import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:logging/logging.dart';
 
 import '../data/database.dart';
 import '../services/record_payment_service.dart';
+
+final _log = Logger('payments');
 
 sealed class RecordPaymentEvent extends Equatable {
   const RecordPaymentEvent();
@@ -125,7 +128,8 @@ class RecordPaymentBloc extends Bloc<RecordPaymentEvent, RecordPaymentState> {
 
       emit(RecordPaymentState(
           status: RecordPaymentStatus.success, result: result));
-    } catch (e) {
+    } catch (e, s) {
+      _log.severe('Recording the payment failed', e, s);
       emit(RecordPaymentState(
           status: RecordPaymentStatus.failed, error: '$e'));
     }

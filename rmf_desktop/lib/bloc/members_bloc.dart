@@ -1,7 +1,10 @@
 import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:logging/logging.dart';
 
 import '../data/member_repository.dart';
+
+final _log = Logger('members');
 
 sealed class MembersEvent extends Equatable {
   const MembersEvent();
@@ -87,7 +90,8 @@ class MembersBloc extends Bloc<MembersEvent, MembersState> {
         filter: state.filter,
       );
       emit(state.copyWith(status: MembersStatus.ready, rows: rows));
-    } catch (e) {
+    } catch (e, s) {
+      _log.severe('Loading members failed', e, s);
       emit(state.copyWith(status: MembersStatus.failed, error: '$e'));
     }
   }

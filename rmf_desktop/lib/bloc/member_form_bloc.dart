@@ -1,9 +1,12 @@
 import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:logging/logging.dart';
 
 import '../data/database.dart';
 import '../data/member_repository.dart';
 import '../domain/phone.dart';
+
+final _log = Logger('members');
 
 sealed class MemberFormEvent extends Equatable {
   const MemberFormEvent();
@@ -160,7 +163,8 @@ class MemberFormBloc extends Bloc<MemberFormEvent, MemberFormState> {
         );
       }
       emit(state.copyWith(status: MemberFormStatus.saved));
-    } catch (e) {
+    } catch (e, s) {
+      _log.severe('Saving member failed', e, s);
       emit(state.copyWith(
         status: MemberFormStatus.failed,
         error: 'Could not save: $e',

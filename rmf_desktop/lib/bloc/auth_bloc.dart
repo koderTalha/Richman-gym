@@ -18,6 +18,13 @@ class AuthSignInRequested extends AuthEvent {
 
   @override
   List<Object?> get props => [email, password];
+
+  // Equatable builds toString() from props, so the admin's password would
+  // otherwise be written verbatim anywhere this event is printed — a bloc
+  // failure log, a debugger, a crash report. props itself is left alone so
+  // equality still distinguishes two attempts with different passwords.
+  @override
+  String toString() => 'AuthSignInRequested(email: $email, password: •••)';
 }
 
 class AuthSignOutRequested extends AuthEvent {

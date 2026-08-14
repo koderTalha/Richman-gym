@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:logging/logging.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -11,6 +12,8 @@ import '../../data/database.dart';
 import '../../services/backup_service.dart';
 import '../../services/excel_export_service.dart';
 import '../../theme/app_theme.dart';
+
+final _log = Logger('backup');
 
 /// Backup and restore. Deliberately its own widget with local state rather than
 /// a bloc: it touches the filesystem directly and has no shared state.
@@ -73,7 +76,8 @@ class _BackupCardState extends State<BackupCard> {
           'database ${_readableSize(result.databaseBytes)}, '
           '${result.receiptsCopied} receipts'
           '${result.workbookBytes > 0 ? ", plus an Excel workbook" : ""}.');
-    } catch (e) {
+    } catch (e, s) {
+      _log.severe('Manual backup failed', e, s);
       _report('Backup failed: $e', isError: true);
     }
   }
@@ -148,7 +152,8 @@ class _BackupCardState extends State<BackupCard> {
       await File(location.path).writeAsBytes(bytes);
       _report('Exported ${p.basename(location.path)} '
           '(${_readableSize(bytes.length)}).');
-    } catch (e) {
+    } catch (e, s) {
+      _log.severe('Excel export failed', e, s);
       _report('Export failed: $e', isError: true);
     }
   }

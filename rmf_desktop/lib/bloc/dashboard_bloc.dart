@@ -1,10 +1,13 @@
 import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:logging/logging.dart';
 
 import '../data/member_repository.dart';
 import '../data/payment_repository.dart';
 import '../data/receipt_repository.dart';
 import '../domain/member_status.dart';
+
+final _log = Logger('dashboard');
 
 sealed class DashboardEvent extends Equatable {
   const DashboardEvent();
@@ -98,7 +101,8 @@ class DashboardBloc extends Bloc<DashboardEvent, DashboardState> {
         paymentsToday: await _payments.countBetween(todayStart, tomorrow),
         failedWhatsApp: await _receipts.failedCount(),
       ));
-    } catch (e) {
+    } catch (e, s) {
+      _log.severe('Loading dashboard failed', e, s);
       emit(DashboardState(status: DashboardStatus.failed, error: '$e'));
     }
   }

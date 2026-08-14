@@ -1,10 +1,13 @@
 import 'dart:io';
 
+import 'package:logging/logging.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 import '../data/database.dart';
 import 'excel_export_service.dart';
+
+final _log = Logger('backup');
 
 class BackupResult {
   const BackupResult({
@@ -108,7 +111,8 @@ class BackupService {
       final file = File(p.join(folder.path, _workbookName(at)));
       await file.writeAsBytes(workbook);
       workbookBytes = workbook.length;
-    } catch (_) {
+    } catch (e, s) {
+      _log.severe('Excel workbook omitted from the backup', e, s);
       workbookBytes = 0;
     }
 

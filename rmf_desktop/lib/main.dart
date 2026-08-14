@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:logging/logging.dart';
 
 import 'bloc/auth_bloc.dart';
 import 'data/database.dart';
@@ -10,6 +11,7 @@ import 'data/seed.dart';
 import 'data/settings_repository.dart';
 import 'services/backup_service.dart';
 import 'services/billing_maintenance.dart';
+import 'services/logging/app_logger.dart';
 import 'services/receipt_renderer.dart';
 import 'services/receipt_storage.dart';
 import 'services/whatsapp/whatsapp_client.dart';
@@ -18,32 +20,40 @@ import 'theme/app_theme.dart';
 import 'ui/app_shell.dart';
 import 'ui/login_screen.dart';
 
-Future<void> main() async {
-  WidgetsFlutterBinding.ensureInitialized();
+final _log = Logger('startup');
 
-  // Must run before the database is opened: a staged restore replaces the very
-  // file drift is about to hold a lock on.
-  await BackupService.applyPendingRestore();
+// Everything runs inside runGuarded so that an error escaping startup or the
+// widget tree lands in the log file rather than vanishing. The binding must be
+// initialised inside the same zone as runApp, which is why it sits in here.
+Future<void> main() => runGuarded(() async {
+      WidgetsFlutterBinding.ensureInitialized();
 
-  final db = AppDatabase();
-  // Idempotent: creates the admin account, settings, sections and plans on
-  // first launch and is a no-op afterwards.
-  await seedDatabase(db);
+      await initLogging();
 
-  // Rolls each active membership into the current billing cycle, so members who
-  // owe this month read DUE rather than looking like lapsed memberships.
-  await BillingMaintenance(db).ensureCurrentPeriods();
+      // Must run before the database is opened: a staged restore replaces the
+      // very file drift is about to hold a lock on.
+      await BackupService.applyPendingRestore();
 
-  // Cheap insurance: one snapshot a day, seven kept. Failure here must never
-  // stop the owner from opening the app.
-  try {
-    await BackupService(db).autoBackup();
-  } catch (error, stack) {
-    debugPrint('Automatic backup skipped: $error\n$stack');
-  }
+      final db = AppDatabase();
+      // Idempotent: creates the admin account, settings, sections and plans on
+      // first launch and is a no-op afterwards.
+      await seedDatabase(db);
 
-  runApp(RichManFitnessApp(db: db));
-}
+      // Rolls each active membership into the current billing cycle, so members
+      // who owe this month read DUE rather than looking like lapsed
+      // memberships.
+      await BillingMaintenance(db).ensureCurrentPeriods();
+
+      // Cheap insurance: one snapshot a day, seven kept. Failure here must
+      // never stop the owner from opening the app.
+      try {
+        await BackupService(db).autoBackup();
+      } catch (error, stack) {
+        _log.severe('Automatic backup skipped', error, stack);
+      }
+
+      runApp(RichManFitnessApp(db: db));
+    });
 
 class RichManFitnessApp extends StatelessWidget {
   const RichManFitnessApp({super.key, required this.db});

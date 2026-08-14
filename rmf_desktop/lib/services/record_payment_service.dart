@@ -1,4 +1,5 @@
 import 'package:drift/drift.dart';
+import 'package:logging/logging.dart';
 
 import '../data/database.dart';
 import '../domain/billing_period.dart';
@@ -8,6 +9,8 @@ import '../domain/receipt_number.dart';
 import 'receipt_renderer.dart';
 import 'receipt_storage.dart';
 import 'whatsapp/whatsapp_client.dart';
+
+final _log = Logger('payments');
 
 class RecordPaymentInput {
   const RecordPaymentInput({
@@ -323,7 +326,8 @@ class RecordPaymentService {
     late final WhatsAppClient client;
     try {
       client = clientFactory();
-    } catch (e) {
+    } catch (e, s) {
+      _log.severe('WhatsApp client could not be built', e, s);
       return _recordFailure(
         receiptId: receiptId,
         memberId: memberId,

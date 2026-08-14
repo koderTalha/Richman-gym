@@ -1,8 +1,11 @@
 import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:logging/logging.dart';
 
 import '../data/database.dart';
 import '../data/payment_repository.dart';
+
+final _log = Logger('payments');
 
 sealed class PaymentsEvent extends Equatable {
   const PaymentsEvent();
@@ -106,7 +109,8 @@ class PaymentsBloc extends Bloc<PaymentsEvent, PaymentsState> {
               .toList();
 
       emit(state.copyWith(status: PaymentsStatus.ready, rows: filtered));
-    } catch (e) {
+    } catch (e, s) {
+      _log.severe('Loading payments failed', e, s);
       emit(state.copyWith(status: PaymentsStatus.failed, error: '$e'));
     }
   }

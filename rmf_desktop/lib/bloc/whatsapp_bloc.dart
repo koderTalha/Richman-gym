@@ -1,11 +1,14 @@
 import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:logging/logging.dart';
 
 import '../data/database.dart';
 import '../data/receipt_repository.dart';
 import '../data/settings_repository.dart';
 import '../services/record_payment_service.dart';
 import '../services/whatsapp/whatsapp_client.dart';
+
+final _log = Logger('whatsapp');
 
 sealed class WhatsAppEvent extends Equatable {
   const WhatsAppEvent();
@@ -118,7 +121,8 @@ class WhatsAppBloc extends Bloc<WhatsAppEvent, WhatsAppState> {
         config: await _settings.whatsAppConfig(),
         clearRetrying: true,
       ));
-    } catch (e) {
+    } catch (e, s) {
+      _log.severe('Loading the WhatsApp screen failed', e, s);
       emit(state.copyWith(status: WhatsAppScreenStatus.failed, error: '$e'));
     }
   }
