@@ -24,6 +24,29 @@ class Users extends Table {
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
 }
 
+/// Single row (id = 1) remembering who is signed in.
+///
+/// Closing the app used to sign the owner out, which on a gym counter machine
+/// meant typing the password again every morning and after every Windows
+/// update. The session is kept until sign-out is chosen explicitly — the same
+/// bargain a desktop mail or chat client makes.
+///
+/// Only the user id is stored. No password or hash is written here, so this
+/// row is useless to anyone who copies the database file.
+class AppSessions extends Table {
+  IntColumn get id => integer().withDefault(const Constant(1))();
+
+  /// Null when signed out. Cascades so deleting the account ends the session
+  /// rather than leaving a row pointing at a user who no longer exists.
+  IntColumn get userId =>
+      integer().nullable().references(Users, #id, onDelete: KeyAction.cascade)();
+
+  DateTimeColumn get signedInAt => dateTime().nullable()();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
 /// Single row (id = 1) holding configurable branding and receipt settings.
 class GymSettings extends Table {
   IntColumn get id => integer().withDefault(const Constant(1))();

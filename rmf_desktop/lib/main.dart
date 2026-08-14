@@ -9,6 +9,7 @@ import 'data/member_repository.dart';
 import 'data/payment_repository.dart';
 import 'data/receipt_repository.dart';
 import 'data/seed.dart';
+import 'data/session_repository.dart';
 import 'data/settings_repository.dart';
 import 'services/backup_service.dart';
 import 'services/billing_maintenance.dart';
@@ -57,7 +58,15 @@ Future<void> main() => runGuarded(() async {
       // theme rather than flashing dark and correcting itself.
       final theme = ThemeCubit.parse((await SettingsRepository(db).get()).themeMode);
 
-      runApp(RichManFitnessApp(db: db, initialTheme: theme));
+      // Likewise for the session: restoring here means the dashboard is the
+      // first thing painted, with no login form flashing past on the way.
+      final restored = await SessionRepository(db).restore();
+
+      runApp(RichManFitnessApp(
+        db: db,
+        initialTheme: theme,
+        restoredUser: restored,
+      ));
     });
 
 class RichManFitnessApp extends StatelessWidget {
@@ -65,10 +74,14 @@ class RichManFitnessApp extends StatelessWidget {
     super.key,
     required this.db,
     this.initialTheme = ThemeMode.dark,
+    this.restoredUser,
   });
 
   final AppDatabase db;
   final ThemeMode initialTheme;
+
+  /// Signed in on a previous run; null means show the login screen.
+  final User? restoredUser;
 
   @override
   Widget build(BuildContext context) {
@@ -102,7 +115,7 @@ class RichManFitnessApp extends StatelessWidget {
       ],
       child: MultiBlocProvider(
         providers: [
-          BlocProvider(create: (_) => AuthBloc(db)),
+          BlocProvider(create: (_) => AuthBloc(db, restored: restoredUser)),
           // Above MaterialApp so the login screen follows the theme too.
           BlocProvider(
             create: (_) => ThemeCubit(settings, initial: initialTheme),

@@ -405,6 +405,265 @@ class UsersCompanion extends UpdateCompanion<User> {
   }
 }
 
+class $AppSessionsTable extends AppSessions
+    with TableInfo<$AppSessionsTable, AppSession> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $AppSessionsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(1),
+  );
+  static const VerificationMeta _userIdMeta = const VerificationMeta('userId');
+  @override
+  late final GeneratedColumn<int> userId = GeneratedColumn<int>(
+    'user_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES users (id) ON DELETE CASCADE',
+    ),
+  );
+  static const VerificationMeta _signedInAtMeta = const VerificationMeta(
+    'signedInAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> signedInAt = GeneratedColumn<DateTime>(
+    'signed_in_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [id, userId, signedInAt];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'app_sessions';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<AppSession> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('user_id')) {
+      context.handle(
+        _userIdMeta,
+        userId.isAcceptableOrUnknown(data['user_id']!, _userIdMeta),
+      );
+    }
+    if (data.containsKey('signed_in_at')) {
+      context.handle(
+        _signedInAtMeta,
+        signedInAt.isAcceptableOrUnknown(
+          data['signed_in_at']!,
+          _signedInAtMeta,
+        ),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  AppSession map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return AppSession(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      userId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}user_id'],
+      ),
+      signedInAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}signed_in_at'],
+      ),
+    );
+  }
+
+  @override
+  $AppSessionsTable createAlias(String alias) {
+    return $AppSessionsTable(attachedDatabase, alias);
+  }
+}
+
+class AppSession extends DataClass implements Insertable<AppSession> {
+  final int id;
+
+  /// Null when signed out. Cascades so deleting the account ends the session
+  /// rather than leaving a row pointing at a user who no longer exists.
+  final int? userId;
+  final DateTime? signedInAt;
+  const AppSession({required this.id, this.userId, this.signedInAt});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    if (!nullToAbsent || userId != null) {
+      map['user_id'] = Variable<int>(userId);
+    }
+    if (!nullToAbsent || signedInAt != null) {
+      map['signed_in_at'] = Variable<DateTime>(signedInAt);
+    }
+    return map;
+  }
+
+  AppSessionsCompanion toCompanion(bool nullToAbsent) {
+    return AppSessionsCompanion(
+      id: Value(id),
+      userId: userId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(userId),
+      signedInAt: signedInAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(signedInAt),
+    );
+  }
+
+  factory AppSession.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return AppSession(
+      id: serializer.fromJson<int>(json['id']),
+      userId: serializer.fromJson<int?>(json['userId']),
+      signedInAt: serializer.fromJson<DateTime?>(json['signedInAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'userId': serializer.toJson<int?>(userId),
+      'signedInAt': serializer.toJson<DateTime?>(signedInAt),
+    };
+  }
+
+  AppSession copyWith({
+    int? id,
+    Value<int?> userId = const Value.absent(),
+    Value<DateTime?> signedInAt = const Value.absent(),
+  }) => AppSession(
+    id: id ?? this.id,
+    userId: userId.present ? userId.value : this.userId,
+    signedInAt: signedInAt.present ? signedInAt.value : this.signedInAt,
+  );
+  AppSession copyWithCompanion(AppSessionsCompanion data) {
+    return AppSession(
+      id: data.id.present ? data.id.value : this.id,
+      userId: data.userId.present ? data.userId.value : this.userId,
+      signedInAt: data.signedInAt.present
+          ? data.signedInAt.value
+          : this.signedInAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('AppSession(')
+          ..write('id: $id, ')
+          ..write('userId: $userId, ')
+          ..write('signedInAt: $signedInAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, userId, signedInAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is AppSession &&
+          other.id == this.id &&
+          other.userId == this.userId &&
+          other.signedInAt == this.signedInAt);
+}
+
+class AppSessionsCompanion extends UpdateCompanion<AppSession> {
+  final Value<int> id;
+  final Value<int?> userId;
+  final Value<DateTime?> signedInAt;
+  const AppSessionsCompanion({
+    this.id = const Value.absent(),
+    this.userId = const Value.absent(),
+    this.signedInAt = const Value.absent(),
+  });
+  AppSessionsCompanion.insert({
+    this.id = const Value.absent(),
+    this.userId = const Value.absent(),
+    this.signedInAt = const Value.absent(),
+  });
+  static Insertable<AppSession> custom({
+    Expression<int>? id,
+    Expression<int>? userId,
+    Expression<DateTime>? signedInAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (userId != null) 'user_id': userId,
+      if (signedInAt != null) 'signed_in_at': signedInAt,
+    });
+  }
+
+  AppSessionsCompanion copyWith({
+    Value<int>? id,
+    Value<int?>? userId,
+    Value<DateTime?>? signedInAt,
+  }) {
+    return AppSessionsCompanion(
+      id: id ?? this.id,
+      userId: userId ?? this.userId,
+      signedInAt: signedInAt ?? this.signedInAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (userId.present) {
+      map['user_id'] = Variable<int>(userId.value);
+    }
+    if (signedInAt.present) {
+      map['signed_in_at'] = Variable<DateTime>(signedInAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('AppSessionsCompanion(')
+          ..write('id: $id, ')
+          ..write('userId: $userId, ')
+          ..write('signedInAt: $signedInAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class $GymSettingsTable extends GymSettings
     with TableInfo<$GymSettingsTable, GymSetting> {
   @override
@@ -6051,6 +6310,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
   late final $UsersTable users = $UsersTable(this);
+  late final $AppSessionsTable appSessions = $AppSessionsTable(this);
   late final $GymSettingsTable gymSettings = $GymSettingsTable(this);
   late final $MembershipPlansTable membershipPlans = $MembershipPlansTable(
     this,
@@ -6074,6 +6334,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   @override
   List<DatabaseSchemaEntity> get allSchemaEntities => [
     users,
+    appSessions,
     gymSettings,
     membershipPlans,
     members,
@@ -6085,6 +6346,16 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     whatsAppMessages,
     memberNotes,
   ];
+  @override
+  StreamQueryUpdateRules get streamUpdateRules => const StreamQueryUpdateRules([
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'users',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [TableUpdate('app_sessions', kind: UpdateKind.delete)],
+    ),
+  ]);
 }
 
 typedef $$UsersTableCreateCompanionBuilder =
@@ -6109,6 +6380,24 @@ typedef $$UsersTableUpdateCompanionBuilder =
 final class $$UsersTableReferences
     extends BaseReferences<_$AppDatabase, $UsersTable, User> {
   $$UsersTableReferences(super.$_db, super.$_table, super.$_typedResult);
+
+  static MultiTypedResultKey<$AppSessionsTable, List<AppSession>>
+  _appSessionsRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
+    db.appSessions,
+    aliasName: 'users__id__app_sessions__user_id',
+  );
+
+  $$AppSessionsTableProcessedTableManager get appSessionsRefs {
+    final manager = $$AppSessionsTableTableManager(
+      $_db,
+      $_db.appSessions,
+    ).filter((f) => f.userId.id.sqlEquals($_itemColumn<int>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(_appSessionsRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
 
   static MultiTypedResultKey<$PaymentsTable, List<Payment>> _paymentsRefsTable(
     _$AppDatabase db,
@@ -6186,6 +6475,31 @@ class $$UsersTableFilterComposer extends Composer<_$AppDatabase, $UsersTable> {
     column: $table.createdAt,
     builder: (column) => ColumnFilters(column),
   );
+
+  Expression<bool> appSessionsRefs(
+    Expression<bool> Function($$AppSessionsTableFilterComposer f) f,
+  ) {
+    final $$AppSessionsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.appSessions,
+      getReferencedColumn: (t) => t.userId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$AppSessionsTableFilterComposer(
+            $db: $db,
+            $table: $db.appSessions,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
 
   Expression<bool> paymentsRefs(
     Expression<bool> Function($$PaymentsTableFilterComposer f) f,
@@ -6307,6 +6621,31 @@ class $$UsersTableAnnotationComposer
   GeneratedColumn<DateTime> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
 
+  Expression<T> appSessionsRefs<T extends Object>(
+    Expression<T> Function($$AppSessionsTableAnnotationComposer a) f,
+  ) {
+    final $$AppSessionsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.appSessions,
+      getReferencedColumn: (t) => t.userId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$AppSessionsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.appSessions,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
   Expression<T> paymentsRefs<T extends Object>(
     Expression<T> Function($$PaymentsTableAnnotationComposer a) f,
   ) {
@@ -6371,7 +6710,11 @@ class $$UsersTableTableManager
           $$UsersTableUpdateCompanionBuilder,
           (User, $$UsersTableReferences),
           User,
-          PrefetchHooks Function({bool paymentsRefs, bool memberNotesRefs})
+          PrefetchHooks Function({
+            bool appSessionsRefs,
+            bool paymentsRefs,
+            bool memberNotesRefs,
+          })
         > {
   $$UsersTableTableManager(_$AppDatabase db, $UsersTable table)
     : super(
@@ -6423,16 +6766,42 @@ class $$UsersTableTableManager
               )
               .toList(),
           prefetchHooksCallback:
-              ({paymentsRefs = false, memberNotesRefs = false}) {
+              ({
+                appSessionsRefs = false,
+                paymentsRefs = false,
+                memberNotesRefs = false,
+              }) {
                 return PrefetchHooks(
                   db: db,
                   explicitlyWatchedTables: [
+                    if (appSessionsRefs) db.appSessions,
                     if (paymentsRefs) db.payments,
                     if (memberNotesRefs) db.memberNotes,
                   ],
                   addJoins: null,
                   getPrefetchedDataCallback: (items) async {
                     return [
+                      if (appSessionsRefs)
+                        await $_getPrefetchedData<
+                          User,
+                          $UsersTable,
+                          AppSession
+                        >(
+                          currentTable: table,
+                          referencedTable: $$UsersTableReferences
+                              ._appSessionsRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$UsersTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).appSessionsRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.userId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
                       if (paymentsRefs)
                         await $_getPrefetchedData<User, $UsersTable, Payment>(
                           currentTable: table,
@@ -6491,7 +6860,286 @@ typedef $$UsersTableProcessedTableManager =
       $$UsersTableUpdateCompanionBuilder,
       (User, $$UsersTableReferences),
       User,
-      PrefetchHooks Function({bool paymentsRefs, bool memberNotesRefs})
+      PrefetchHooks Function({
+        bool appSessionsRefs,
+        bool paymentsRefs,
+        bool memberNotesRefs,
+      })
+    >;
+typedef $$AppSessionsTableCreateCompanionBuilder =
+    AppSessionsCompanion Function({
+      Value<int> id,
+      Value<int?> userId,
+      Value<DateTime?> signedInAt,
+    });
+typedef $$AppSessionsTableUpdateCompanionBuilder =
+    AppSessionsCompanion Function({
+      Value<int> id,
+      Value<int?> userId,
+      Value<DateTime?> signedInAt,
+    });
+
+final class $$AppSessionsTableReferences
+    extends BaseReferences<_$AppDatabase, $AppSessionsTable, AppSession> {
+  $$AppSessionsTableReferences(super.$_db, super.$_table, super.$_typedResult);
+
+  static $UsersTable _userIdTable(_$AppDatabase db) =>
+      db.users.createAlias('app_sessions__user_id__users__id');
+
+  $$UsersTableProcessedTableManager? get userId {
+    final $_column = $_itemColumn<int>('user_id');
+    if ($_column == null) return null;
+    final manager = $$UsersTableTableManager(
+      $_db,
+      $_db.users,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_userIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$AppSessionsTableFilterComposer
+    extends Composer<_$AppDatabase, $AppSessionsTable> {
+  $$AppSessionsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get signedInAt => $composableBuilder(
+    column: $table.signedInAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$UsersTableFilterComposer get userId {
+    final $$UsersTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.userId,
+      referencedTable: $db.users,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$UsersTableFilterComposer(
+            $db: $db,
+            $table: $db.users,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$AppSessionsTableOrderingComposer
+    extends Composer<_$AppDatabase, $AppSessionsTable> {
+  $$AppSessionsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get signedInAt => $composableBuilder(
+    column: $table.signedInAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$UsersTableOrderingComposer get userId {
+    final $$UsersTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.userId,
+      referencedTable: $db.users,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$UsersTableOrderingComposer(
+            $db: $db,
+            $table: $db.users,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$AppSessionsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $AppSessionsTable> {
+  $$AppSessionsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get signedInAt => $composableBuilder(
+    column: $table.signedInAt,
+    builder: (column) => column,
+  );
+
+  $$UsersTableAnnotationComposer get userId {
+    final $$UsersTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.userId,
+      referencedTable: $db.users,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$UsersTableAnnotationComposer(
+            $db: $db,
+            $table: $db.users,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$AppSessionsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $AppSessionsTable,
+          AppSession,
+          $$AppSessionsTableFilterComposer,
+          $$AppSessionsTableOrderingComposer,
+          $$AppSessionsTableAnnotationComposer,
+          $$AppSessionsTableCreateCompanionBuilder,
+          $$AppSessionsTableUpdateCompanionBuilder,
+          (AppSession, $$AppSessionsTableReferences),
+          AppSession,
+          PrefetchHooks Function({bool userId})
+        > {
+  $$AppSessionsTableTableManager(_$AppDatabase db, $AppSessionsTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$AppSessionsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$AppSessionsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$AppSessionsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<int?> userId = const Value.absent(),
+                Value<DateTime?> signedInAt = const Value.absent(),
+              }) => AppSessionsCompanion(
+                id: id,
+                userId: userId,
+                signedInAt: signedInAt,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<int?> userId = const Value.absent(),
+                Value<DateTime?> signedInAt = const Value.absent(),
+              }) => AppSessionsCompanion.insert(
+                id: id,
+                userId: userId,
+                signedInAt: signedInAt,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$AppSessionsTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({userId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (userId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.userId,
+                                referencedTable: $$AppSessionsTableReferences
+                                    ._userIdTable(db),
+                                referencedColumn: $$AppSessionsTableReferences
+                                    ._userIdTable(db)
+                                    .id,
+                              )
+                              as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$AppSessionsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $AppSessionsTable,
+      AppSession,
+      $$AppSessionsTableFilterComposer,
+      $$AppSessionsTableOrderingComposer,
+      $$AppSessionsTableAnnotationComposer,
+      $$AppSessionsTableCreateCompanionBuilder,
+      $$AppSessionsTableUpdateCompanionBuilder,
+      (AppSession, $$AppSessionsTableReferences),
+      AppSession,
+      PrefetchHooks Function({bool userId})
     >;
 typedef $$GymSettingsTableCreateCompanionBuilder =
     GymSettingsCompanion Function({
@@ -11290,6 +11938,8 @@ class $AppDatabaseManager {
   $AppDatabaseManager(this._db);
   $$UsersTableTableManager get users =>
       $$UsersTableTableManager(_db, _db.users);
+  $$AppSessionsTableTableManager get appSessions =>
+      $$AppSessionsTableTableManager(_db, _db.appSessions);
   $$GymSettingsTableTableManager get gymSettings =>
       $$GymSettingsTableTableManager(_db, _db.gymSettings);
   $$MembershipPlansTableTableManager get membershipPlans =>

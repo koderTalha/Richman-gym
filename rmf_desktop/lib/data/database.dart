@@ -12,6 +12,7 @@ part 'database.g.dart';
 @DriftDatabase(
   tables: [
     Users,
+    AppSessions,
     GymSettings,
     MembershipPlans,
     Members,
@@ -31,7 +32,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 5;
+  int get schemaVersion => 6;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -61,6 +62,12 @@ class AppDatabase extends _$AppDatabase {
           // v5 remembers whether the owner prefers the light or dark theme.
           if (from < 5) {
             await m.addColumn(gymSettings, gymSettings.themeMode);
+          }
+          // v6 keeps the owner signed in across restarts. The table starts
+          // empty, so an upgraded install signs in once more and then stops
+          // asking.
+          if (from < 6) {
+            await m.createTable(appSessions);
           }
         },
         beforeOpen: (details) async {
