@@ -3,6 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:logging/logging.dart';
 
 import 'bloc/auth_bloc.dart';
+import 'bloc/theme_cubit.dart';
 import 'data/database.dart';
 import 'data/member_repository.dart';
 import 'data/payment_repository.dart';
@@ -52,13 +53,22 @@ Future<void> main() => runGuarded(() async {
         _log.severe('Automatic backup skipped', error, stack);
       }
 
-      runApp(RichManFitnessApp(db: db));
+      // Read before the first frame so the app opens in the owner's chosen
+      // theme rather than flashing dark and correcting itself.
+      final theme = ThemeCubit.parse((await SettingsRepository(db).get()).themeMode);
+
+      runApp(RichManFitnessApp(db: db, initialTheme: theme));
     });
 
 class RichManFitnessApp extends StatelessWidget {
-  const RichManFitnessApp({super.key, required this.db});
+  const RichManFitnessApp({
+    super.key,
+    required this.db,
+    this.initialTheme = ThemeMode.dark,
+  });
 
   final AppDatabase db;
+  final ThemeMode initialTheme;
 
   @override
   Widget build(BuildContext context) {
@@ -90,15 +100,25 @@ class RichManFitnessApp extends StatelessWidget {
           ),
         ),
       ],
-      child: BlocProvider(
-        create: (_) => AuthBloc(db),
-        child: MaterialApp(
-          title: 'Rich Man Fitness',
-          debugShowCheckedModeBanner: false,
-          theme: buildAppTheme(),
-          home: BlocBuilder<AuthBloc, AuthState>(
-            builder: (context, state) =>
-                state.isSignedIn ? const AppShell() : const LoginScreen(),
+      child: MultiBlocProvider(
+        providers: [
+          BlocProvider(create: (_) => AuthBloc(db)),
+          // Above MaterialApp so the login screen follows the theme too.
+          BlocProvider(
+            create: (_) => ThemeCubit(settings, initial: initialTheme),
+          ),
+        ],
+        child: BlocBuilder<ThemeCubit, ThemeMode>(
+          builder: (context, themeMode) => MaterialApp(
+            title: 'Rich Man Fitness',
+            debugShowCheckedModeBanner: false,
+            theme: buildLightTheme(),
+            darkTheme: buildDarkTheme(),
+            themeMode: themeMode,
+            home: BlocBuilder<AuthBloc, AuthState>(
+              builder: (context, state) =>
+                  state.isSignedIn ? const AppShell() : const LoginScreen(),
+            ),
           ),
         ),
       ),

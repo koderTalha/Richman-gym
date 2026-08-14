@@ -31,7 +31,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 4;
+  int get schemaVersion => 5;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -57,6 +57,10 @@ class AppDatabase extends _$AppDatabase {
           if (from < 4) {
             await m.alterTable(TableMigration(members));
             await m.deleteTable('sections');
+          }
+          // v5 remembers whether the owner prefers the light or dark theme.
+          if (from < 5) {
+            await m.addColumn(gymSettings, gymSettings.themeMode);
           }
         },
         beforeOpen: (details) async {

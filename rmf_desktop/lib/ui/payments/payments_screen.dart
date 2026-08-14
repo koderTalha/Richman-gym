@@ -53,18 +53,18 @@ class _PaymentsViewState extends State<_PaymentsView> {
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
+                  Text(
                     'Payments',
                     style: TextStyle(
                         fontSize: 22,
                         fontWeight: FontWeight.bold,
-                        color: AppColors.ink50),
+                        color: context.palette.textPrimary),
                   ),
                   const SizedBox(height: 4),
                   Text(
                     '${state.rows.length} shown · '
                     '${formatMinorUnits(state.totalMinor)} total',
-                    style: kMutedStyle,
+                    style: mutedStyleOf(context),
                   ),
                 ],
               ),

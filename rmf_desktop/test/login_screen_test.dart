@@ -19,7 +19,7 @@ void main() {
   Future<void> pumpLogin(WidgetTester tester) async {
     await tester.pumpWidget(
       MaterialApp(
-        theme: buildAppTheme(),
+        theme: buildDarkTheme(),
         home: BlocProvider(
           create: (_) => AuthBloc(db),
           child: const LoginScreen(),

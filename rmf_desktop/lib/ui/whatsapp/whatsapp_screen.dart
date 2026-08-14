@@ -59,11 +59,11 @@ class _WhatsAppView extends StatelessWidget {
             return Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const Text('WhatsApp',
+                Text('WhatsApp',
                     style: TextStyle(
                         fontSize: 22,
                         fontWeight: FontWeight.bold,
-                        color: AppColors.ink50)),
+                        color: context.palette.textPrimary)),
                 const SizedBox(height: 16),
                 if (state.config != null) _ProviderCard(config: state.config!),
                 const SizedBox(height: 16),
@@ -77,17 +77,17 @@ class _WhatsAppView extends StatelessWidget {
                       showCheckmark: false,
                       backgroundColor: Colors.transparent,
                       selectedColor:
-                          AppColors.crimson500.withValues(alpha: .14),
+                          context.palette.accent.withValues(alpha: .14),
                       labelStyle: TextStyle(
                         fontSize: 12,
                         color: selected
-                            ? AppColors.crimson400
-                            : AppColors.ink400,
+                            ? context.palette.accentText
+                            : context.palette.textMuted,
                       ),
                       side: BorderSide(
                           color: selected
                               ? Colors.transparent
-                              : AppColors.ink800),
+                              : context.palette.border),
                       onSelected: (_) => context
                           .read<WhatsAppBloc>()
                           .add(WhatsAppFilterChanged(f)),
@@ -101,11 +101,11 @@ class _WhatsAppView extends StatelessWidget {
                       const Center(child: CircularProgressIndicator()),
                     WhatsAppScreenStatus.failed => Center(
                         child: Text('Could not load messages: ${state.error}',
-                            style: const TextStyle(color: AppColors.expired))),
+                            style: TextStyle(color: context.palette.expired))),
                     WhatsAppScreenStatus.ready => state.rows.isEmpty
-                        ? const Center(
+                        ? Center(
                             child: Text('No WhatsApp messages in this view.',
-                                style: kMutedStyle))
+                                style: mutedStyleOf(context)))
                         : ListView.separated(
                             itemCount: state.rows.length,
                             separatorBuilder: (_, _) =>
@@ -139,9 +139,9 @@ class _ProviderCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppColors.ink900,
+        color: context.palette.surfaceRaised,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.ink800),
+        border: Border.all(color: context.palette.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -157,7 +157,7 @@ class _ProviderCard extends StatelessWidget {
                 label: 'Status',
                 value: config.isConfigured ? 'Connected' : 'Not configured',
                 color:
-                    config.isConfigured ? AppColors.paid : AppColors.expired,
+                    config.isConfigured ? context.palette.paid : context.palette.expired,
               ),
               if (config.maskedPhoneNumberId != null) ...[
                 const SizedBox(width: 40),
@@ -172,23 +172,23 @@ class _ProviderCard extends StatelessWidget {
             Container(
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
-                color: AppColors.ink950,
+                color: context.palette.surfaceBase,
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: AppColors.ink800),
+                border: Border.all(color: context.palette.border),
               ),
-              child: const Text(
+              child: Text(
                 'Mock mode records realistic results but nothing leaves this '
                 'machine. Switch to Meta in Settings and add credentials to '
                 'deliver real messages.',
-                style: kMutedStyle,
+                style: mutedStyleOf(context),
               ),
             ),
           ],
           if (!config.isConfigured && config.missing.isNotEmpty) ...[
             const SizedBox(height: 12),
             Text('Missing: ${config.missing.join(", ")}',
-                style: const TextStyle(
-                    fontSize: 12, color: AppColors.expired)),
+                style: TextStyle(
+                    fontSize: 12, color: context.palette.expired)),
           ],
         ],
       ),
@@ -208,13 +208,13 @@ class _Info extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label.toUpperCase(), style: kLabelStyle),
+        Text(label.toUpperCase(), style: labelStyleOf(context)),
         const SizedBox(height: 2),
         Text(value,
             style: TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.w500,
-                color: color ?? AppColors.ink50)),
+                color: color ?? context.palette.textPrimary)),
       ],
     );
   }
@@ -233,9 +233,9 @@ class _MessageCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: AppColors.ink900,
+        color: context.palette.surfaceRaised,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.ink800),
+        border: Border.all(color: context.palette.border),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -245,27 +245,27 @@ class _MessageCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text('${row.member.fullName} · ${message.phone}',
-                    style: const TextStyle(
-                        fontSize: 13, color: AppColors.ink50)),
+                    style: TextStyle(
+                        fontSize: 13, color: context.palette.textPrimary)),
                 const SizedBox(height: 2),
                 Text(
                   '${row.receipt.receiptNumber}'
                   '${message.attemptNumber > 1 ? " · attempt ${message.attemptNumber}" : ""}',
-                  style: const TextStyle(
+                  style: TextStyle(
                       fontFamily: 'monospace',
                       fontSize: 11,
-                      color: AppColors.ink400),
+                      color: context.palette.textMuted),
                 ),
                 if (message.externalMessageId != null)
                   Text(message.externalMessageId!,
-                      style: const TextStyle(
-                          fontSize: 11, color: AppColors.ink600)),
+                      style: TextStyle(
+                          fontSize: 11, color: context.palette.textHint)),
                 if (message.errorMessage != null)
                   Padding(
                     padding: const EdgeInsets.only(top: 4),
                     child: Text(message.errorMessage!,
-                        style: const TextStyle(
-                            fontSize: 11, color: AppColors.expired)),
+                        style: TextStyle(
+                            fontSize: 11, color: context.palette.expired)),
                   ),
               ],
             ),

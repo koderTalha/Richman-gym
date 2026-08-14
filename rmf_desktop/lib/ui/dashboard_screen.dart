@@ -39,7 +39,7 @@ class _DashboardView extends StatelessWidget {
         if (state.status == DashboardStatus.failed) {
           return Center(
             child: Text('Could not load the dashboard: ${state.error}',
-                style: const TextStyle(color: AppColors.expired)),
+                style: TextStyle(color: context.palette.expired)),
           );
         }
 
@@ -52,12 +52,12 @@ class _DashboardView extends StatelessWidget {
             children: [
               Row(
                 children: [
-                  const Text(
+                  Text(
                     'Dashboard',
                     style: TextStyle(
                         fontSize: 22,
                         fontWeight: FontWeight.bold,
-                        color: AppColors.ink50),
+                        color: context.palette.textPrimary),
                   ),
                   const Spacer(),
                   IconButton(
@@ -81,7 +81,7 @@ class _DashboardView extends StatelessWidget {
                   _StatCard(
                     label: 'Payments due',
                     value: '${due.length}',
-                    tone: due.isEmpty ? null : AppColors.due,
+                    tone: due.isEmpty ? null : context.palette.due,
                   ),
                   _StatCard(
                       label: 'Revenue today',
@@ -97,16 +97,16 @@ class _DashboardView extends StatelessWidget {
                     value: '${state.failedWhatsApp}',
                     tone: state.failedWhatsApp == 0
                         ? null
-                        : AppColors.expired,
+                        : context.palette.expired,
                   ),
                 ],
               ),
               const SizedBox(height: 28),
-              const Text('RECENT PAYMENTS', style: kLabelStyle),
+              Text('RECENT PAYMENTS', style: labelStyleOf(context)),
               const SizedBox(height: 10),
               PaymentHistoryTable(rows: state.recent),
               const SizedBox(height: 28),
-              const Text('MEMBERS WITH PAYMENTS DUE', style: kLabelStyle),
+              Text('MEMBERS WITH PAYMENTS DUE', style: labelStyleOf(context)),
               const SizedBox(height: 10),
               _DueList(rows: due.take(8).toList()),
             ],
@@ -130,21 +130,21 @@ class _StatCard extends StatelessWidget {
       width: 220,
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: AppColors.ink900,
+        color: context.palette.surfaceRaised,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.ink800),
+        border: Border.all(color: context.palette.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label.toUpperCase(), style: kLabelStyle),
+          Text(label.toUpperCase(), style: labelStyleOf(context)),
           const SizedBox(height: 8),
           Text(
             value,
             style: TextStyle(
               fontSize: 24,
               fontWeight: FontWeight.bold,
-              color: tone ?? AppColors.ink50,
+              color: tone ?? context.palette.textPrimary,
             ),
           ),
         ],
@@ -166,17 +166,17 @@ class _DueList extends StatelessWidget {
         alignment: Alignment.center,
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: AppColors.ink800),
+          border: Border.all(color: context.palette.border),
         ),
-        child: const Text('Everyone is paid up.', style: kMutedStyle),
+        child: Text('Everyone is paid up.', style: mutedStyleOf(context)),
       );
     }
 
     return Container(
       decoration: BoxDecoration(
-        color: AppColors.ink900,
+        color: context.palette.surfaceRaised,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.ink800),
+        border: Border.all(color: context.palette.border),
       ),
       clipBehavior: Clip.antiAlias,
       child: Column(
@@ -193,11 +193,11 @@ class _DueList extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(rows[i].member.fullName,
-                            style: const TextStyle(
-                                fontSize: 13, color: AppColors.ink50)),
+                            style: TextStyle(
+                                fontSize: 13, color: context.palette.textPrimary)),
                         Text(
                           '#${rows[i].member.memberCode} · ${rows[i].member.phone}',
-                          style: kMutedStyle,
+                          style: mutedStyleOf(context),
                         ),
                       ],
                     ),

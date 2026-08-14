@@ -42,11 +42,11 @@ class _SettingsView extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const Text('Settings',
+                Text('Settings',
                     style: TextStyle(
                         fontSize: 22,
                         fontWeight: FontWeight.bold,
-                        color: AppColors.ink50)),
+                        color: context.palette.textPrimary)),
                 const SizedBox(height: 20),
                 _GymInfoCard(settings: state.settings!),
                 const SizedBox(height: 16),
@@ -81,21 +81,21 @@ class _Card extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: AppColors.ink900,
+        color: context.palette.surfaceRaised,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.ink800),
+        border: Border.all(color: context.palette.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(title,
-              style: const TextStyle(
+              style: TextStyle(
                   fontSize: 15,
                   fontWeight: FontWeight.w600,
-                  color: AppColors.ink50)),
+                  color: context.palette.textPrimary)),
           if (subtitle != null) ...[
             const SizedBox(height: 4),
-            Text(subtitle!, style: kMutedStyle),
+            Text(subtitle!, style: mutedStyleOf(context)),
           ],
           const SizedBox(height: 16),
           child,
@@ -260,11 +260,11 @@ class _WhatsAppCardState extends State<_WhatsAppCard> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           SegmentedButton<WhatsAppProviderKind>(
-            segments: const [
-              ButtonSegment(
+            segments: [
+              const ButtonSegment(
                   value: WhatsAppProviderKind.mock,
                   label: Text('Mock (development)')),
-              ButtonSegment(
+              const ButtonSegment(
                   value: WhatsAppProviderKind.meta,
                   label: Text('Meta Cloud API')),
             ],
@@ -277,10 +277,10 @@ class _WhatsAppCardState extends State<_WhatsAppCard> {
           ),
           const SizedBox(height: 16),
           if (isMeta) ...[
-            const Text(
+            Text(
               'Paste the values from Meta Business Suite. Ask whoever owns the '
               'WhatsApp Business account for these.',
-              style: kMutedStyle,
+              style: mutedStyleOf(context),
             ),
             const SizedBox(height: 14),
             Row(children: [
@@ -363,8 +363,8 @@ class _WhatsAppCardState extends State<_WhatsAppCard> {
                       style: TextStyle(
                         fontSize: 12,
                         color: state.testResult!.ok
-                            ? AppColors.paid
-                            : AppColors.expired,
+                            ? context.palette.paid
+                            : context.palette.expired,
                       ),
                     ),
                   ),
@@ -374,14 +374,14 @@ class _WhatsAppCardState extends State<_WhatsAppCard> {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: AppColors.ink950,
+                color: context.palette.surfaceBase,
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: AppColors.ink800),
+                border: Border.all(color: context.palette.border),
               ),
-              child: const Text(
+              child: Text(
                 'Mock mode records realistic send results, but nothing leaves '
                 'this machine. Use it until Meta credentials are available.',
-                style: kMutedStyle,
+                style: mutedStyleOf(context),
               ),
             ),
             const SizedBox(height: 10),
@@ -389,11 +389,11 @@ class _WhatsAppCardState extends State<_WhatsAppCard> {
               value: _mockFails,
               onChanged: (v) => setState(() => _mockFails = v ?? false),
               controlAffinity: ListTileControlAffinity.leading,
-              activeColor: AppColors.crimson500,
+              activeColor: context.palette.accent,
               dense: true,
               contentPadding: EdgeInsets.zero,
-              title: const Text('Always fail (for testing the retry flow)',
-                  style: TextStyle(fontSize: 13, color: AppColors.ink50)),
+              title: Text('Always fail (for testing the retry flow)',
+                  style: TextStyle(fontSize: 13, color: context.palette.textPrimary)),
             ),
           ],
           const SizedBox(height: 18),
@@ -514,12 +514,12 @@ class _AccountCardState extends State<_AccountCard> {
                   Container(
                     padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
-                      color: AppColors.expiredBg,
+                      color: context.palette.expiredBg,
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Text(state.passwordError!,
-                        style: const TextStyle(
-                            color: AppColors.expired, fontSize: 12)),
+                        style: TextStyle(
+                            color: context.palette.expired, fontSize: 12)),
                   ),
                 ],
                 const SizedBox(height: 18),
@@ -575,25 +575,25 @@ class _PlansCard extends StatelessWidget {
                             style: TextStyle(
                                 fontSize: 13,
                                 color: plan.isActive
-                                    ? AppColors.ink50
-                                    : AppColors.ink600)),
+                                    ? context.palette.textPrimary
+                                    : context.palette.textHint)),
                         Text(
                           '${plan.durationMonths} '
                           '${plan.durationMonths == 1 ? "month" : "months"}',
-                          style: kMutedStyle,
+                          style: mutedStyleOf(context),
                         ),
                       ],
                     ),
                   ),
                   Text(formatMinorUnits(plan.priceMinor),
-                      style: const TextStyle(
+                      style: TextStyle(
                           fontSize: 13,
                           fontWeight: FontWeight.w600,
-                          color: AppColors.crimson400)),
+                          color: context.palette.accentText)),
                   const SizedBox(width: 16),
                   Switch(
                     value: plan.isActive,
-                    activeThumbColor: AppColors.crimson500,
+                    activeThumbColor: context.palette.accent,
                     onChanged: (v) => context
                         .read<SettingsBloc>()
                         .add(PlanActiveToggled(plan.id, v)),
@@ -649,7 +649,7 @@ class _PlanDialogState extends State<_PlanDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      backgroundColor: AppColors.ink900,
+      backgroundColor: context.palette.surfaceRaised,
       title: Text(widget.plan == null ? 'Add plan' : 'Edit plan'),
       content: SizedBox(
         width: 400,

@@ -58,6 +58,10 @@ class GymSettings extends Table {
   BoolColumn get whatsappMockFails =>
       boolean().withDefault(const Constant(false))();
 
+  /// 'dark' or 'light'. Text rather than a boolean so adding a 'system' option
+  /// later needs no migration. Dark is the default the gym has been using.
+  TextColumn get themeMode => text().withDefault(const Constant('dark'))();
+
   @override
   Set<Column> get primaryKey => {id};
 }

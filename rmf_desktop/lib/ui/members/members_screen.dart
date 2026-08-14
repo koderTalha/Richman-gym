@@ -69,12 +69,12 @@ class _MembersViewState extends State<_MembersView> {
         children: [
           Row(
             children: [
-              const Text(
+              Text(
                 'Members',
                 style: TextStyle(
                     fontSize: 22,
                     fontWeight: FontWeight.bold,
-                    color: AppColors.ink50),
+                    color: context.palette.textPrimary),
               ),
               const Spacer(),
               OutlinedButton.icon(
@@ -122,18 +122,18 @@ class _MembersViewState extends State<_MembersView> {
                         showCheckmark: false,
                         backgroundColor: Colors.transparent,
                         selectedColor:
-                            AppColors.crimson500.withValues(alpha: .14),
+                            context.palette.accent.withValues(alpha: .14),
                         labelStyle: TextStyle(
                           fontSize: 12,
                           fontWeight:
                               selected ? FontWeight.w600 : FontWeight.w400,
                           color: selected
-                              ? AppColors.crimson400
-                              : AppColors.ink400,
+                              ? context.palette.accentText
+                              : context.palette.textMuted,
                         ),
                         side: BorderSide(
                           color:
-                              selected ? Colors.transparent : AppColors.ink800,
+                              selected ? Colors.transparent : context.palette.border,
                         ),
                         onSelected: (_) => context
                             .read<MembersBloc>()
@@ -155,7 +155,7 @@ class _MembersViewState extends State<_MembersView> {
                 if (state.status == MembersStatus.failed) {
                   return Center(
                     child: Text('Could not load members: ${state.error}',
-                        style: const TextStyle(color: AppColors.expired)),
+                        style: TextStyle(color: context.palette.expired)),
                   );
                 }
                 if (state.rows.isEmpty) {
@@ -193,28 +193,28 @@ class _MembersTable extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        color: AppColors.ink900,
+        color: context.palette.surfaceRaised,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.ink800),
+        border: Border.all(color: context.palette.border),
       ),
       clipBehavior: Clip.antiAlias,
       child: Column(
         children: [
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            decoration: const BoxDecoration(
-              border: Border(bottom: BorderSide(color: AppColors.ink800)),
+            decoration: BoxDecoration(
+              border: Border(bottom: BorderSide(color: context.palette.border)),
             ),
-            child: const Row(
+            child: Row(
               children: [
-                SizedBox(width: 56, child: Text('ID', style: kLabelStyle)),
-                Expanded(flex: 3, child: Text('NAME', style: kLabelStyle)),
-                Expanded(flex: 2, child: Text('PHONE', style: kLabelStyle)),
-                Expanded(flex: 2, child: Text('MEMBERSHIP', style: kLabelStyle)),
-                Expanded(flex: 2, child: Text('FEE', style: kLabelStyle)),
-                Expanded(flex: 2, child: Text('PAID UNTIL', style: kLabelStyle)),
-                SizedBox(width: 96, child: Text('STATUS', style: kLabelStyle)),
-                SizedBox(width: 130),
+                SizedBox(width: 56, child: Text('ID', style: labelStyleOf(context))),
+                Expanded(flex: 3, child: Text('NAME', style: labelStyleOf(context))),
+                Expanded(flex: 2, child: Text('PHONE', style: labelStyleOf(context))),
+                Expanded(flex: 2, child: Text('MEMBERSHIP', style: labelStyleOf(context))),
+                Expanded(flex: 2, child: Text('FEE', style: labelStyleOf(context))),
+                Expanded(flex: 2, child: Text('PAID UNTIL', style: labelStyleOf(context))),
+                SizedBox(width: 96, child: Text('STATUS', style: labelStyleOf(context))),
+                const SizedBox(width: 130),
               ],
             ),
           ),
@@ -234,7 +234,7 @@ class _MembersTable extends StatelessWidget {
                         SizedBox(
                           width: 56,
                           child: Text('#${row.member.memberCode}',
-                              style: kMutedStyle),
+                              style: mutedStyleOf(context)),
                         ),
                         Expanded(
                           flex: 3,
@@ -243,28 +243,28 @@ class _MembersTable extends StatelessWidget {
                             children: [
                               Text(
                                 row.member.fullName,
-                                style: const TextStyle(
+                                style: TextStyle(
                                     fontSize: 13,
                                     fontWeight: FontWeight.w500,
-                                    color: AppColors.ink50),
+                                    color: context.palette.textPrimary),
                               ),
                               if (row.member.gender != null)
                                 Text(row.member.gender!,
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                         fontSize: 11,
-                                        color: AppColors.ink600)),
+                                        color: context.palette.textHint)),
                             ],
                           ),
                         ),
                         Expanded(
                           flex: 2,
-                          child: Text(row.member.phone, style: kMutedStyle),
+                          child: Text(row.member.phone, style: mutedStyleOf(context)),
                         ),
                         Expanded(
                           flex: 2,
                           child: Text(row.plan?.name ?? '—',
-                              style: const TextStyle(
-                                  fontSize: 13, color: AppColors.ink200)),
+                              style: TextStyle(
+                                  fontSize: 13, color: context.palette.textSecondary)),
                         ),
                         Expanded(
                           flex: 2,
@@ -272,14 +272,14 @@ class _MembersTable extends StatelessWidget {
                             row.feeMinor == null
                                 ? '—'
                                 : formatMinorUnits(row.feeMinor!),
-                            style: const TextStyle(
-                                fontSize: 13, color: AppColors.ink200),
+                            style: TextStyle(
+                                fontSize: 13, color: context.palette.textSecondary),
                           ),
                         ),
                         Expanded(
                           flex: 2,
                           child: Text(formatShortDate(row.paidUntil),
-                              style: kMutedStyle),
+                              style: mutedStyleOf(context)),
                         ),
                         SizedBox(
                           width: 96,
@@ -321,9 +321,9 @@ class _EmptyState extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.people_outline, size: 40, color: AppColors.ink600),
+          Icon(Icons.people_outline, size: 40, color: context.palette.textHint),
           const SizedBox(height: 12),
-          const Text('No members match this view.', style: kMutedStyle),
+          Text('No members match this view.', style: mutedStyleOf(context)),
           const SizedBox(height: 18),
           Row(
             mainAxisSize: MainAxisSize.min,

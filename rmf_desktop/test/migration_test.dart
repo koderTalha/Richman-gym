@@ -313,6 +313,9 @@ void main() {
         expect(settings.receiptPrefix, 'RMF');
         // Columns introduced by later versions take their defaults.
         expect(settings.whatsappProvider, WhatsAppProviderKind.mock);
+        // v5. An upgraded install keeps the dark theme it has always had,
+        // rather than switching to light on the owner without being asked.
+        expect(settings.themeMode, 'dark');
       });
 
       test('new columns are writable after the upgrade', () async {

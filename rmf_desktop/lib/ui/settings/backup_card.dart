@@ -32,7 +32,7 @@ class BackupCard extends StatefulWidget {
 }
 
 class _BackupCardState extends State<BackupCard> {
-  List<BackupEntry> _automatic = const [];
+  List<BackupEntry> _automatic = [];
   bool _busy = false;
   String? _message;
   bool _messageIsError = false;
@@ -93,13 +93,13 @@ class _BackupCardState extends State<BackupCard> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        backgroundColor: AppColors.ink900,
+        backgroundColor: context.palette.surfaceRaised,
         title: const Text('Replace all current data?'),
-        content: const Text(
+        content: Text(
           'Restoring replaces every member, payment and receipt record with '
           'the contents of the backup. The current database is kept alongside '
           'as a copy, and the app must be restarted to finish.',
-          style: kMutedStyle,
+          style: mutedStyleOf(context),
         ),
         actions: [
           TextButton(
@@ -176,14 +176,14 @@ class _BackupCardState extends State<BackupCard> {
               padding: const EdgeInsets.all(12),
               margin: const EdgeInsets.only(bottom: 14),
               decoration: BoxDecoration(
-                color: AppColors.dueBg,
+                color: context.palette.dueBg,
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: AppColors.due.withValues(alpha: .4)),
+                border: Border.all(color: context.palette.due.withValues(alpha: .4)),
               ),
-              child: const Text(
+              child: Text(
                 'Restore ready. Quit and reopen Rich Man Fitness to apply it — '
                 'the database cannot be replaced while the app is running.',
-                style: TextStyle(fontSize: 12, color: AppColors.due),
+                style: TextStyle(fontSize: 12, color: context.palette.due),
               ),
             ),
           Row(
@@ -213,12 +213,12 @@ class _BackupCardState extends State<BackupCard> {
               _message!,
               style: TextStyle(
                 fontSize: 12,
-                color: _messageIsError ? AppColors.expired : AppColors.paid,
+                color: _messageIsError ? context.palette.expired : context.palette.paid,
               ),
             ),
           ],
           const SizedBox(height: 18),
-          const Text('AUTOMATIC BACKUPS', style: kLabelStyle),
+          Text('AUTOMATIC BACKUPS', style: labelStyleOf(context)),
           const SizedBox(height: 6),
           Text(
             _automatic.isEmpty
@@ -226,7 +226,7 @@ class _BackupCardState extends State<BackupCard> {
                     'most once a day. The seven most recent are kept.'
                 : 'Taken automatically, at most once a day. The seven most '
                     'recent are kept.',
-            style: kMutedStyle,
+            style: mutedStyleOf(context),
           ),
           const SizedBox(height: 10),
           if (_automatic.isNotEmpty)
@@ -235,13 +235,13 @@ class _BackupCardState extends State<BackupCard> {
                     padding: const EdgeInsets.only(bottom: 4),
                     child: Row(
                       children: [
-                        const Icon(Icons.folder_outlined,
-                            size: 14, color: AppColors.ink600),
+                        Icon(Icons.folder_outlined,
+                            size: 14, color: context.palette.textHint),
                         const SizedBox(width: 8),
                         Expanded(
                           child: Text(_readableDate(entry.takenAt),
-                              style: const TextStyle(
-                                  fontSize: 12, color: AppColors.ink200)),
+                              style: TextStyle(
+                                  fontSize: 12, color: context.palette.textSecondary)),
                         ),
                         TextButton(
                           onPressed: () => _openFolder(entry.folder),

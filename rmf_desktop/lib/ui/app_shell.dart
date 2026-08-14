@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../bloc/auth_bloc.dart';
+import '../bloc/theme_cubit.dart';
 import '../theme/app_theme.dart';
 import 'dashboard_screen.dart';
 import 'members/members_screen.dart';
@@ -66,7 +67,7 @@ class _AppShellState extends State<AppShell> {
                     userEmail: user?.email ?? ''),
                 Expanded(
                   child: Container(
-                    color: AppColors.ink950,
+                    color: context.palette.surfaceBase,
                     child: navDestinations[_index].builder(context),
                   ),
                 ),
@@ -89,31 +90,31 @@ class _Sidebar extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: 232,
-      decoration: const BoxDecoration(
-        color: AppColors.ink900,
-        border: Border(right: BorderSide(color: AppColors.ink800)),
+      decoration: BoxDecoration(
+        color: context.palette.surfaceRaised,
+        border: Border(right: BorderSide(color: context.palette.border)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Container(
             padding: const EdgeInsets.fromLTRB(20, 22, 20, 20),
-            decoration: const BoxDecoration(
-              border: Border(bottom: BorderSide(color: AppColors.ink800)),
+            decoration: BoxDecoration(
+              border: Border(bottom: BorderSide(color: context.palette.border)),
             ),
             child: RichText(
-              text: const TextSpan(
+              text: TextSpan(
                 style: TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w800,
                   letterSpacing: 2,
-                  color: AppColors.ink50,
+                  color: context.palette.textPrimary,
                 ),
                 children: [
-                  TextSpan(text: 'RICH MAN'),
+                  const TextSpan(text: 'RICH MAN'),
                   TextSpan(
                     text: ' FITNESS',
-                    style: TextStyle(color: AppColors.crimson500),
+                    style: TextStyle(color: context.palette.accent),
                   ),
                 ],
               ),
@@ -131,7 +132,7 @@ class _Sidebar extends StatelessWidget {
                   padding: const EdgeInsets.only(bottom: 2),
                   child: Material(
                     color: selected
-                        ? AppColors.crimson500.withValues(alpha: .12)
+                        ? context.palette.accent.withValues(alpha: .12)
                         : Colors.transparent,
                     borderRadius: BorderRadius.circular(8),
                     child: InkWell(
@@ -148,8 +149,8 @@ class _Sidebar extends StatelessWidget {
                                 item.icon,
                                 size: 18,
                                 color: selected
-                                    ? AppColors.crimson400
-                                    : AppColors.ink400,
+                                    ? context.palette.accentText
+                                    : context.palette.textMuted,
                               ),
                               const SizedBox(width: 10),
                               Text(
@@ -160,8 +161,8 @@ class _Sidebar extends StatelessWidget {
                                       ? FontWeight.w600
                                       : FontWeight.w400,
                                   color: selected
-                                      ? AppColors.crimson400
-                                      : AppColors.ink200,
+                                      ? context.palette.accentText
+                                      : context.palette.textSecondary,
                                 ),
                               ),
                             ],
@@ -183,7 +184,7 @@ class _Sidebar extends StatelessWidget {
               icon: const Icon(Icons.logout, size: 16),
               label: const Text('Log out'),
               style: TextButton.styleFrom(
-                foregroundColor: AppColors.ink400,
+                foregroundColor: context.palette.textMuted,
                 alignment: Alignment.centerLeft,
                 padding:
                     const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -211,29 +212,31 @@ class _TopBar extends StatelessWidget {
     return Container(
       height: 60,
       padding: const EdgeInsets.symmetric(horizontal: 20),
-      decoration: const BoxDecoration(
-        color: AppColors.ink900,
-        border: Border(bottom: BorderSide(color: AppColors.ink800)),
+      decoration: BoxDecoration(
+        color: context.palette.surfaceRaised,
+        border: Border(bottom: BorderSide(color: context.palette.border)),
       ),
       child: Row(
         children: [
           const Spacer(),
+          const _ThemeToggle(),
+          const SizedBox(width: 16),
           Column(
             mainAxisAlignment: MainAxisAlignment.center,
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Text(userName,
-                  style: const TextStyle(
+                  style: TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.w500,
-                      color: AppColors.ink50)),
-              Text(userEmail, style: kMutedStyle),
+                      color: context.palette.textPrimary)),
+              Text(userEmail, style: mutedStyleOf(context)),
             ],
           ),
           const SizedBox(width: 12),
           CircleAvatar(
             radius: 18,
-            backgroundColor: AppColors.crimson500,
+            backgroundColor: context.palette.accent,
             child: Text(
               initial,
               style: const TextStyle(
@@ -243,6 +246,29 @@ class _TopBar extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Switches between the light and dark schemes. The choice is written to the
+/// settings row, so it survives a restart.
+class _ThemeToggle extends StatelessWidget {
+  const _ThemeToggle();
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = context.watch<ThemeCubit>().state == ThemeMode.dark;
+
+    return IconButton(
+      onPressed: () => context.read<ThemeCubit>().toggle(),
+      // Names the destination, not the current state: pressing it is what the
+      // label has to describe.
+      tooltip: isDark ? 'Switch to light theme' : 'Switch to dark theme',
+      icon: Icon(
+        isDark ? Icons.light_mode_outlined : Icons.dark_mode_outlined,
+        size: 20,
+        color: context.palette.textMuted,
       ),
     );
   }

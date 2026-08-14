@@ -60,14 +60,14 @@ class _LoginScreenState extends State<LoginScreen> {
                   children: [
                     const _Wordmark(),
                     const SizedBox(height: 8),
-                    const Text('Admin sign in', style: kMutedStyle),
+                    Text('Admin sign in', style: mutedStyleOf(context)),
                     const SizedBox(height: 28),
                     Container(
                       padding: const EdgeInsets.all(24),
                       decoration: BoxDecoration(
-                        color: AppColors.ink900,
+                        color: context.palette.surfaceRaised,
                         borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: AppColors.ink800),
+                        border: Border.all(color: context.palette.border),
                       ),
                       child: Form(
                         key: _formKey,
@@ -121,16 +121,16 @@ class _LoginScreenState extends State<LoginScreen> {
                                 padding: const EdgeInsets.symmetric(
                                     horizontal: 12, vertical: 10),
                                 decoration: BoxDecoration(
-                                  color: AppColors.expiredBg,
+                                  color: context.palette.expiredBg,
                                   borderRadius: BorderRadius.circular(8),
                                   border: Border.all(
-                                      color: AppColors.expired
+                                      color: context.palette.expired
                                           .withValues(alpha: .4)),
                                 ),
                                 child: Text(
                                   state.error!,
-                                  style: const TextStyle(
-                                      color: AppColors.expired, fontSize: 13),
+                                  style: TextStyle(
+                                      color: context.palette.expired, fontSize: 13),
                                 ),
                               ),
                             ],
@@ -145,9 +145,9 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                     ),
                     const SizedBox(height: 20),
-                    const Text(
+                    Text(
                       'Authorised staff only.',
-                      style: TextStyle(fontSize: 11, color: AppColors.ink600),
+                      style: TextStyle(fontSize: 11, color: context.palette.textHint),
                     ),
                   ],
                 );
@@ -166,18 +166,18 @@ class _Wordmark extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return RichText(
-      text: const TextSpan(
+      text: TextSpan(
         style: TextStyle(
           fontSize: 22,
           fontWeight: FontWeight.w800,
           letterSpacing: 3,
-          color: AppColors.ink50,
+          color: context.palette.textPrimary,
         ),
         children: [
-          TextSpan(text: 'RICH MAN'),
+          const TextSpan(text: 'RICH MAN'),
           TextSpan(
             text: ' FITNESS',
-            style: TextStyle(color: AppColors.crimson500),
+            style: TextStyle(color: context.palette.accent),
           ),
         ],
       ),

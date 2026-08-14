@@ -97,14 +97,14 @@ class _RecordPaymentDialogState extends State<_RecordPaymentDialog> {
       final confirmed = await showDialog<bool>(
         context: context,
         builder: (dialogContext) => AlertDialog(
-          backgroundColor: AppColors.ink900,
+          backgroundColor: context.palette.surfaceRaised,
           title: const Text('Already paid'),
           content: Text(
             '$periodLabel is already recorded as paid — '
             '${formatMinorUnits(existing.amountMinor)} on '
             '${formatShortDate(existing.paymentDate)}.\n\n'
             'Record another payment for the same month?',
-            style: kMutedStyle,
+            style: mutedStyleOf(context),
           ),
           actions: [
             TextButton(
@@ -171,7 +171,7 @@ class _RecordPaymentDialogState extends State<_RecordPaymentDialog> {
           a.status != b.status && b.status == RecordPaymentStatus.success,
       listener: (context, state) => _recordedAnything = true,
       child: Dialog(
-        backgroundColor: AppColors.ink900,
+        backgroundColor: context.palette.surfaceRaised,
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 560, maxHeight: 700),
           child: BlocBuilder<RecordPaymentBloc, RecordPaymentState>(
@@ -202,8 +202,8 @@ class _RecordPaymentDialogState extends State<_RecordPaymentDialog> {
 
   Widget _header(BuildContext context, RecordPaymentState state) => Container(
         padding: const EdgeInsets.fromLTRB(20, 16, 12, 16),
-        decoration: const BoxDecoration(
-          border: Border(bottom: BorderSide(color: AppColors.ink800)),
+        decoration: BoxDecoration(
+          border: Border(bottom: BorderSide(color: context.palette.border)),
         ),
         child: Row(
           children: [
@@ -211,16 +211,16 @@ class _RecordPaymentDialogState extends State<_RecordPaymentDialog> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('Record Payment',
+                  Text('Record Payment',
                       style: TextStyle(
                           fontSize: 17,
                           fontWeight: FontWeight.bold,
-                          color: AppColors.ink50)),
+                          color: context.palette.textPrimary)),
                   const SizedBox(height: 2),
                   Text(
                     '${widget.member.member.fullName} · '
                     '${widget.member.member.phone}',
-                    style: kMutedStyle,
+                    style: mutedStyleOf(context),
                   ),
                 ],
               ),
@@ -284,8 +284,8 @@ class _RecordPaymentDialogState extends State<_RecordPaymentDialog> {
                     decoration: const InputDecoration(
                         labelText: 'Payment date', isDense: true),
                     child: Text(formatShortDate(_paymentDate),
-                        style: const TextStyle(
-                            fontSize: 14, color: AppColors.ink50)),
+                        style: TextStyle(
+                            fontSize: 14, color: context.palette.textPrimary)),
                   ),
                 ),
               ),
@@ -298,8 +298,8 @@ class _RecordPaymentDialogState extends State<_RecordPaymentDialog> {
                         labelText: 'Billing period', isDense: true),
                     child: Text(
                       formatBillingPeriod(parseBillingMonth(_billingMonth), 1),
-                      style: const TextStyle(
-                          fontSize: 14, color: AppColors.ink50),
+                      style: TextStyle(
+                          fontSize: 14, color: context.palette.textPrimary),
                     ),
                   ),
                 ),
@@ -325,9 +325,9 @@ class _RecordPaymentDialogState extends State<_RecordPaymentDialog> {
           const SizedBox(height: 16),
           Container(
             decoration: BoxDecoration(
-              color: AppColors.ink950,
+              color: context.palette.surfaceBase,
               borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: AppColors.ink800),
+              border: Border.all(color: context.palette.border),
             ),
             child: CheckboxListTile(
               value: _sendWhatsApp,
@@ -335,15 +335,15 @@ class _RecordPaymentDialogState extends State<_RecordPaymentDialog> {
                   ? (v) => setState(() => _sendWhatsApp = v ?? false)
                   : null,
               controlAffinity: ListTileControlAffinity.leading,
-              activeColor: AppColors.crimson500,
+              activeColor: context.palette.accent,
               dense: true,
-              title: const Text('Send receipt on WhatsApp',
-                  style: TextStyle(fontSize: 13, color: AppColors.ink50)),
+              title: Text('Send receipt on WhatsApp',
+                  style: TextStyle(fontSize: 13, color: context.palette.textPrimary)),
               subtitle: Text(
                 _phoneUsable
                     ? 'Sends the receipt image to ${widget.member.member.phone}'
                     : 'Disabled — this member has no valid WhatsApp number',
-                style: kMutedStyle,
+                style: mutedStyleOf(context),
               ),
             ),
           ),
@@ -352,12 +352,12 @@ class _RecordPaymentDialogState extends State<_RecordPaymentDialog> {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: AppColors.expiredBg,
+                color: context.palette.expiredBg,
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Text(state.error ?? 'Could not record the payment.',
-                  style: const TextStyle(
-                      color: AppColors.expired, fontSize: 13)),
+                  style: TextStyle(
+                      color: context.palette.expired, fontSize: 13)),
             ),
           ],
           const SizedBox(height: 20),
@@ -388,20 +388,20 @@ class _SuccessPanel extends StatelessWidget {
         Container(
           padding: const EdgeInsets.all(18),
           decoration: BoxDecoration(
-            color: AppColors.paidBg.withValues(alpha: .4),
+            color: context.palette.paidBg.withValues(alpha: .4),
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: AppColors.paid.withValues(alpha: .3)),
+            border: Border.all(color: context.palette.paid.withValues(alpha: .3)),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('Payment recorded successfully',
+              Text('Payment recorded successfully',
                   style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
-                      color: AppColors.ink50)),
+                      color: context.palette.textPrimary)),
               const SizedBox(height: 4),
-              Text('Receipt: ${result.receiptNumber}', style: kMutedStyle),
+              Text('Receipt: ${result.receiptNumber}', style: mutedStyleOf(context)),
               const SizedBox(height: 14),
               const _Step(ok: true, label: 'Payment saved'),
               const _Step(ok: true, label: 'Receipt generated'),
@@ -418,7 +418,7 @@ class _SuccessPanel extends StatelessWidget {
                 Text(
                   'The payment and receipt are saved. You can retry the '
                   'WhatsApp send now or from the Receipts screen.',
-                  style: kMutedStyle,
+                  style: mutedStyleOf(context),
                 ),
                 const SizedBox(height: 10),
                 OutlinedButton.icon(
@@ -515,9 +515,9 @@ class _Step extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final (mark, color) = switch (ok) {
-      null => ('—', AppColors.ink400),
-      true => ('✓', AppColors.paid),
-      false => ('✕', AppColors.expired),
+      null => ('—', context.palette.textMuted),
+      true => ('✓', context.palette.paid),
+      false => ('✕', context.palette.expired),
     };
 
     return Padding(

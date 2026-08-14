@@ -47,37 +47,37 @@ class PaymentHistoryTable extends StatelessWidget {
         padding: const EdgeInsets.symmetric(vertical: 40),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: AppColors.ink800, style: BorderStyle.solid),
+          border: Border.all(color: context.palette.border, style: BorderStyle.solid),
         ),
         alignment: Alignment.center,
-        child: Text(emptyMessage, style: kMutedStyle),
+        child: Text(emptyMessage, style: mutedStyleOf(context)),
       );
     }
 
     return Container(
       decoration: BoxDecoration(
-        color: AppColors.ink900,
+        color: context.palette.surfaceRaised,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.ink800),
+        border: Border.all(color: context.palette.border),
       ),
       clipBehavior: Clip.antiAlias,
       child: Column(
         children: [
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            decoration: const BoxDecoration(
-              border: Border(bottom: BorderSide(color: AppColors.ink800)),
+            decoration: BoxDecoration(
+              border: Border(bottom: BorderSide(color: context.palette.border)),
             ),
             child: Row(
               children: [
-                const Expanded(flex: 2, child: Text('RECEIPT', style: kLabelStyle)),
+                Expanded(flex: 2, child: Text('RECEIPT', style: labelStyleOf(context))),
                 if (showMember)
-                  const Expanded(flex: 3, child: Text('MEMBER', style: kLabelStyle)),
-                const Expanded(flex: 2, child: Text('PERIOD', style: kLabelStyle)),
-                const Expanded(flex: 2, child: Text('AMOUNT', style: kLabelStyle)),
-                const Expanded(flex: 2, child: Text('METHOD', style: kLabelStyle)),
-                const Expanded(flex: 2, child: Text('DATE', style: kLabelStyle)),
-                const SizedBox(width: 100, child: Text('WHATSAPP', style: kLabelStyle)),
+                  Expanded(flex: 3, child: Text('MEMBER', style: labelStyleOf(context))),
+                Expanded(flex: 2, child: Text('PERIOD', style: labelStyleOf(context))),
+                Expanded(flex: 2, child: Text('AMOUNT', style: labelStyleOf(context))),
+                Expanded(flex: 2, child: Text('METHOD', style: labelStyleOf(context))),
+                Expanded(flex: 2, child: Text('DATE', style: labelStyleOf(context))),
+                SizedBox(width: 100, child: Text('WHATSAPP', style: labelStyleOf(context))),
               ],
             ),
           ),
@@ -101,8 +101,8 @@ class PaymentHistoryTable extends StatelessWidget {
                           fontSize: 12,
                           fontFamily: 'monospace',
                           color: row.receipt == null
-                              ? AppColors.ink600
-                              : AppColors.crimson400,
+                              ? context.palette.textHint
+                              : context.palette.accentText,
                         ),
                       ),
                     ),
@@ -111,35 +111,35 @@ class PaymentHistoryTable extends StatelessWidget {
                         flex: 3,
                         child: Text(
                           row.member.fullName,
-                          style: const TextStyle(
-                              fontSize: 13, color: AppColors.ink50),
+                          style: TextStyle(
+                              fontSize: 13, color: context.palette.textPrimary),
                         ),
                       ),
                     Expanded(
                       flex: 2,
                       child: Text(row.periodLabel,
-                          style: const TextStyle(
-                              fontSize: 13, color: AppColors.ink200)),
+                          style: TextStyle(
+                              fontSize: 13, color: context.palette.textSecondary)),
                     ),
                     Expanded(
                       flex: 2,
                       child: Text(
                         formatMinorUnits(row.payment.amountMinor),
-                        style: const TextStyle(
+                        style: TextStyle(
                             fontSize: 13,
                             fontWeight: FontWeight.w500,
-                            color: AppColors.ink50),
+                            color: context.palette.textPrimary),
                       ),
                     ),
                     Expanded(
                       flex: 2,
                       child: Text(paymentMethodLabel(row.payment.method),
-                          style: kMutedStyle),
+                          style: mutedStyleOf(context)),
                     ),
                     Expanded(
                       flex: 2,
                       child: Text(formatShortDate(row.payment.paymentDate),
-                          style: kMutedStyle),
+                          style: mutedStyleOf(context)),
                     ),
                     SizedBox(
                       width: 100,

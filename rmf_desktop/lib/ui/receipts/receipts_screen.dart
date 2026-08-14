@@ -60,16 +60,16 @@ class _ReceiptsViewState extends State<_ReceiptsView> {
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('Receipts',
+                    Text('Receipts',
                         style: TextStyle(
                             fontSize: 22,
                             fontWeight: FontWeight.bold,
-                            color: AppColors.ink50)),
+                            color: context.palette.textPrimary)),
                     const SizedBox(height: 4),
                     Text(
                         '${state.rows.length} '
                         '${state.rows.length == 1 ? "receipt" : "receipts"}',
-                        style: kMutedStyle),
+                        style: mutedStyleOf(context)),
                   ],
                 ),
                 const SizedBox(height: 18),
@@ -101,17 +101,17 @@ class _ReceiptsViewState extends State<_ReceiptsView> {
                             showCheckmark: false,
                             backgroundColor: Colors.transparent,
                             selectedColor:
-                                AppColors.crimson500.withValues(alpha: .14),
+                                context.palette.accent.withValues(alpha: .14),
                             labelStyle: TextStyle(
                               fontSize: 12,
                               color: selected
-                                  ? AppColors.crimson400
-                                  : AppColors.ink400,
+                                  ? context.palette.accentText
+                                  : context.palette.textMuted,
                             ),
                             side: BorderSide(
                                 color: selected
                                     ? Colors.transparent
-                                    : AppColors.ink800),
+                                    : context.palette.border),
                             onSelected: (_) => context
                                 .read<ReceiptsBloc>()
                                 .add(ReceiptsFilterChanged(f)),
@@ -128,12 +128,12 @@ class _ReceiptsViewState extends State<_ReceiptsView> {
                       const Center(child: CircularProgressIndicator()),
                     ReceiptsStatus.failed => Center(
                         child: Text('Could not load receipts: ${state.error}',
-                            style: const TextStyle(color: AppColors.expired))),
+                            style: TextStyle(color: context.palette.expired))),
                     ReceiptsStatus.ready => state.rows.isEmpty
-                        ? const Center(
+                        ? Center(
                             child: Text(
                                 'No receipts yet. Record a payment to generate one.',
-                                style: kMutedStyle))
+                                style: mutedStyleOf(context)))
                         : ListView.separated(
                             itemCount: state.rows.length,
                             separatorBuilder: (_, _) =>
@@ -193,9 +193,9 @@ class _ReceiptCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppColors.ink900,
+        color: context.palette.surfaceRaised,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.ink800),
+        border: Border.all(color: context.palette.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -208,27 +208,27 @@ class _ReceiptCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(row.receipt.receiptNumber,
-                        style: const TextStyle(
+                        style: TextStyle(
                             fontFamily: 'monospace',
                             fontSize: 13,
-                            color: AppColors.ink50)),
+                            color: context.palette.textPrimary)),
                     const SizedBox(height: 2),
                     Text('${row.member.fullName} · ${row.member.phone}',
-                        style: const TextStyle(
-                            fontSize: 13, color: AppColors.ink200)),
+                        style: TextStyle(
+                            fontSize: 13, color: context.palette.textSecondary)),
                     const SizedBox(height: 2),
                     Text(
                       '${row.periodLabel} · '
                       '${paymentMethodLabel(row.payment.method)} · '
                       '${formatShortDate(row.payment.paymentDate)}',
-                      style: kMutedStyle,
+                      style: mutedStyleOf(context),
                     ),
                     if (row.latestMessage?.errorMessage != null)
                       Padding(
                         padding: const EdgeInsets.only(top: 4),
                         child: Text(row.latestMessage!.errorMessage!,
-                            style: const TextStyle(
-                                fontSize: 11, color: AppColors.expired)),
+                            style: TextStyle(
+                                fontSize: 11, color: context.palette.expired)),
                       ),
                   ],
                 ),
@@ -237,10 +237,10 @@ class _ReceiptCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   Text(formatMinorUnits(row.payment.amountMinor),
-                      style: const TextStyle(
+                      style: TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.w600,
-                          color: AppColors.crimson400)),
+                          color: context.palette.accentText)),
                   const SizedBox(height: 6),
                   WhatsAppStatusBadge(status: row.whatsAppStatus),
                 ],

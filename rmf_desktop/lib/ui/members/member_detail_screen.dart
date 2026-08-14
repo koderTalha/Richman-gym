@@ -42,14 +42,14 @@ class _MemberDetailView extends StatelessWidget {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        backgroundColor: AppColors.ink900,
+        backgroundColor: context.palette.surfaceRaised,
         title: Text(deactivating ? 'Deactivate member?' : 'Reactivate member?'),
         content: Text(
           deactivating
               ? '${row.member.fullName} will be marked inactive. '
                   'Their payment history and receipts are kept.'
               : '${row.member.fullName} will be active again.',
-          style: kMutedStyle,
+          style: mutedStyleOf(context),
         ),
         actions: [
           TextButton(
@@ -80,7 +80,7 @@ class _MemberDetailView extends StatelessWidget {
           },
           child: Scaffold(
             appBar: AppBar(
-              backgroundColor: AppColors.ink900,
+              backgroundColor: context.palette.surfaceRaised,
               title: const Text('Member'),
               leading: IconButton(
                 icon: const Icon(Icons.arrow_back),
@@ -133,10 +133,10 @@ class _Body extends StatelessWidget {
                       children: [
                         Text(
                           row.member.fullName,
-                          style: const TextStyle(
+                          style: TextStyle(
                               fontSize: 22,
                               fontWeight: FontWeight.bold,
-                              color: AppColors.ink50),
+                              color: context.palette.textPrimary),
                         ),
                         const SizedBox(width: 12),
                         MemberStatusBadge(status: row.status),
@@ -146,7 +146,7 @@ class _Body extends StatelessWidget {
                     Text(
                       '#${row.member.memberCode} · ${row.member.phone}'
                       '${row.member.gender != null ? ' · ${row.member.gender}' : ''}',
-                      style: kMutedStyle,
+                      style: mutedStyleOf(context),
                     ),
                   ],
                 ),
@@ -215,7 +215,7 @@ class _Body extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 24),
-          const Text('PAYMENT HISTORY', style: kLabelStyle),
+          Text('PAYMENT HISTORY', style: labelStyleOf(context)),
           const SizedBox(height: 10),
           PaymentHistoryTable(rows: payments, showMember: false),
         ],
@@ -237,21 +237,21 @@ class _Detail extends StatelessWidget {
         margin: const EdgeInsets.only(right: 12),
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: AppColors.ink900,
+          color: context.palette.surfaceRaised,
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: AppColors.ink800),
+          border: Border.all(color: context.palette.border),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(label.toUpperCase(), style: kLabelStyle),
+            Text(label.toUpperCase(), style: labelStyleOf(context)),
             const SizedBox(height: 6),
             Text(
               value,
-              style: const TextStyle(
+              style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w500,
-                  color: AppColors.ink50),
+                  color: context.palette.textPrimary),
             ),
           ],
         ),

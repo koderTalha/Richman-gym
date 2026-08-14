@@ -36,7 +36,7 @@ class _ImportView extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: AppColors.ink900,
+        backgroundColor: context.palette.surfaceRaised,
         title: const Text('Import Members from Excel'),
       ),
       body: BlocBuilder<ImportBloc, ImportState>(
@@ -74,7 +74,7 @@ class _ImportView extends StatelessWidget {
                               child: Text(
                                 state.fileName ??
                                     'No file selected (.xlsx, .xls, .csv)',
-                                style: kMutedStyle,
+                                style: mutedStyleOf(context),
                               ),
                             ),
                           ],
@@ -98,18 +98,18 @@ class _ImportView extends StatelessWidget {
                                     selected: selected,
                                     showCheckmark: false,
                                     backgroundColor: Colors.transparent,
-                                    selectedColor: AppColors.crimson500
+                                    selectedColor: context.palette.accent
                                         .withValues(alpha: .14),
                                     labelStyle: TextStyle(
                                       fontSize: 12,
                                       color: selected
-                                          ? AppColors.crimson400
-                                          : AppColors.ink400,
+                                          ? context.palette.accentText
+                                          : context.palette.textMuted,
                                     ),
                                     side: BorderSide(
                                         color: selected
                                             ? Colors.transparent
-                                            : AppColors.ink800),
+                                            : context.palette.border),
                                     onSelected: (_) =>
                                         bloc.add(ImportSheetSelected(name)),
                                   );
@@ -201,12 +201,12 @@ class _ImportView extends StatelessWidget {
                       Container(
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
-                          color: AppColors.expiredBg,
+                          color: context.palette.expiredBg,
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Text(state.error!,
-                            style: const TextStyle(
-                                color: AppColors.expired, fontSize: 13)),
+                            style: TextStyle(
+                                color: context.palette.expired, fontSize: 13)),
                       ),
                     ],
                   ],
@@ -233,9 +233,9 @@ class _StepCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: AppColors.ink900,
+        color: context.palette.surfaceRaised,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.ink800),
+        border: Border.all(color: context.palette.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -244,7 +244,7 @@ class _StepCard extends StatelessWidget {
             children: [
               CircleAvatar(
                 radius: 12,
-                backgroundColor: AppColors.crimson500,
+                backgroundColor: context.palette.accent,
                 child: Text('$step',
                     style: const TextStyle(
                         fontSize: 12,
@@ -253,10 +253,10 @@ class _StepCard extends StatelessWidget {
               ),
               const SizedBox(width: 10),
               Text(title,
-                  style: const TextStyle(
+                  style: TextStyle(
                       fontSize: 15,
                       fontWeight: FontWeight.w600,
-                      color: AppColors.ink50)),
+                      color: context.palette.textPrimary)),
             ],
           ),
           const SizedBox(height: 16),
@@ -288,21 +288,21 @@ class _Preview extends StatelessWidget {
             _Stat(
               label: 'Without a phone',
               value: '${ledger.withoutPhone}',
-              tone: ledger.withoutPhone == 0 ? null : AppColors.due,
+              tone: ledger.withoutPhone == 0 ? null : context.palette.due,
             ),
             _Stat(
               label: 'Rows skipped',
               value: '${ledger.invalid.length}',
-              tone: ledger.invalid.isEmpty ? null : AppColors.expired,
+              tone: ledger.invalid.isEmpty ? null : context.palette.expired,
             ),
             _Stat(label: 'Year', value: '${ledger.year}'),
           ],
         ),
         const SizedBox(height: 12),
-        const Text(
+        Text(
           'Historical payments are imported without sending any WhatsApp '
           'receipts. Re-importing the same sheet will not duplicate anything.',
-          style: kMutedStyle,
+          style: mutedStyleOf(context),
         ),
         if (ledger.paymentsUsingPlanFee > 0) ...[
           const SizedBox(height: 6),
@@ -311,7 +311,7 @@ class _Preview extends StatelessWidget {
             'figure (the Excel column is too narrow). These will be recorded at '
             'the plan fee. Widen those columns in Excel first if the amounts '
             'differ from the standard fee.',
-            style: const TextStyle(fontSize: 12, color: AppColors.due),
+            style: TextStyle(fontSize: 12, color: context.palette.due),
           ),
         ],
         if (ledger.withoutPhone > 0) ...[
@@ -320,12 +320,12 @@ class _Preview extends StatelessWidget {
             '${ledger.withoutPhone} members have no phone number. They will '
             'still be imported — they just cannot receive WhatsApp receipts '
             'until a number is added.',
-            style: const TextStyle(fontSize: 12, color: AppColors.due),
+            style: TextStyle(fontSize: 12, color: context.palette.due),
           ),
         ],
         const SizedBox(height: 16),
         if (sample.isNotEmpty) ...[
-          const Text('FIRST ROWS', style: kLabelStyle),
+          Text('FIRST ROWS', style: labelStyleOf(context)),
           const SizedBox(height: 8),
           ...sample.map((row) => Padding(
                 padding: const EdgeInsets.only(bottom: 6),
@@ -334,8 +334,8 @@ class _Preview extends StatelessWidget {
                     Expanded(
                       flex: 3,
                       child: Text(row.name,
-                          style: const TextStyle(
-                              fontSize: 13, color: AppColors.ink50)),
+                          style: TextStyle(
+                              fontSize: 13, color: context.palette.textPrimary)),
                     ),
                     Expanded(
                       flex: 2,
@@ -344,8 +344,8 @@ class _Preview extends StatelessWidget {
                         style: TextStyle(
                           fontSize: 12,
                           color: row.hasPhone
-                              ? AppColors.ink400
-                              : AppColors.due,
+                              ? context.palette.textMuted
+                              : context.palette.due,
                         ),
                       ),
                     ),
@@ -354,8 +354,8 @@ class _Preview extends StatelessWidget {
                       child: Text(
                         '${row.payments.length} payments · '
                         '${formatMinorUnits(row.totalMinor)}',
-                        style: const TextStyle(
-                            fontSize: 12, color: AppColors.ink200),
+                        style: TextStyle(
+                            fontSize: 12, color: context.palette.textSecondary),
                       ),
                     ),
                   ],
@@ -364,7 +364,7 @@ class _Preview extends StatelessWidget {
         ],
         if (ledger.invalid.isNotEmpty) ...[
           const SizedBox(height: 16),
-          const Text('ROWS THAT WILL BE SKIPPED', style: kLabelStyle),
+          Text('ROWS THAT WILL BE SKIPPED', style: labelStyleOf(context)),
           const SizedBox(height: 8),
           ...ledger.invalid.take(6).map((row) => Padding(
                 padding: const EdgeInsets.only(bottom: 4),
@@ -372,7 +372,7 @@ class _Preview extends StatelessWidget {
                   'Row ${row.sourceRow}: '
                   '${row.name.isEmpty ? "(no name)" : row.name} — '
                   '${row.problems.join(", ")}',
-                  style: const TextStyle(fontSize: 12, color: AppColors.due),
+                  style: TextStyle(fontSize: 12, color: context.palette.due),
                 ),
               )),
         ],
@@ -393,13 +393,13 @@ class _Stat extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label.toUpperCase(), style: kLabelStyle),
+        Text(label.toUpperCase(), style: labelStyleOf(context)),
         const SizedBox(height: 2),
         Text(value,
             style: TextStyle(
                 fontSize: 20,
                 fontWeight: FontWeight.bold,
-                color: tone ?? AppColors.ink50)),
+                color: tone ?? context.palette.textPrimary)),
       ],
     );
   }
@@ -416,27 +416,27 @@ class _SummaryCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: AppColors.paidBg.withValues(alpha: .4),
+        color: context.palette.paidBg.withValues(alpha: .4),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.paid.withValues(alpha: .3)),
+        border: Border.all(color: context.palette.paid.withValues(alpha: .3)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Import complete',
+          Text('Import complete',
               style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
-                  color: AppColors.ink50)),
+                  color: context.palette.textPrimary)),
           const SizedBox(height: 14),
-          _line('${summary.membersCreated} members imported'),
-          _line('${summary.membersMatched} existing members matched by phone'),
-          _line('${summary.paymentsCreated} historical payments created'),
+          _line(context, '${summary.membersCreated} members imported'),
+          _line(context, '${summary.membersMatched} existing members matched by phone'),
+          _line(context, '${summary.paymentsCreated} historical payments created'),
           if (summary.paymentsSkipped > 0)
-            _line('${summary.paymentsSkipped} payments already existed, skipped'),
+            _line(context, '${summary.paymentsSkipped} payments already existed, skipped'),
           if (summary.rowsNeedingAttention > 0)
-            _line('${summary.rowsNeedingAttention} rows skipped, need attention',
-                tone: AppColors.due),
+            _line(context, '${summary.rowsNeedingAttention} rows skipped, need attention',
+                tone: context.palette.due),
           const SizedBox(height: 20),
           FilledButton(onPressed: onDone, child: const Text('Done')),
         ],
@@ -444,9 +444,9 @@ class _SummaryCard extends StatelessWidget {
     );
   }
 
-  Widget _line(String text, {Color? tone}) => Padding(
+  Widget _line(BuildContext context, String text, {Color? tone}) => Padding(
         padding: const EdgeInsets.only(bottom: 6),
         child: Text(text,
-            style: TextStyle(fontSize: 13, color: tone ?? AppColors.ink200)),
+            style: TextStyle(fontSize: 13, color: tone ?? context.palette.textSecondary)),
       );
 }

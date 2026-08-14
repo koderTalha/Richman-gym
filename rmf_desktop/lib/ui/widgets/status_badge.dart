@@ -40,10 +40,10 @@ class MemberStatusBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final (fg, bg) = switch (status) {
-      MemberStatus.paid => (AppColors.paid, AppColors.paidBg),
-      MemberStatus.due => (AppColors.due, AppColors.dueBg),
-      MemberStatus.expired => (AppColors.expired, AppColors.expiredBg),
-      MemberStatus.inactive => (AppColors.inactive, AppColors.inactiveBg),
+      MemberStatus.paid => (context.palette.paid, context.palette.paidBg),
+      MemberStatus.due => (context.palette.due, context.palette.dueBg),
+      MemberStatus.expired => (context.palette.expired, context.palette.expiredBg),
+      MemberStatus.inactive => (context.palette.inactive, context.palette.inactiveBg),
     };
     return StatusBadge(label: status.label, fg: fg, bg: bg);
   }
@@ -57,19 +57,19 @@ class WhatsAppStatusBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (status == null) {
-      return const StatusBadge(
+      return StatusBadge(
         label: 'Not sent',
-        fg: AppColors.ink600,
-        bg: AppColors.ink800,
+        fg: context.palette.textHint,
+        bg: context.palette.border,
       );
     }
 
     final (label, fg, bg) = switch (status!) {
-      WhatsAppStatus.queued => ('Queued', AppColors.inactive, AppColors.inactiveBg),
-      WhatsAppStatus.sent => ('Sent', AppColors.due, AppColors.dueBg),
-      WhatsAppStatus.delivered => ('Delivered', AppColors.paid, AppColors.paidBg),
-      WhatsAppStatus.read => ('Read', AppColors.paid, AppColors.paidBg),
-      WhatsAppStatus.failed => ('Failed', AppColors.expired, AppColors.expiredBg),
+      WhatsAppStatus.queued => ('Queued', context.palette.inactive, context.palette.inactiveBg),
+      WhatsAppStatus.sent => ('Sent', context.palette.due, context.palette.dueBg),
+      WhatsAppStatus.delivered => ('Delivered', context.palette.paid, context.palette.paidBg),
+      WhatsAppStatus.read => ('Read', context.palette.paid, context.palette.paidBg),
+      WhatsAppStatus.failed => ('Failed', context.palette.expired, context.palette.expiredBg),
     };
     return StatusBadge(label: label, fg: fg, bg: bg);
   }

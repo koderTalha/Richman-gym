@@ -132,7 +132,7 @@ class _MemberFormViewState extends State<_MemberFormView> {
 
         return Scaffold(
           appBar: AppBar(
-            backgroundColor: AppColors.ink900,
+            backgroundColor: context.palette.surfaceRaised,
             title: Text(widget.isEditing ? 'Edit Member' : 'Add Member'),
           ),
           body: state.status == MemberFormStatus.loading
@@ -148,12 +148,12 @@ class _MemberFormViewState extends State<_MemberFormView> {
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
                             if (!widget.isEditing)
-                              const Padding(
-                                padding: EdgeInsets.only(bottom: 16),
+                              Padding(
+                                padding: const EdgeInsets.only(bottom: 16),
                                 child: Text(
                                   'The member ID is assigned automatically, '
                                   'continuing from the highest existing number.',
-                                  style: kMutedStyle,
+                                  style: mutedStyleOf(context),
                                 ),
                               ),
                             _FieldRow(children: [
@@ -216,13 +216,13 @@ class _MemberFormViewState extends State<_MemberFormView> {
                                 initialValue: _gender,
                                 decoration:
                                     const InputDecoration(labelText: 'Gender'),
-                                items: const [
-                                  DropdownMenuItem(
+                                items: [
+                                  const DropdownMenuItem(
                                       value: null,
                                       child: Text('Not specified')),
-                                  DropdownMenuItem(
+                                  const DropdownMenuItem(
                                       value: 'Male', child: Text('Male')),
-                                  DropdownMenuItem(
+                                  const DropdownMenuItem(
                                       value: 'Female', child: Text('Female')),
                                 ],
                                 onChanged: (v) => setState(() => _gender = v),
@@ -236,8 +236,8 @@ class _MemberFormViewState extends State<_MemberFormView> {
                                     '${_joiningDate.day.toString().padLeft(2, '0')}/'
                                     '${_joiningDate.month.toString().padLeft(2, '0')}/'
                                     '${_joiningDate.year}',
-                                    style: const TextStyle(
-                                        fontSize: 14, color: AppColors.ink50),
+                                    style: TextStyle(
+                                        fontSize: 14, color: context.palette.textPrimary),
                                   ),
                                 ),
                               ),
@@ -265,12 +265,12 @@ class _MemberFormViewState extends State<_MemberFormView> {
                               Container(
                                 padding: const EdgeInsets.all(12),
                                 decoration: BoxDecoration(
-                                  color: AppColors.expiredBg,
+                                  color: context.palette.expiredBg,
                                   borderRadius: BorderRadius.circular(8),
                                 ),
                                 child: Text(state.error!,
-                                    style: const TextStyle(
-                                        color: AppColors.expired,
+                                    style: TextStyle(
+                                        color: context.palette.expired,
                                         fontSize: 13)),
                               ),
                             ],

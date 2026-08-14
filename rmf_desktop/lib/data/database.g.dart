@@ -605,6 +605,18 @@ class $GymSettingsTable extends GymSettings
     ),
     defaultValue: const Constant(false),
   );
+  static const VerificationMeta _themeModeMeta = const VerificationMeta(
+    'themeMode',
+  );
+  @override
+  late final GeneratedColumn<String> themeMode = GeneratedColumn<String>(
+    'theme_mode',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('dark'),
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -624,6 +636,7 @@ class $GymSettingsTable extends GymSettings
     whatsappBusinessAccountId,
     whatsappBusinessNumber,
     whatsappMockFails,
+    themeMode,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -757,6 +770,12 @@ class $GymSettingsTable extends GymSettings
         ),
       );
     }
+    if (data.containsKey('theme_mode')) {
+      context.handle(
+        _themeModeMeta,
+        themeMode.isAcceptableOrUnknown(data['theme_mode']!, _themeModeMeta),
+      );
+    }
     return context;
   }
 
@@ -836,6 +855,10 @@ class $GymSettingsTable extends GymSettings
         DriftSqlType.bool,
         data['${effectivePrefix}whatsapp_mock_fails'],
       )!,
+      themeMode: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}theme_mode'],
+      )!,
     );
   }
 
@@ -879,6 +902,10 @@ class GymSetting extends DataClass implements Insertable<GymSetting> {
   /// Makes the mock provider fail on demand, so the "WhatsApp failed / Retry"
   /// path can be exercised without breaking anything real.
   final bool whatsappMockFails;
+
+  /// 'dark' or 'light'. Text rather than a boolean so adding a 'system' option
+  /// later needs no migration. Dark is the default the gym has been using.
+  final String themeMode;
   const GymSetting({
     required this.id,
     required this.gymName,
@@ -897,6 +924,7 @@ class GymSetting extends DataClass implements Insertable<GymSetting> {
     this.whatsappBusinessAccountId,
     this.whatsappBusinessNumber,
     required this.whatsappMockFails,
+    required this.themeMode,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -946,6 +974,7 @@ class GymSetting extends DataClass implements Insertable<GymSetting> {
       );
     }
     map['whatsapp_mock_fails'] = Variable<bool>(whatsappMockFails);
+    map['theme_mode'] = Variable<String>(themeMode);
     return map;
   }
 
@@ -989,6 +1018,7 @@ class GymSetting extends DataClass implements Insertable<GymSetting> {
           ? const Value.absent()
           : Value(whatsappBusinessNumber),
       whatsappMockFails: Value(whatsappMockFails),
+      themeMode: Value(themeMode),
     );
   }
 
@@ -1027,6 +1057,7 @@ class GymSetting extends DataClass implements Insertable<GymSetting> {
         json['whatsappBusinessNumber'],
       ),
       whatsappMockFails: serializer.fromJson<bool>(json['whatsappMockFails']),
+      themeMode: serializer.fromJson<String>(json['themeMode']),
     );
   }
   @override
@@ -1058,6 +1089,7 @@ class GymSetting extends DataClass implements Insertable<GymSetting> {
         whatsappBusinessNumber,
       ),
       'whatsappMockFails': serializer.toJson<bool>(whatsappMockFails),
+      'themeMode': serializer.toJson<String>(themeMode),
     };
   }
 
@@ -1079,6 +1111,7 @@ class GymSetting extends DataClass implements Insertable<GymSetting> {
     Value<String?> whatsappBusinessAccountId = const Value.absent(),
     Value<String?> whatsappBusinessNumber = const Value.absent(),
     bool? whatsappMockFails,
+    String? themeMode,
   }) => GymSetting(
     id: id ?? this.id,
     gymName: gymName ?? this.gymName,
@@ -1107,6 +1140,7 @@ class GymSetting extends DataClass implements Insertable<GymSetting> {
         ? whatsappBusinessNumber.value
         : this.whatsappBusinessNumber,
     whatsappMockFails: whatsappMockFails ?? this.whatsappMockFails,
+    themeMode: themeMode ?? this.themeMode,
   );
   GymSetting copyWithCompanion(GymSettingsCompanion data) {
     return GymSetting(
@@ -1147,6 +1181,7 @@ class GymSetting extends DataClass implements Insertable<GymSetting> {
       whatsappMockFails: data.whatsappMockFails.present
           ? data.whatsappMockFails.value
           : this.whatsappMockFails,
+      themeMode: data.themeMode.present ? data.themeMode.value : this.themeMode,
     );
   }
 
@@ -1169,7 +1204,8 @@ class GymSetting extends DataClass implements Insertable<GymSetting> {
           ..write('whatsappAccessToken: $whatsappAccessToken, ')
           ..write('whatsappBusinessAccountId: $whatsappBusinessAccountId, ')
           ..write('whatsappBusinessNumber: $whatsappBusinessNumber, ')
-          ..write('whatsappMockFails: $whatsappMockFails')
+          ..write('whatsappMockFails: $whatsappMockFails, ')
+          ..write('themeMode: $themeMode')
           ..write(')'))
         .toString();
   }
@@ -1193,6 +1229,7 @@ class GymSetting extends DataClass implements Insertable<GymSetting> {
     whatsappBusinessAccountId,
     whatsappBusinessNumber,
     whatsappMockFails,
+    themeMode,
   );
   @override
   bool operator ==(Object other) =>
@@ -1214,7 +1251,8 @@ class GymSetting extends DataClass implements Insertable<GymSetting> {
           other.whatsappAccessToken == this.whatsappAccessToken &&
           other.whatsappBusinessAccountId == this.whatsappBusinessAccountId &&
           other.whatsappBusinessNumber == this.whatsappBusinessNumber &&
-          other.whatsappMockFails == this.whatsappMockFails);
+          other.whatsappMockFails == this.whatsappMockFails &&
+          other.themeMode == this.themeMode);
 }
 
 class GymSettingsCompanion extends UpdateCompanion<GymSetting> {
@@ -1235,6 +1273,7 @@ class GymSettingsCompanion extends UpdateCompanion<GymSetting> {
   final Value<String?> whatsappBusinessAccountId;
   final Value<String?> whatsappBusinessNumber;
   final Value<bool> whatsappMockFails;
+  final Value<String> themeMode;
   const GymSettingsCompanion({
     this.id = const Value.absent(),
     this.gymName = const Value.absent(),
@@ -1253,6 +1292,7 @@ class GymSettingsCompanion extends UpdateCompanion<GymSetting> {
     this.whatsappBusinessAccountId = const Value.absent(),
     this.whatsappBusinessNumber = const Value.absent(),
     this.whatsappMockFails = const Value.absent(),
+    this.themeMode = const Value.absent(),
   });
   GymSettingsCompanion.insert({
     this.id = const Value.absent(),
@@ -1272,6 +1312,7 @@ class GymSettingsCompanion extends UpdateCompanion<GymSetting> {
     this.whatsappBusinessAccountId = const Value.absent(),
     this.whatsappBusinessNumber = const Value.absent(),
     this.whatsappMockFails = const Value.absent(),
+    this.themeMode = const Value.absent(),
   });
   static Insertable<GymSetting> custom({
     Expression<int>? id,
@@ -1291,6 +1332,7 @@ class GymSettingsCompanion extends UpdateCompanion<GymSetting> {
     Expression<String>? whatsappBusinessAccountId,
     Expression<String>? whatsappBusinessNumber,
     Expression<bool>? whatsappMockFails,
+    Expression<String>? themeMode,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -1315,6 +1357,7 @@ class GymSettingsCompanion extends UpdateCompanion<GymSetting> {
       if (whatsappBusinessNumber != null)
         'whatsapp_business_number': whatsappBusinessNumber,
       if (whatsappMockFails != null) 'whatsapp_mock_fails': whatsappMockFails,
+      if (themeMode != null) 'theme_mode': themeMode,
     });
   }
 
@@ -1336,6 +1379,7 @@ class GymSettingsCompanion extends UpdateCompanion<GymSetting> {
     Value<String?>? whatsappBusinessAccountId,
     Value<String?>? whatsappBusinessNumber,
     Value<bool>? whatsappMockFails,
+    Value<String>? themeMode,
   }) {
     return GymSettingsCompanion(
       id: id ?? this.id,
@@ -1358,6 +1402,7 @@ class GymSettingsCompanion extends UpdateCompanion<GymSetting> {
       whatsappBusinessNumber:
           whatsappBusinessNumber ?? this.whatsappBusinessNumber,
       whatsappMockFails: whatsappMockFails ?? this.whatsappMockFails,
+      themeMode: themeMode ?? this.themeMode,
     );
   }
 
@@ -1429,6 +1474,9 @@ class GymSettingsCompanion extends UpdateCompanion<GymSetting> {
     if (whatsappMockFails.present) {
       map['whatsapp_mock_fails'] = Variable<bool>(whatsappMockFails.value);
     }
+    if (themeMode.present) {
+      map['theme_mode'] = Variable<String>(themeMode.value);
+    }
     return map;
   }
 
@@ -1451,7 +1499,8 @@ class GymSettingsCompanion extends UpdateCompanion<GymSetting> {
           ..write('whatsappAccessToken: $whatsappAccessToken, ')
           ..write('whatsappBusinessAccountId: $whatsappBusinessAccountId, ')
           ..write('whatsappBusinessNumber: $whatsappBusinessNumber, ')
-          ..write('whatsappMockFails: $whatsappMockFails')
+          ..write('whatsappMockFails: $whatsappMockFails, ')
+          ..write('themeMode: $themeMode')
           ..write(')'))
         .toString();
   }
@@ -6463,6 +6512,7 @@ typedef $$GymSettingsTableCreateCompanionBuilder =
       Value<String?> whatsappBusinessAccountId,
       Value<String?> whatsappBusinessNumber,
       Value<bool> whatsappMockFails,
+      Value<String> themeMode,
     });
 typedef $$GymSettingsTableUpdateCompanionBuilder =
     GymSettingsCompanion Function({
@@ -6483,6 +6533,7 @@ typedef $$GymSettingsTableUpdateCompanionBuilder =
       Value<String?> whatsappBusinessAccountId,
       Value<String?> whatsappBusinessNumber,
       Value<bool> whatsappMockFails,
+      Value<String> themeMode,
     });
 
 class $$GymSettingsTableFilterComposer
@@ -6583,6 +6634,11 @@ class $$GymSettingsTableFilterComposer
     column: $table.whatsappMockFails,
     builder: (column) => ColumnFilters(column),
   );
+
+  ColumnFilters<String> get themeMode => $composableBuilder(
+    column: $table.themeMode,
+    builder: (column) => ColumnFilters(column),
+  );
 }
 
 class $$GymSettingsTableOrderingComposer
@@ -6678,6 +6734,11 @@ class $$GymSettingsTableOrderingComposer
     column: $table.whatsappMockFails,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get themeMode => $composableBuilder(
+    column: $table.themeMode,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$GymSettingsTableAnnotationComposer
@@ -6760,6 +6821,9 @@ class $$GymSettingsTableAnnotationComposer
     column: $table.whatsappMockFails,
     builder: (column) => column,
   );
+
+  GeneratedColumn<String> get themeMode =>
+      $composableBuilder(column: $table.themeMode, builder: (column) => column);
 }
 
 class $$GymSettingsTableTableManager
@@ -6811,6 +6875,7 @@ class $$GymSettingsTableTableManager
                 Value<String?> whatsappBusinessAccountId = const Value.absent(),
                 Value<String?> whatsappBusinessNumber = const Value.absent(),
                 Value<bool> whatsappMockFails = const Value.absent(),
+                Value<String> themeMode = const Value.absent(),
               }) => GymSettingsCompanion(
                 id: id,
                 gymName: gymName,
@@ -6829,6 +6894,7 @@ class $$GymSettingsTableTableManager
                 whatsappBusinessAccountId: whatsappBusinessAccountId,
                 whatsappBusinessNumber: whatsappBusinessNumber,
                 whatsappMockFails: whatsappMockFails,
+                themeMode: themeMode,
               ),
           createCompanionCallback:
               ({
@@ -6850,6 +6916,7 @@ class $$GymSettingsTableTableManager
                 Value<String?> whatsappBusinessAccountId = const Value.absent(),
                 Value<String?> whatsappBusinessNumber = const Value.absent(),
                 Value<bool> whatsappMockFails = const Value.absent(),
+                Value<String> themeMode = const Value.absent(),
               }) => GymSettingsCompanion.insert(
                 id: id,
                 gymName: gymName,
@@ -6868,6 +6935,7 @@ class $$GymSettingsTableTableManager
                 whatsappBusinessAccountId: whatsappBusinessAccountId,
                 whatsappBusinessNumber: whatsappBusinessNumber,
                 whatsappMockFails: whatsappMockFails,
+                themeMode: themeMode,
               ),
           withReferenceMapper: (p0) => p0
               .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
