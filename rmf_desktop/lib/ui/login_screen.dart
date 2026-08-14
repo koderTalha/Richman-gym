@@ -17,10 +17,19 @@ class _LoginScreenState extends State<LoginScreen> {
       TextEditingController(text: 'admin@richmanfitness.local');
   final _passwordController = TextEditingController();
 
+  /// Hidden by default. The gym's screen sits where members can see it, so
+  /// revealing the password has to be a deliberate act.
+  bool _obscurePassword = true;
+
+  /// Held as a field rather than built inline: a node created during build
+  /// would be replaced on every rebuild and never disposed.
+  final _revealFocusNode = FocusNode(skipTraversal: true);
+
   @override
   void dispose() {
     _emailController.dispose();
     _passwordController.dispose();
+    _revealFocusNode.dispose();
     super.dispose();
   }
 
@@ -78,9 +87,29 @@ class _LoginScreenState extends State<LoginScreen> {
                             const SizedBox(height: 14),
                             TextFormField(
                               controller: _passwordController,
-                              decoration:
-                                  const InputDecoration(labelText: 'Password'),
-                              obscureText: true,
+                              decoration: InputDecoration(
+                                labelText: 'Password',
+                                suffixIcon: IconButton(
+                                  icon: Icon(
+                                    _obscurePassword
+                                        ? Icons.visibility_outlined
+                                        : Icons.visibility_off_outlined,
+                                  ),
+                                  // Read aloud by screen readers and shown on
+                                  // hover; the icon alone does not say what
+                                  // pressing it will do.
+                                  tooltip: _obscurePassword
+                                      ? 'Show password'
+                                      : 'Hide password',
+                                  // Keeps Tab going Email → Password → Sign in
+                                  // rather than stopping on the eye.
+                                  focusNode: _revealFocusNode,
+                                  onPressed: () => setState(
+                                    () => _obscurePassword = !_obscurePassword,
+                                  ),
+                                ),
+                              ),
+                              obscureText: _obscurePassword,
                               onFieldSubmitted: (_) => _submit(),
                               validator: (v) => (v == null || v.isEmpty)
                                   ? 'Password is required'
