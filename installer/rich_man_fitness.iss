@@ -16,7 +16,9 @@
 
 #define AppName "Rich Man Fitness"
 #define AppPublisher "Rich Man Fitness"
-#define AppExeName "Rich Man Fitness.exe"
+; Must match BINARY_NAME in rmf_desktop/windows/CMakeLists.txt. The shortcuts
+; below are labelled with AppName, so the user still sees "Rich Man Fitness".
+#define AppExeName "rich_man_fitness.exe"
 
 [Setup]
 ; This GUID must never change. Windows uses it to recognise an existing

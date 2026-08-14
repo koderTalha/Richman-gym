@@ -70,7 +70,9 @@ jobs:
       - name: Check the native libraries shipped
         run: |
           $dir = "build\windows\x64\runner\Release"
-          $exe = Join-Path $dir "Rich Man Fitness.exe"
+          # Named after BINARY_NAME in windows/CMakeLists.txt, not the display
+          # name the installer shows on shortcuts.
+          $exe = Join-Path $dir "rich_man_fitness.exe"
           if (-not (Test-Path $exe)) { throw "Executable missing: $exe" }
           $sqlite = Get-ChildItem $dir -Filter "sqlite3*.dll" -Recurse
           if (-not $sqlite) { throw "sqlite3 DLL missing - the app cannot open its database" }
