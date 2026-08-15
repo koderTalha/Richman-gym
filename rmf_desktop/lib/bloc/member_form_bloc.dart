@@ -29,6 +29,7 @@ class MemberFormSubmitted extends MemberFormEvent {
     this.address,
     this.emergencyContact,
     this.feeOverrideMinor,
+    this.confirmSharedPhone = false,
   });
 
   final String fullName;
@@ -41,41 +42,64 @@ class MemberFormSubmitted extends MemberFormEvent {
   final String? emergencyContact;
   final int? feeOverrideMinor;
 
+  /// Set once the operator has been shown who else is on this number and has
+  /// said to go ahead anyway.
+  final bool confirmSharedPhone;
+
   @override
-  List<Object?> get props => [fullName, rawPhone, planId, joiningDate];
+  List<Object?> get props =>
+      [fullName, rawPhone, planId, joiningDate, confirmSharedPhone];
 }
 
-enum MemberFormStatus { loading, ready, submitting, saved, failed }
+enum MemberFormStatus {
+  loading,
+  ready,
+  submitting,
+
+  /// The number belongs to somebody else already. Legitimate for relatives,
+  /// far more often a typo, so the operator is shown who and asked.
+  confirmSharedPhone,
+
+  saved,
+  failed,
+}
 
 class MemberFormState extends Equatable {
   const MemberFormState({
     this.status = MemberFormStatus.loading,
     this.plans = const [],
     this.existing,
+    this.sharingPhone = const [],
     this.error,
   });
 
   final MemberFormStatus status;
   final List<MembershipPlan> plans;
   final MemberRow? existing;
+
+  /// Members already registered on the number just entered.
+  final List<Member> sharingPhone;
+
   final String? error;
 
   MemberFormState copyWith({
     MemberFormStatus? status,
     List<MembershipPlan>? plans,
     MemberRow? existing,
+    List<Member>? sharingPhone,
     String? error,
   }) =>
       MemberFormState(
         status: status ?? this.status,
         plans: plans ?? this.plans,
         existing: existing ?? this.existing,
+        sharingPhone: sharingPhone ?? const [],
         error: error,
       );
 
   @override
   List<Object?> get props =>
-      [status, plans.length, existing?.id, error];
+      [status, plans.length, existing?.id, sharingPhone.length, error];
 }
 
 class MemberFormBloc extends Bloc<MemberFormEvent, MemberFormState> {
@@ -92,7 +116,10 @@ class MemberFormBloc extends Bloc<MemberFormEvent, MemberFormState> {
   bool get isEditing => memberId != null;
 
   Future<void> _load(Emitter<MemberFormState> emit) async {
-    final plans = await _repository.plans();
+    // plansFor, not plans: a member can be on a plan the gym has stopped
+    // selling, and offering only the active ones left the form holding a plan
+    // its own dropdown did not list — which made the member uneditable.
+    final plans = await _repository.plansFor(memberId);
     final existing = memberId == null ? null : await _repository.byId(memberId!);
 
     emit(state.copyWith(
@@ -117,12 +144,29 @@ class MemberFormBloc extends Bloc<MemberFormEvent, MemberFormState> {
       return;
     }
 
-    // A phone number identifies a member for WhatsApp, so it must be unique.
-    final clash = await _repository.findByPhone(normalized);
-    if (clash != null && clash.id != memberId) {
+    final sharing =
+        await _repository.membersOnPhone(normalized, excluding: memberId);
+
+    // The same person on the same number is a duplicate, not a family: reject.
+    final samePerson = matchByName(sharing, event.fullName);
+    if (samePerson != null) {
       emit(state.copyWith(
         status: MemberFormStatus.failed,
-        error: '${clash.fullName} (#${clash.memberCode}) already uses this number.',
+        error: '${samePerson.fullName} (#${samePerson.memberCode}) is already '
+            'registered on this number.',
+      ));
+      return;
+    }
+
+    // A different name on a number already in use is legitimate — one brother
+    // asked to be registered under the other's phone — but a mistyped digit
+    // looks exactly the same, and silently accepting it points somebody else's
+    // WhatsApp receipts at the wrong handset for good. So the operator is
+    // shown whose number it is and has to say yes.
+    if (sharing.isNotEmpty && !event.confirmSharedPhone) {
+      emit(state.copyWith(
+        status: MemberFormStatus.confirmSharedPhone,
+        sharingPhone: sharing,
       ));
       return;
     }

@@ -4,6 +4,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:logging/logging.dart';
 
 import '../data/database.dart';
+import '../data/seed.dart';
 import '../data/session_repository.dart';
 
 final _log = Logger('auth');
@@ -35,7 +36,21 @@ class AuthSignOutRequested extends AuthEvent {
   const AuthSignOutRequested();
 }
 
-enum AuthStatus { signedOut, submitting, signedIn }
+/// The owner has chosen a password of their own; let them into the app.
+class AuthPasswordChanged extends AuthEvent {
+  const AuthPasswordChanged();
+}
+
+enum AuthStatus {
+  signedOut,
+  submitting,
+
+  /// Signed in, but still using the password every copy of the app ships with.
+  /// Nothing but the change-password screen is reachable from here.
+  passwordChangeRequired,
+
+  signedIn,
+}
 
 class AuthState extends Equatable {
   const AuthState({this.status = AuthStatus.signedOut, this.user, this.error});
@@ -45,6 +60,9 @@ class AuthState extends Equatable {
   final String? error;
 
   bool get isSignedIn => status == AuthStatus.signedIn && user != null;
+
+  bool get mustChangePassword =>
+      status == AuthStatus.passwordChangeRequired && user != null;
 
   AuthState copyWith({AuthStatus? status, User? user, String? error}) =>
       AuthState(
@@ -64,10 +82,23 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
       : _sessions = sessions ?? SessionRepository(_db),
         super(restored == null
             ? const AuthState()
-            : AuthState(status: AuthStatus.signedIn, user: restored)) {
+            : AuthState(status: _statusFor(restored), user: restored)) {
     on<AuthSignInRequested>(_onSignIn);
     on<AuthSignOutRequested>(_onSignOut);
+    on<AuthPasswordChanged>((_, emit) {
+      final user = state.user;
+      if (user == null) return;
+      emit(AuthState(status: AuthStatus.signedIn, user: user));
+    });
   }
+
+  /// A restored session is still a session — but not one that gets to skip
+  /// past the default password, or leaving the app open would be the way to
+  /// avoid ever changing it.
+  static AuthStatus _statusFor(User user) =>
+      isDefaultAdminPassword(user.passwordHash)
+          ? AuthStatus.passwordChangeRequired
+          : AuthStatus.signedIn;
 
   final AppDatabase _db;
   final SessionRepository _sessions;
@@ -101,7 +132,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
       _log.severe('Could not save the session', e, s);
     }
 
-    emit(AuthState(status: AuthStatus.signedIn, user: user));
+    emit(AuthState(status: _statusFor(user), user: user));
   }
 
   Future<void> _onSignOut(

@@ -63,7 +63,26 @@ class BackupService {
 
   static const _databaseFileName = 'richmanfitness.sqlite';
   static const _backupDatabaseName = 'database.sqlite';
+  static const _receiptsFolderName = 'receipts';
   static const _pendingRestoreName = 'pending-restore.sqlite';
+  static const _pendingReceiptsName = 'pending-restore-receipts';
+
+  /// How many superseded databases to keep after a restore. Enough to undo a
+  /// mistake by hand; not so many that the folder grows without bound.
+  static const _replacedCopiesKept = 3;
+
+  /// The tables a file must have before it is believable as one of our
+  /// backups. Not the full list — enough that a stranger's SQLite file, or a
+  /// half-written one, is caught before it replaces the gym's records.
+  static const _requiredTables = {
+    'users',
+    'members',
+    'memberships',
+    'membership_periods',
+    'payments',
+    'receipts',
+    'gym_settings',
+  };
 
   /// Where drift keeps the live database.
   static Future<File> liveDatabaseFile() async {
@@ -71,10 +90,11 @@ class BackupService {
     return File(p.join(dir.path, _databaseFileName));
   }
 
-  static Future<File> _pendingRestoreFile() async {
-    final dir = await getApplicationSupportDirectory();
-    return File(p.join(dir.path, _pendingRestoreName));
-  }
+  Future<File> _pendingRestoreFile() async =>
+      File(p.join((await _supportDirectory()).path, _pendingRestoreName));
+
+  Future<Directory> _pendingReceiptsDirectory() async =>
+      Directory(p.join((await _supportDirectory()).path, _pendingReceiptsName));
 
   Future<Directory> automaticBackupDirectory() async {
     final dir =
@@ -165,6 +185,13 @@ class BackupService {
   }
 
   /// Checks a file really is one of our backups before it is trusted.
+  ///
+  /// The magic bytes alone are not enough. Anything SQLite ever wrote passes
+  /// that test — another program's database, a `-wal` sidecar, a snapshot from
+  /// a newer version of this app whose schema this one cannot read. Any of
+  /// those replacing the gym's records leaves an app that will not start and
+  /// no way to undo it from inside the app, so the file is opened and read
+  /// before it is allowed anywhere near the live database.
   Future<String?> validateBackup(File file) async {
     if (!await file.exists()) return 'That file no longer exists.';
 
@@ -174,7 +201,58 @@ class BackupService {
       return 'That file is not a database backup.';
     }
 
-    return null;
+    return _inspect(file);
+  }
+
+  /// Reads the candidate through the open connection with ATTACH, which needs
+  /// no second database handle and cannot disturb the live data.
+  Future<String?> _inspect(File file) async {
+    const alias = 'restore_candidate';
+
+    try {
+      await db.customStatement(
+          "ATTACH DATABASE '${_escape(file.path)}' AS $alias");
+    } catch (error) {
+      _log.warning('Restore candidate would not attach: $file', error);
+      return 'That file could not be opened as a database. It may be damaged.';
+    }
+
+    try {
+      final tables = (await db
+              .customSelect(
+                  "SELECT name FROM $alias.sqlite_master WHERE type = 'table'")
+              .get())
+          .map((row) => row.read<String>('name'))
+          .toSet();
+
+      final missing = _requiredTables.difference(tables);
+      if (missing.isNotEmpty) {
+        return 'That database is not a Rich Man Fitness backup — '
+            'it has no "${missing.first}" table.';
+      }
+
+      final version = (await db
+              .customSelect('PRAGMA $alias.user_version')
+              .getSingle())
+          .read<int>('user_version');
+
+      if (version > db.schemaVersion) {
+        return 'That backup was made by a newer version of Rich Man Fitness '
+            '(data format $version, this one reads up to ${db.schemaVersion}). '
+            'Update the app before restoring it.';
+      }
+
+      return null;
+    } catch (error, stack) {
+      _log.severe('Restore candidate could not be read', error, stack);
+      return 'That file could not be read as a backup.';
+    } finally {
+      try {
+        await db.customStatement('DETACH DATABASE $alias');
+      } catch (_) {
+        // Nothing left to detach; the connection is fine either way.
+      }
+    }
   }
 
   /// Stages a restore to be applied on next launch.
@@ -182,6 +260,11 @@ class BackupService {
   /// The live database is open and locked, so swapping it underneath a running
   /// app risks corruption. Writing it aside and applying it at startup, before
   /// anything opens the database, is the safe order.
+  ///
+  /// The receipt images beside the snapshot are staged too. Restoring only the
+  /// database left every receipt row pointing at a file that was not there, so
+  /// "View Receipt" did nothing and every resend failed — a restore that threw
+  /// away exactly the paperwork the owner restored the backup to get back.
   Future<String?> stageRestore(File backupDatabase) async {
     final problem = await validateBackup(backupDatabase);
     if (problem != null) return problem;
@@ -189,16 +272,40 @@ class BackupService {
     final pending = await _pendingRestoreFile();
     await pending.parent.create(recursive: true);
     await backupDatabase.copy(pending.path);
+
+    await _stageReceipts(
+      Directory(p.join(backupDatabase.parent.path, _receiptsFolderName)),
+    );
     return null;
+  }
+
+  Future<void> _stageReceipts(Directory source) async {
+    final staged = await _pendingReceiptsDirectory();
+    if (await staged.exists()) await staged.delete(recursive: true);
+    if (!await source.exists()) return;
+
+    await staged.create(recursive: true);
+    await for (final entity in source.list()) {
+      if (entity is! File) continue;
+      await entity.copy(p.join(staged.path, p.basename(entity.path)));
+    }
   }
 
   /// Applies a staged restore. Call this in main() *before* opening the
   /// database. Returns true if a restore was applied.
-  static Future<bool> applyPendingRestore() async {
-    final pending = await _pendingRestoreFile();
+  ///
+  /// Directories are injectable so the whole staging-and-applying round trip
+  /// can be tested; production passes nothing and gets the real folders.
+  static Future<bool> applyPendingRestore({
+    Future<Directory> Function()? supportDirectory,
+    Future<File> Function()? liveDatabase,
+  }) async {
+    final support = await (supportDirectory ?? getApplicationSupportDirectory)();
+    final pending = File(p.join(support.path, _pendingRestoreName));
     if (!await pending.exists()) return false;
 
-    final live = await liveDatabaseFile();
+    final live = await (liveDatabase ?? liveDatabaseFile)();
+    await live.parent.create(recursive: true);
 
     // Keep the replaced database alongside, so a mistaken restore is not fatal.
     if (await live.exists()) {
@@ -215,7 +322,56 @@ class BackupService {
       if (await sidecar.exists()) await sidecar.delete();
     }
 
+    await _applyStagedReceipts(support);
+    await _pruneReplacedCopies(live);
+
     return true;
+  }
+
+  /// Copies the backup's receipt images into the live receipts folder.
+  ///
+  /// Merged rather than swapped: a file already there belongs to a payment
+  /// that may well still exist in the restored database, and deleting it would
+  /// lose paperwork the restore was never asked to touch.
+  static Future<void> _applyStagedReceipts(Directory support) async {
+    final staged = Directory(p.join(support.path, _pendingReceiptsName));
+    if (!await staged.exists()) return;
+
+    final live = Directory(p.join(support.path, _receiptsFolderName));
+    await live.create(recursive: true);
+
+    await for (final entity in staged.list()) {
+      if (entity is! File) continue;
+      await entity.copy(p.join(live.path, p.basename(entity.path)));
+    }
+    await staged.delete(recursive: true);
+  }
+
+  /// Keeps the newest few superseded databases and deletes the rest, so
+  /// repeated restores cannot quietly fill the disk with old copies.
+  static Future<void> _pruneReplacedCopies(File live) async {
+    final prefix = '${p.basename(live.path)}.replaced-';
+    final copies = <File>[];
+
+    await for (final entity in live.parent.list()) {
+      if (entity is File && p.basename(entity.path).startsWith(prefix)) {
+        copies.add(entity);
+      }
+    }
+
+    if (copies.length <= _replacedCopiesKept) return;
+
+    int stampOf(File f) =>
+        int.tryParse(p.basename(f.path).substring(prefix.length)) ?? 0;
+    copies.sort((a, b) => stampOf(b).compareTo(stampOf(a))); // newest first
+
+    for (final old in copies.skip(_replacedCopiesKept)) {
+      try {
+        await old.delete();
+      } catch (error) {
+        _log.warning('Could not remove an old database copy: ${old.path}', error);
+      }
+    }
   }
 
   Future<int> _copyReceipts(Directory backupFolder) async {

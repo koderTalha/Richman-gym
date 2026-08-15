@@ -1,7 +1,9 @@
 import 'package:drift/drift.dart';
 
 import '../domain/member_status.dart';
+import '../domain/name.dart';
 import 'database.dart';
+import 'membership_queries.dart';
 
 /// A member joined with everything the list and profile screens need, plus the
 /// status derived from real payment records.
@@ -44,6 +46,16 @@ extension MemberFilterLabel on MemberFilter {
 
 const _expiringWindowDays = 7;
 
+/// The one member in [candidates] who is the person called [fullName], or null.
+///
+/// Comparison goes through [namesMatch], which the ledger importer uses too.
+Member? matchByName(Iterable<Member> candidates, String fullName) {
+  for (final member in candidates) {
+    if (namesMatch(member.fullName, fullName)) return member;
+  }
+  return null;
+}
+
 class MemberRepository {
   MemberRepository(this.db);
 
@@ -68,10 +80,13 @@ class MemberRepository {
 
     if (term != null && term.isNotEmpty) {
       final code = int.tryParse(term);
+      // Escaped, so a "%" typed into the search box matches a literal percent
+      // sign rather than expanding to every member on the roster.
+      final pattern = '%${escapeLikePattern(term.toLowerCase())}%';
       membersQuery = membersQuery
         ..where((m) =>
-            m.fullName.lower().contains(term.toLowerCase()) |
-            m.phone.contains(term) |
+            m.fullName.lower().like(pattern, escapeChar: r'\') |
+            m.phone.like(pattern, escapeChar: r'\') |
             (code != null ? m.memberCode.equals(code) : const Constant(false)));
     }
 
@@ -80,10 +95,17 @@ class MemberRepository {
     return _applyFilter(rows, filter, at);
   }
 
-  /// Joins members with their active enrolment, cycles and payment state.
+  /// Joins members with their current enrolment, cycles and payment state.
   ///
   /// Scoped to whatever members are passed in, so looking up a single member
   /// costs one member's worth of work rather than the whole roster.
+  ///
+  /// The plan and fee come from the member's *open* enrolment, but the billing
+  /// cycles come from *all* of their enrolments. Changing plan closes one
+  /// enrolment and opens another, and the cycles the member already paid stay
+  /// attached to the closed one — reading only the open enrolment made a
+  /// fully-paid member read DUE the moment their plan was changed, with the
+  /// money still sitting in the database.
   Future<List<MemberRow>> _buildRows(
     List<Member> memberRows, {
     DateTime? now,
@@ -96,15 +118,24 @@ class MemberRepository {
       for (final p in await db.select(db.membershipPlans).get()) p.id: p
     };
 
-    // Active enrolment (endDate == null) per member.
-    final activeMemberships = await (db.select(db.memberships)
-          ..where((m) => m.memberId.isIn(memberIds) & m.endDate.isNull()))
+    final memberships = await (db.select(db.memberships)
+          ..where((m) => m.memberId.isIn(memberIds))
+          ..orderBy([(m) => OrderingTerm(expression: m.id)]))
         .get();
-    final membershipByMember = {
-      for (final m in activeMemberships) m.memberId: m,
-    };
 
-    final membershipIds = activeMemberships.map((m) => m.id).toList();
+    // The open enrolment (endDate == null) is what the member is on *now*.
+    // Iterating in id order means the newest wins if a legacy database holds
+    // more than one, rather than the screen failing outright.
+    final membershipByMember = <int, Membership>{};
+    final memberByMembership = <int, int>{};
+    for (final membership in memberships) {
+      memberByMembership[membership.id] = membership.memberId;
+      if (membership.endDate == null) {
+        membershipByMember[membership.memberId] = membership;
+      }
+    }
+
+    final membershipIds = memberships.map((m) => m.id).toList();
 
     final periods = membershipIds.isEmpty
         ? <MembershipPeriod>[]
@@ -128,9 +159,11 @@ class MemberRepository {
       }
     }
 
-    final periodsByMembership = <int, List<MembershipPeriod>>{};
+    final periodsByMember = <int, List<MembershipPeriod>>{};
     for (final period in periods) {
-      periodsByMembership.putIfAbsent(period.membershipId, () => []).add(period);
+      final memberId = memberByMembership[period.membershipId];
+      if (memberId == null) continue;
+      periodsByMember.putIfAbsent(memberId, () => []).add(period);
     }
 
     final at = now ?? DateTime.now().toUtc();
@@ -138,17 +171,14 @@ class MemberRepository {
     return memberRows.map((member) {
       final membership = membershipByMember[member.id];
       final plan = membership == null ? null : plans[membership.planId];
-      final memberPeriods = periodsByMembership[membership?.id] ?? const [];
 
-      final statusPeriods = memberPeriods
-          .map((p) => StatusPeriod(
-                periodStart: p.periodStart,
-                periodEnd: p.periodEnd,
-                isPaid: paidPeriodIds.contains(p.id),
-              ))
-          .toList();
+      final statusPeriods = _mergeCycles(
+        periodsByMember[member.id] ?? const [],
+        paidPeriodIds,
+      );
 
-      final paidEnds = statusPeriods.where((p) => p.isPaid).map((p) => p.periodEnd);
+      final paidEnds =
+          statusPeriods.where((p) => p.isPaid).map((p) => p.periodEnd);
 
       return MemberRow(
         member: member,
@@ -167,6 +197,48 @@ class MemberRepository {
             : paidEnds.reduce((a, b) => a.isAfter(b) ? a : b),
       );
     }).toList();
+  }
+
+  /// Collapses the member's cycles into one timeline, oldest first.
+  ///
+  /// Two enrolments can both hold a cycle starting the same month — the old
+  /// plan's paid January and the replacement plan's freshly-rolled January.
+  /// They are one month of the member's life, and it is paid: a payment
+  /// against either one settles it. Without this the unpaid copy could win and
+  /// the member would read DUE for a month they had already paid.
+  static List<StatusPeriod> _mergeCycles(
+    List<MembershipPeriod> periods,
+    Set<int> paidPeriodIds,
+  ) {
+    final byStart = <int, StatusPeriod>{};
+
+    for (final period in periods) {
+      final key = period.periodStart.millisecondsSinceEpoch;
+      final isPaid = paidPeriodIds.contains(period.id);
+      final existing = byStart[key];
+
+      if (existing == null) {
+        byStart[key] = StatusPeriod(
+          periodStart: period.periodStart,
+          periodEnd: period.periodEnd,
+          isPaid: isPaid,
+        );
+        continue;
+      }
+
+      // Paid wins, and the longer cycle wins, so a quarterly enrolment is not
+      // cut short by a monthly cycle that happens to start the same day.
+      byStart[key] = StatusPeriod(
+        periodStart: existing.periodStart,
+        periodEnd: existing.periodEnd.isAfter(period.periodEnd)
+            ? existing.periodEnd
+            : period.periodEnd,
+        isPaid: existing.isPaid || isPaid,
+      );
+    }
+
+    return byStart.values.toList()
+      ..sort((a, b) => a.periodStart.compareTo(b.periodStart));
   }
 
   List<MemberRow> _applyFilter(
@@ -216,9 +288,26 @@ class MemberRepository {
     return highest + 1;
   }
 
-  Future<Member?> findByPhone(String phone) =>
-      (db.select(db.members)..where((m) => m.phone.equals(phone)))
-          .getSingleOrNull();
+  /// Everyone already registered on [phone].
+  ///
+  /// A number is shared far more often by mistake than by family, so the form
+  /// shows this list before accepting a second member on it.
+  Future<List<Member>> membersOnPhone(String phone, {int? excluding}) async {
+    if (phone.isEmpty) return const [];
+    final sharing =
+        await (db.select(db.members)..where((m) => m.phone.equals(phone))).get();
+    return sharing.where((m) => m.id != excluding).toList();
+  }
+
+  /// One number can belong to several members — relatives are routinely
+  /// registered under a single family phone — so a number on its own no longer
+  /// identifies a person. The name is the other half of the key, matched
+  /// ignoring case, punctuation and stray spacing.
+  Future<Member?> findByPhoneAndName({
+    required String phone,
+    required String fullName,
+  }) async =>
+      matchByName(await membersOnPhone(phone), fullName);
 
   /// Creates the member and their opening enrolment together, so a member can
   /// never exist without a plan (which would block recording payments).
@@ -289,9 +378,7 @@ class MemberRepository {
         ),
       );
 
-      final active = await (db.select(db.memberships)
-            ..where((m) => m.memberId.equals(id) & m.endDate.isNull()))
-          .getSingleOrNull();
+      final active = await openMembershipFor(db, id);
 
       if (active == null) {
         await db.into(db.memberships).insert(
@@ -341,4 +428,28 @@ class MemberRepository {
         ..where((p) => p.isActive.equals(true))
         ..orderBy([(p) => OrderingTerm(expression: p.durationMonths)]))
       .get();
+
+  /// The plans offerable to [memberId], which is the active list plus whatever
+  /// they are already on.
+  ///
+  /// A plan the gym has stopped selling can still have members on it. Offering
+  /// only active plans left the edit form holding a plan id that was not among
+  /// its own options, which Flutter's dropdown rejects outright — so editing
+  /// anything about such a member, even their phone number, was impossible.
+  Future<List<MembershipPlan>> plansFor(int? memberId) async {
+    final active = await plans();
+    if (memberId == null) return active;
+
+    final membership = await openMembershipFor(db, memberId);
+    if (membership == null) return active;
+    if (active.any((p) => p.id == membership.planId)) return active;
+
+    final current = await (db.select(db.membershipPlans)
+          ..where((p) => p.id.equals(membership.planId)))
+        .getSingleOrNull();
+    if (current == null) return active;
+
+    return [...active, current]
+      ..sort((a, b) => a.durationMonths.compareTo(b.durationMonths));
+  }
 }

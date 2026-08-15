@@ -280,7 +280,20 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
     Emitter<SettingsState> emit,
   ) async {
     await _repository.setPlanActive(event.id, event.active);
+
+    if (event.active) {
+      await _load(emit, message: 'Plan activated.');
+      return;
+    }
+
+    // Members stay on a plan the gym has stopped selling, and they still have
+    // to be editable and billable. Say so rather than letting the owner think
+    // deactivating a plan moved everybody off it.
+    final inUse = await _repository.planInUse(event.id);
     await _load(emit,
-        message: event.active ? 'Plan activated.' : 'Plan deactivated.');
+        message: inUse
+            ? 'Plan deactivated. Members already on it keep it — '
+                'it just stops being offered to new ones.'
+            : 'Plan deactivated.');
   }
 }

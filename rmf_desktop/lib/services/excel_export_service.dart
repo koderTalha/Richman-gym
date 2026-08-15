@@ -113,14 +113,17 @@ class ExcelExportService {
 
     final paidPeriodIds =
         payments.map((p) => p.membershipPeriodId).whereType<int>().toSet();
+    final openByMember = _openMembershipByMember(memberships);
+    final periodsByMember = _periodsByMember(memberships, periods);
 
     for (final member in _sorted(members)) {
-      final membership = memberships.firstWhereOrNull(
-          (m) => m.memberId == member.id && m.endDate == null);
+      final membership = openByMember[member.id];
       final plan = membership == null ? null : plans[membership.planId];
 
-      final memberPeriods =
-          periods.where((p) => p.membershipId == membership?.id).toList();
+      // Every enrolment's cycles, not just the open one: a member whose plan
+      // changed keeps the months they paid under the previous enrolment, and
+      // reading only the open one reported them as never having paid at all.
+      final memberPeriods = periodsByMember[member.id] ?? const [];
 
       final status = deriveMemberStatus(
         deactivatedAt: member.deactivatedAt,
@@ -186,17 +189,17 @@ class ExcelExportService {
     ]);
 
     final byMember = {for (final m in members) m.id: m};
+    final periodById = {for (final p in periods) p.id: p};
+    final membershipById = {for (final m in memberships) m.id: m};
 
     final ordered = [...payments]
       ..sort((a, b) => b.paymentDate.compareTo(a.paymentDate));
 
     for (final payment in ordered) {
       final member = byMember[payment.memberId];
-      final period =
-          periods.firstWhereOrNull((p) => p.id == payment.membershipPeriodId);
-      final membership = period == null
-          ? null
-          : memberships.firstWhereOrNull((m) => m.id == period.membershipId);
+      final period = periodById[payment.membershipPeriodId];
+      final membership =
+          period == null ? null : membershipById[period.membershipId];
       final duration = plans[membership?.planId]?.durationMonths ?? 1;
 
       sheet.appendRow([
@@ -210,7 +213,7 @@ class ExcelExportService {
         TextCellValue(formatMinorUnits(payment.amountMinor, currency)),
         TextCellValue(_methodLabel(payment.method)),
         TextCellValue(payment.referenceNumber ?? ''),
-        TextCellValue(_date(payment.paymentDate)),
+        TextCellValue(_recordedDate(payment.paymentDate)),
         TextCellValue(users[payment.recordedById]?.name ?? ''),
       ]);
     }
@@ -236,6 +239,9 @@ class ExcelExportService {
           payment.membershipPeriodId!: payment,
     };
 
+    final periodsByMember = _periodsByMember(memberships, periods);
+    final sortedMembers = _sorted(members);
+
     for (final year in years) {
       final sheet = excel['Ledger $year'];
       sheet.appendRow([
@@ -246,21 +252,16 @@ class ExcelExportService {
         TextCellValue('Total'),
       ]);
 
-      for (final member in _sorted(members)) {
+      for (final member in sortedMembers) {
         // Every member appears, exactly as in the original ledger where someone
         // with no payments still occupies a row of dashes. Skipping them would
         // quietly drop people from the export.
-        final membership = memberships.firstWhereOrNull(
-            (m) => m.memberId == member.id && m.endDate == null);
-
         final cells = List<TextCellValue>.generate(
             12, (_) => TextCellValue('-'));
         var totalMinor = 0;
 
-        for (final period in periods.where((p) =>
-            membership != null &&
-            p.membershipId == membership.id &&
-            p.periodStart.toUtc().year == year)) {
+        for (final period in periodsByMember[member.id] ?? const []) {
+          if (period.periodStart.toUtc().year != year) continue;
           final payment = paymentByPeriod[period.id];
           if (payment == null) continue;
 
@@ -303,6 +304,38 @@ class ExcelExportService {
   List<Member> _sorted(List<Member> members) =>
       [...members]..sort((a, b) => a.memberCode.compareTo(b.memberCode));
 
+  /// Indexed once instead of scanned per member.
+  ///
+  /// These sheets used to search the full membership and period lists inside
+  /// the per-member loop, and the ledger sheets did it again per year — work
+  /// that grows with the square of the gym's history, on the interface thread,
+  /// every time a backup is taken.
+  static Map<int, Membership> _openMembershipByMember(
+      List<Membership> memberships) {
+    final open = <int, Membership>{};
+    for (final membership in memberships) {
+      if (membership.endDate == null) open[membership.memberId] = membership;
+    }
+    return open;
+  }
+
+  static Map<int, List<MembershipPeriod>> _periodsByMember(
+    List<Membership> memberships,
+    List<MembershipPeriod> periods,
+  ) {
+    final memberByMembership = {
+      for (final m in memberships) m.id: m.memberId,
+    };
+
+    final byMember = <int, List<MembershipPeriod>>{};
+    for (final period in periods) {
+      final memberId = memberByMembership[period.membershipId];
+      if (memberId == null) continue;
+      byMember.putIfAbsent(memberId, () => []).add(period);
+    }
+    return byMember;
+  }
+
   /// Whole rupees render as "3000", not "3000.0" — the ledger the owner knows
   /// has no decimal point in it.
   static String _amount(int minor) {
@@ -312,8 +345,17 @@ class ExcelExportService {
         : major.toStringAsFixed(2);
   }
 
-  static String _date(DateTime value) {
-    final at = value.toUtc();
+  /// For dates the app anchors to UTC midnight on purpose — cycle boundaries,
+  /// joining dates — so they read as the calendar day they were stored as
+  /// wherever the machine's clock is set.
+  static String _date(DateTime value) => _format(value.toUtc());
+
+  /// For a real moment in time, such as when a payment was taken. Rendered in
+  /// the gym's own timezone: a payment the owner dated the 1st has to appear on
+  /// the 1st, not on the 31st of the month before.
+  static String _recordedDate(DateTime value) => _format(value.toLocal());
+
+  static String _format(DateTime at) {
     String two(int v) => v.toString().padLeft(2, '0');
     return '${two(at.day)}-${_monthLabels[at.month - 1]}-${at.year % 100}';
   }
@@ -326,13 +368,4 @@ class ExcelExportService {
         PaymentMethod.card => 'Card',
         PaymentMethod.other => 'Online Payment',
       };
-}
-
-extension _FirstWhereOrNull<T> on List<T> {
-  T? firstWhereOrNull(bool Function(T) test) {
-    for (final item in this) {
-      if (test(item)) return item;
-    }
-    return null;
-  }
 }

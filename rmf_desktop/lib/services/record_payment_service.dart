@@ -2,6 +2,7 @@ import 'package:drift/drift.dart';
 import 'package:logging/logging.dart';
 
 import '../data/database.dart';
+import '../data/membership_queries.dart';
 import '../domain/billing_period.dart';
 import '../domain/money.dart';
 import '../domain/phone.dart';
@@ -78,10 +79,24 @@ class RecordPaymentResult {
 
 /// The core workflow of the whole application.
 ///
-/// Payment, billing period, receipt number and receipt row are written in a
-/// single database transaction, so a receipt can never exist without its
-/// payment. WhatsApp is attempted only *after* that transaction commits — a
-/// messaging failure must never roll back money that was actually collected.
+/// Runs in three steps, in this order for reasons that are worth keeping:
+///
+///  1. A short transaction allocates the receipt number, so two payments
+///     confirmed at the same moment can never share one.
+///  2. The receipt is rendered and written to disk with **no transaction
+///     open**. Rasterising a PDF is a call out to the platform and the writes
+///     are real disk I/O; holding the database's single connection across
+///     either one meant a slow or wedged rasteriser froze every other query in
+///     the app, not just this dialog.
+///  3. A second short transaction writes the billing period, the payment and
+///     the receipt row together, so a receipt can never exist without its
+///     payment.
+///
+/// A failure in step 2 or 3 costs one receipt number — the sequence gets a gap.
+/// That is a deliberate trade: gaps are harmless, a frozen till is not.
+///
+/// WhatsApp is attempted only after step 3 commits — a messaging failure must
+/// never roll back money that was actually collected.
 class RecordPaymentService {
   RecordPaymentService({
     required this.db,
@@ -106,58 +121,30 @@ class RecordPaymentService {
     required int memberId,
     required String billingMonth,
   }) async {
-    final membership = await (db.select(db.memberships)
-          ..where((m) => m.memberId.equals(memberId) & m.endDate.isNull()))
-        .getSingleOrNull();
-    if (membership == null) return null;
-
-    final plan = await (db.select(db.membershipPlans)
-          ..where((p) => p.id.equals(membership.planId)))
-        .getSingleOrNull();
-    if (plan == null) return null;
-
-    final bounds = periodBounds(billingMonth, plan.durationMonths);
-
-    final period = await (db.select(db.membershipPeriods)
-          ..where((p) =>
-              p.membershipId.equals(membership.id) &
-              p.periodStart.equals(bounds.periodStart)))
-        .getSingleOrNull();
+    // Scoped to the member, not to their open enrolment: changing plan leaves
+    // the month they already paid on the closed enrolment, and missing it here
+    // meant the warning went quiet exactly when it was most needed.
+    final period = await periodForMemberStarting(
+      db,
+      memberId: memberId,
+      periodStart: parseBillingMonth(billingMonth),
+    );
     if (period == null) return null;
 
-    return (db.select(db.payments)
-          ..where((p) => p.membershipPeriodId.equals(period.id))
-          ..limit(1))
-        .getSingleOrNull();
+    return paymentForPeriod(db, period.id);
   }
 
   Future<RecordPaymentResult> call(RecordPaymentInput input) async {
     // A repeat submit with the same key is not an error: hand back what was
     // recorded the first time.
-    final existing = await (db.select(db.payments)
-          ..where((p) => p.idempotencyKey.equals(input.idempotencyKey)))
-        .getSingleOrNull();
-    if (existing != null) {
-      final receipt = await (db.select(db.receipts)
-            ..where((r) => r.paymentId.equals(existing.id)))
-          .getSingleOrNull();
-      if (receipt != null) {
-        return RecordPaymentResult(
-          paymentId: existing.id,
-          receiptId: receipt.id,
-          receiptNumber: receipt.receiptNumber,
-          whatsApp: const WhatsAppNotRequested(),
-        );
-      }
-    }
+    final alreadyRecorded = await _resultForKey(input.idempotencyKey);
+    if (alreadyRecorded != null) return alreadyRecorded;
 
     final member = await (db.select(db.members)
           ..where((m) => m.id.equals(input.memberId)))
         .getSingle();
 
-    final membership = await (db.select(db.memberships)
-          ..where((m) => m.memberId.equals(input.memberId) & m.endDate.isNull()))
-        .getSingleOrNull();
+    final membership = await openMembershipFor(db, input.memberId);
 
     if (membership == null) {
       throw StateError(
@@ -177,40 +164,13 @@ class RecordPaymentService {
     final bounds = periodBounds(input.billingMonth, plan.durationMonths);
     final receiptYear = input.paymentDate.year;
 
-    // --- Everything below commits together, or not at all -------------------
-    final committed = await db.transaction(() async {
-      var period = await (db.select(db.membershipPeriods)
-            ..where((p) =>
-                p.membershipId.equals(membership.id) &
-                p.periodStart.equals(bounds.periodStart)))
-          .getSingleOrNull();
+    final periodLabel =
+        formatBillingPeriod(bounds.periodStart, plan.durationMonths);
+    final amountLabel =
+        formatMinorUnits(input.amountMinor, settings.currency);
 
-      period ??= await db.into(db.membershipPeriods).insertReturning(
-            MembershipPeriodsCompanion.insert(
-              membershipId: membership.id,
-              periodStart: bounds.periodStart,
-              periodEnd: bounds.periodEnd,
-              expectedAmountMinor:
-                  membership.feeOverrideMinor ?? plan.priceMinor,
-            ),
-          );
-
-      final paymentId = await db.into(db.payments).insert(
-            PaymentsCompanion.insert(
-              memberId: member.id,
-              membershipPeriodId: Value(period.id),
-              amountMinor: input.amountMinor,
-              method: input.method,
-              referenceNumber: Value(_blankToNull(input.referenceNumber)),
-              paymentDate: input.paymentDate,
-              notes: Value(_blankToNull(input.notes)),
-              recordedById: input.recordedById,
-              idempotencyKey: input.idempotencyKey,
-            ),
-          );
-
-      // Allocating the sequence inside the transaction is what stops two
-      // payments confirmed at the same moment sharing a receipt number.
+    // --- 1. Reserve the receipt number --------------------------------------
+    final receiptNumber = await db.transaction(() async {
       final counter = await (db.select(db.receiptCounters)
             ..where((c) => c.year.equals(receiptYear)))
           .getSingleOrNull();
@@ -226,78 +186,140 @@ class RecordPaymentService {
             .write(ReceiptCountersCompanion(lastNumber: Value(next)));
       }
 
-      final receiptNumber =
-          formatReceiptNumber(settings.receiptPrefix, receiptYear, next);
-
-      final rendered = await renderer.render(ReceiptData(
-        gymName: settings.gymName,
-        receiptNumber: receiptNumber,
-        paymentDate: _formatDate(input.paymentDate),
-        memberName: member.fullName,
-        memberCode: member.memberCode,
-        membershipLabel: plan.name,
-        billingPeriod:
-            formatBillingPeriod(bounds.periodStart, plan.durationMonths),
-        paymentMethod: _methodLabel(input.method),
-        referenceNumber: input.referenceNumber,
-        amountLabel: formatMinorUnits(input.amountMinor, settings.currency),
-        footerMessage: settings.receiptFooterMessage,
-        gymPhone: settings.phone,
-        gymAddress: settings.address,
-      ));
-
-      final pngPath = await storage.save(
-          '$receiptNumber.png', rendered.png);
-      final pdfPath = await storage.save(
-          '$receiptNumber.pdf', rendered.pdf);
-
-      final receiptId = await db.into(db.receipts).insert(
-            ReceiptsCompanion.insert(
-              receiptNumber: receiptNumber,
-              paymentId: paymentId,
-              pngPath: pngPath,
-              pdfPath: Value(pdfPath),
-            ),
-          );
-
-      return (
-        paymentId: paymentId,
-        receiptId: receiptId,
-        receiptNumber: receiptNumber,
-        png: rendered.png,
-        periodLabel:
-            formatBillingPeriod(bounds.periodStart, plan.durationMonths),
-        amountLabel: formatMinorUnits(input.amountMinor, settings.currency),
-      );
+      return formatReceiptNumber(settings.receiptPrefix, receiptYear, next);
     });
+
+    // --- 2. Render and write the files, holding no database lock -------------
+    final rendered = await renderer.render(ReceiptData(
+      gymName: settings.gymName,
+      receiptNumber: receiptNumber,
+      paymentDate: _formatDate(input.paymentDate),
+      memberName: member.fullName,
+      memberCode: member.memberCode,
+      membershipLabel: plan.name,
+      billingPeriod: periodLabel,
+      paymentMethod: _methodLabel(input.method),
+      referenceNumber: input.referenceNumber,
+      amountLabel: amountLabel,
+      footerMessage: settings.receiptFooterMessage,
+      gymPhone: settings.phone,
+      gymAddress: settings.address,
+    ));
+
+    final pngPath = await storage.save('$receiptNumber.png', rendered.png);
+    final pdfPath = await storage.save('$receiptNumber.pdf', rendered.pdf);
+
+    // --- 3. The money and its receipt commit together, or not at all ---------
+    final ({int paymentId, int receiptId}) committed;
+    try {
+      committed = await db.transaction(() async {
+        var period = await periodForMemberStarting(
+          db,
+          memberId: member.id,
+          periodStart: bounds.periodStart,
+        );
+
+        period ??= await db.into(db.membershipPeriods).insertReturning(
+              MembershipPeriodsCompanion.insert(
+                membershipId: membership.id,
+                periodStart: bounds.periodStart,
+                periodEnd: bounds.periodEnd,
+                expectedAmountMinor:
+                    membership.feeOverrideMinor ?? plan.priceMinor,
+              ),
+            );
+
+        final paymentId = await db.into(db.payments).insert(
+              PaymentsCompanion.insert(
+                memberId: member.id,
+                membershipPeriodId: Value(period.id),
+                amountMinor: input.amountMinor,
+                method: input.method,
+                referenceNumber: Value(_blankToNull(input.referenceNumber)),
+                paymentDate: input.paymentDate,
+                notes: Value(_blankToNull(input.notes)),
+                recordedById: input.recordedById,
+                idempotencyKey: input.idempotencyKey,
+              ),
+            );
+
+        final receiptId = await db.into(db.receipts).insert(
+              ReceiptsCompanion.insert(
+                receiptNumber: receiptNumber,
+                paymentId: paymentId,
+                pngPath: pngPath,
+                pdfPath: Value(pdfPath),
+              ),
+            );
+
+        return (paymentId: paymentId, receiptId: receiptId);
+      });
+    } catch (error, stack) {
+      // Nothing was committed, so the images belong to a receipt that does not
+      // exist. Clear them before deciding what to tell the caller.
+      await storage.delete(pngPath);
+      await storage.delete(pdfPath);
+
+      // Two submits of the same form raced each other: the unique index on the
+      // idempotency key did its job, and the first one's result is the answer.
+      final winner = await _resultForKey(input.idempotencyKey);
+      if (winner != null) {
+        _log.info('Duplicate submit for ${input.idempotencyKey} ignored');
+        return winner;
+      }
+
+      _log.severe('Recording the payment failed', error, stack);
+      rethrow;
+    }
 
     // --- Past this line the money is safely recorded ------------------------
     if (!input.sendWhatsApp) {
       return RecordPaymentResult(
         paymentId: committed.paymentId,
         receiptId: committed.receiptId,
-        receiptNumber: committed.receiptNumber,
+        receiptNumber: receiptNumber,
         whatsApp: const WhatsAppNotRequested(),
       );
     }
 
     final sendResult = await sendReceipt(
       receiptId: committed.receiptId,
-      receiptNumber: committed.receiptNumber,
+      receiptNumber: receiptNumber,
       memberId: member.id,
       memberName: member.fullName,
       phone: member.phone,
       gymName: settings.gymName,
-      amountLabel: committed.amountLabel,
-      periodLabel: committed.periodLabel,
-      pngBytes: committed.png,
+      amountLabel: amountLabel,
+      periodLabel: periodLabel,
+      pngBytes: rendered.png,
     );
 
     return RecordPaymentResult(
       paymentId: committed.paymentId,
       receiptId: committed.receiptId,
-      receiptNumber: committed.receiptNumber,
+      receiptNumber: receiptNumber,
       whatsApp: sendResult,
+    );
+  }
+
+  /// What was recorded for [idempotencyKey] on an earlier submit, if anything.
+  Future<RecordPaymentResult?> _resultForKey(String idempotencyKey) async {
+    final payment = await (db.select(db.payments)
+          ..where((p) => p.idempotencyKey.equals(idempotencyKey))
+          ..limit(1))
+        .getSingleOrNull();
+    if (payment == null) return null;
+
+    final receipt = await (db.select(db.receipts)
+          ..where((r) => r.paymentId.equals(payment.id)))
+        .getSingleOrNull();
+    if (receipt == null) return null;
+
+    return RecordPaymentResult(
+      paymentId: payment.id,
+      receiptId: receipt.id,
+      receiptNumber: receipt.receiptNumber,
+      whatsApp: const WhatsAppNotRequested(),
     );
   }
 

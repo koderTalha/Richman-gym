@@ -5,6 +5,7 @@ import '../services/whatsapp/meta_client.dart';
 import '../services/whatsapp/mock_client.dart';
 import '../services/whatsapp/whatsapp_client.dart';
 import 'database.dart';
+import 'seed.dart';
 
 /// Gym settings, plans and sections — everything the owner can configure.
 ///
@@ -120,6 +121,13 @@ class SettingsRepository {
   }) async {
     if (newPassword.length < 8) {
       return 'The new password must be at least 8 characters.';
+    }
+
+    // Otherwise the forced first-run change can be satisfied by typing the
+    // shipped password back in, which changes nothing at all.
+    if (newPassword == defaultAdminPassword) {
+      return 'That is the password the app is installed with. '
+          'Choose a different one.';
     }
 
     final user = await (db.select(db.users)..where((u) => u.id.equals(userId)))

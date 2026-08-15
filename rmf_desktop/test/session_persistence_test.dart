@@ -4,6 +4,7 @@ import 'package:rich_man_fitness/bloc/auth_bloc.dart';
 import 'package:rich_man_fitness/data/database.dart';
 import 'package:rich_man_fitness/data/seed.dart';
 import 'package:rich_man_fitness/data/session_repository.dart';
+import 'package:rich_man_fitness/data/settings_repository.dart';
 
 /// The owner restarts this app constantly — Windows updates, power cuts, an
 /// accidental close mid-shift. Being asked for the password every time is the
@@ -12,14 +13,16 @@ void main() {
   late AppDatabase db;
   late SessionRepository sessions;
 
-  const email = 'admin@richmanfitness.local';
-  // Matches seedDatabase's default; a wrong value here silently turns every
-  // sign-in below into a failed one.
-  const password = 'RichMan#2026';
+  const email = defaultAdminEmail;
+
+  // Deliberately not the password the app ships with. These tests are about
+  // sessions surviving a restart; an account still on the shipped password is
+  // held at the change-password screen instead, which is its own group below.
+  const password = 'owners-own-password';
 
   setUp(() async {
     db = AppDatabase.forTesting(NativeDatabase.memory());
-    await seedDatabase(db);
+    await seedDatabase(db, adminPassword: password);
     sessions = SessionRepository(db);
   });
 
@@ -118,5 +121,94 @@ void main() {
     final rows = await db.select(db.appSessions).get();
     expect(rows, hasLength(1));
     expect(rows.single.signedInAt, DateTime(2026, 8, 15));
+  });
+
+  /// The password the app is installed with is printed in its own source, and
+  /// the app holds every payment the gym has ever taken. Signing in with it
+  /// gets as far as choosing a real one, and no further.
+  group('the password the app ships with', () {
+    late AppDatabase fresh;
+    late SessionRepository freshSessions;
+
+    setUp(() async {
+      fresh = AppDatabase.forTesting(NativeDatabase.memory());
+      await seedDatabase(fresh); // shipped password, untouched
+      freshSessions = SessionRepository(fresh);
+    });
+
+    tearDown(() async => fresh.close());
+
+    Future<AuthState> signIn(AuthBloc bloc, String withPassword) {
+      bloc.add(AuthSignInRequested(email: email, password: withPassword));
+      return bloc.stream.firstWhere((s) => s.status != AuthStatus.submitting);
+    }
+
+    test('signing in with it does not open the app', () async {
+      final bloc = AuthBloc(fresh, sessions: freshSessions);
+      addTearDown(bloc.close);
+
+      final state = await signIn(bloc, defaultAdminPassword);
+
+      expect(state.status, AuthStatus.passwordChangeRequired);
+      expect(state.isSignedIn, isFalse);
+      expect(state.mustChangePassword, isTrue);
+    });
+
+    test('restarting does not get past it either', () async {
+      final first = AuthBloc(fresh, sessions: freshSessions);
+      await signIn(first, defaultAdminPassword);
+      await first.close();
+
+      // Leaving the app open overnight must not become the way to skip this.
+      final restored = await freshSessions.restore();
+      final second =
+          AuthBloc(fresh, sessions: freshSessions, restored: restored);
+      addTearDown(second.close);
+
+      expect(second.state.mustChangePassword, isTrue);
+      expect(second.state.isSignedIn, isFalse);
+    });
+
+    test('choosing a real password opens the app', () async {
+      final bloc = AuthBloc(fresh, sessions: freshSessions);
+      addTearDown(bloc.close);
+      await signIn(bloc, defaultAdminPassword);
+
+      final problem = await SettingsRepository(fresh).changePassword(
+        userId: bloc.state.user!.id,
+        currentPassword: defaultAdminPassword,
+        newPassword: 'owners-own-password',
+      );
+      expect(problem, isNull);
+
+      bloc.add(const AuthPasswordChanged());
+      final state = await bloc.stream.firstWhere((s) => s.isSignedIn);
+      expect(state.isSignedIn, isTrue);
+    });
+
+    test('the shipped password cannot be set as the new one', () async {
+      final admin = await (fresh.select(fresh.users)
+            ..where((u) => u.email.equals(email)))
+          .getSingle();
+
+      final problem = await SettingsRepository(fresh).changePassword(
+        userId: admin.id,
+        currentPassword: defaultAdminPassword,
+        newPassword: defaultAdminPassword,
+      );
+
+      expect(problem, isNotNull,
+          reason: 'otherwise the gate is satisfied by changing nothing');
+    });
+
+    test('an account with its own password is signed in as before', () async {
+      final bloc = AuthBloc(db, sessions: sessions);
+      addTearDown(bloc.close);
+
+      final state = await signIn(bloc, password);
+
+      expect(state.isSignedIn, isTrue);
+      expect(state.mustChangePassword, isFalse);
+    });
   });
 }

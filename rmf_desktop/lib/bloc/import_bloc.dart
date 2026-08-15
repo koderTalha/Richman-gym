@@ -1,8 +1,8 @@
 import 'dart:io';
 
 import 'package:equatable/equatable.dart';
-import 'package:excel/excel.dart' show Excel;
 import 'package:file_selector/file_selector.dart';
+import 'package:flutter/foundation.dart' show compute;
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:logging/logging.dart';
 
@@ -10,6 +10,7 @@ import '../data/database.dart';
 import '../data/member_repository.dart';
 import '../services/import_service.dart';
 import '../services/ledger_import.dart';
+import '../services/spreadsheet_reader.dart';
 
 final _log = Logger('import');
 
@@ -154,9 +155,12 @@ class ImportBloc extends Bloc<ImportEvent, ImportState> {
     ImportFileRequested event,
     Emitter<ImportState> emit,
   ) async {
+    // Only the formats the parser can actually read. Offering ".xls" here
+    // meant the owner picked one and got an error that read like their ledger
+    // was damaged, when nothing was wrong with it at all.
     const typeGroup = XTypeGroup(
       label: 'Excel / CSV',
-      extensions: ['xlsx', 'xls', 'csv'],
+      extensions: readableExtensions,
     );
     final file = await openFile(acceptedTypeGroups: [typeGroup]);
     if (file == null) return;
@@ -165,22 +169,25 @@ class ImportBloc extends Bloc<ImportEvent, ImportState> {
 
     try {
       final bytes = await File(file.path).readAsBytes();
-      final workbook = Excel.decodeBytes(bytes);
 
-      final sheets = <String, List<List<String?>>>{};
-      for (final name in workbook.tables.keys) {
-        final table = workbook.tables[name];
-        if (table == null) continue;
-        sheets[name] = table.rows
-            .map((row) => row.map((cell) => cell?.value?.toString()).toList())
-            .toList();
-      }
+      // Off the interface thread: a year's ledger is megabytes of XML, and
+      // unzipping and walking it froze the window for as long as it took.
+      final sheets = await compute(
+        readSpreadsheet,
+        SpreadsheetSource(fileName: file.name, bytes: bytes),
+      );
 
       emit(state.copyWith(busy: false, fileName: file.name, sheets: sheets));
 
       if (sheets.isNotEmpty) {
         add(ImportSheetSelected(sheets.keys.first));
+      } else {
+        emit(state.copyWith(
+            error: 'That file has no sheets in it to import.'));
       }
+    } on UnreadableSpreadsheet catch (e) {
+      _log.warning('Unreadable import file: ${file.name} — ${e.message}');
+      emit(state.copyWith(busy: false, error: e.message));
     } catch (e, s) {
       _log.severe('Reading the import file failed', e, s);
       emit(state.copyWith(busy: false, error: 'Could not read that file: $e'));

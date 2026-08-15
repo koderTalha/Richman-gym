@@ -42,21 +42,27 @@ PeriodBounds periodBounds(String billingMonth, int durationMonths) {
 }
 
 /// Human label, e.g. "August 2026" or "August 2026 - October 2026".
+///
+/// Normalised to UTC first, because cycle boundaries are stored as UTC
+/// midnights and drift hands DateTimes back in local time. Reading `.month` off
+/// the local value names the month before in any negative-offset timezone — the
+/// receipt would say July for a cycle the member paid for August.
 String formatBillingPeriod(DateTime periodStart, int durationMonths) {
-  final startLabel =
-      '${_monthNames[periodStart.month - 1]} ${periodStart.year}';
+  final start = periodStart.toUtc();
+  final startLabel = '${_monthNames[start.month - 1]} ${start.year}';
   if (durationMonths <= 1) return startLabel;
 
-  final last = DateTime.utc(
-    periodStart.year,
-    periodStart.month + durationMonths - 1,
-    1,
-  );
+  final last = DateTime.utc(start.year, start.month + durationMonths - 1, 1);
   return '$startLabel - ${_monthNames[last.month - 1]} ${last.year}';
 }
 
 /// The current month as "YYYY-MM", used to default the Record Payment form.
+///
+/// Read in local time on purpose. The month a cycle *is* stays UTC-anchored,
+/// but which month it is *right now* is a question about the wall clock in the
+/// gym: converting to UTC first put the first hours of the 1st into the month
+/// before, and every hour of every day in a negative-offset timezone.
 String currentBillingMonth([DateTime? now]) {
-  final at = (now ?? DateTime.now()).toUtc();
+  final at = now ?? DateTime.now();
   return '${at.year.toString().padLeft(4, '0')}-${at.month.toString().padLeft(2, '0')}';
 }

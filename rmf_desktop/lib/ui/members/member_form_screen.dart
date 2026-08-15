@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../bloc/member_form_bloc.dart';
+import '../../data/database.dart';
 import '../../data/member_repository.dart';
 import '../../domain/money.dart';
 import '../../domain/phone.dart';
@@ -93,7 +94,7 @@ class _MemberFormViewState extends State<_MemberFormView> {
     if (picked != null) setState(() => _joiningDate = picked);
   }
 
-  void _submit() {
+  void _submit({bool confirmSharedPhone = false}) {
     if (!_formKey.currentState!.validate() || _planId == null) return;
 
     final feeText = _fee.text.trim();
@@ -110,8 +111,58 @@ class _MemberFormViewState extends State<_MemberFormView> {
             emergencyContact: _blankToNull(_emergency.text),
             feeOverrideMinor:
                 feeText.isEmpty ? null : toMinorUnits(double.parse(feeText)),
+            confirmSharedPhone: confirmSharedPhone,
           ),
         );
+  }
+
+  /// Names whoever already has this number before a second member is put on
+  /// it, because the usual reason for a match is a mistyped digit.
+  Future<void> _confirmSharedPhone(List<Member> sharing) async {
+    final names = sharing
+        .map((m) => '${m.fullName} (#${m.memberCode})')
+        .join('\n');
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: context.palette.surfaceRaised,
+        title: const Text('This number is already in use'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '${_phone.text.trim()} is registered to:',
+              style: mutedStyleOf(context),
+            ),
+            const SizedBox(height: 8),
+            Text(names,
+                style: TextStyle(
+                    fontSize: 14, color: context.palette.textPrimary)),
+            const SizedBox(height: 14),
+            Text(
+              'Relatives do share a number, and that is fine — everyone on it '
+              'gets their own receipts. But check the digits first: a wrong '
+              'number sends this member’s receipts to somebody else.',
+              style: mutedStyleOf(context),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Let me check'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Number is correct'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && mounted) _submit(confirmSharedPhone: true);
   }
 
   String? _blankToNull(String value) =>
@@ -123,11 +174,17 @@ class _MemberFormViewState extends State<_MemberFormView> {
       listener: (context, state) {
         if (state.status == MemberFormStatus.saved) {
           Navigator.of(context).pop(true);
+        } else if (state.status == MemberFormStatus.confirmSharedPhone) {
+          _confirmSharedPhone(state.sharingPhone);
         }
       },
       builder: (context, state) {
         _prefill(state);
 
+        // The confirmation is a modal dialog, so the form underneath is
+        // unreachable while it is up. Leaving the button enabled means
+        // dismissing the dialog puts the operator back on a working form
+        // rather than a permanently greyed-out one.
         final submitting = state.status == MemberFormStatus.submitting;
 
         return Scaffold(

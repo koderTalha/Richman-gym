@@ -70,9 +70,11 @@ class DashboardBloc extends Bloc<DashboardEvent, DashboardState> {
     required MemberRepository memberRepository,
     required PaymentRepository paymentRepository,
     required ReceiptRepository receiptRepository,
+    DateTime Function()? clock,
   })  : _members = memberRepository,
         _payments = paymentRepository,
         _receipts = receiptRepository,
+        _clock = clock ?? DateTime.now,
         super(const DashboardState()) {
     on<DashboardRequested>((_, emit) => _load(emit));
   }
@@ -81,14 +83,22 @@ class DashboardBloc extends Bloc<DashboardEvent, DashboardState> {
   final PaymentRepository _payments;
   final ReceiptRepository _receipts;
 
+  /// Injectable so "today's revenue" can be tested on a fixed day.
+  final DateTime Function() _clock;
+
   Future<void> _load(Emitter<DashboardState> emit) async {
     emit(const DashboardState(status: DashboardStatus.loading));
     try {
-      final now = DateTime.now();
-      final todayStart = DateTime.utc(now.year, now.month, now.day);
-      final tomorrow = todayStart.add(const Duration(days: 1));
-      final monthStart = DateTime.utc(now.year, now.month, 1);
-      final nextMonth = DateTime.utc(now.year, now.month + 1, 1);
+      // "Today" and "this month" mean the gym's calendar, not UTC's, and a
+      // payment is a moment in time rather than a UTC-anchored cycle boundary.
+      // Building these bounds as UTC out of local calendar fields shifted the
+      // window by the timezone offset, which put a payment dated the 1st into
+      // the previous month's revenue.
+      final now = _clock();
+      final todayStart = DateTime(now.year, now.month, now.day);
+      final tomorrow = DateTime(now.year, now.month, now.day + 1);
+      final monthStart = DateTime(now.year, now.month, 1);
+      final nextMonth = DateTime(now.year, now.month + 1, 1);
 
       emit(DashboardState(
         status: DashboardStatus.ready,

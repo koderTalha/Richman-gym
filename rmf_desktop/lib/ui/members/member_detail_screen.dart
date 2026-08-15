@@ -210,8 +210,10 @@ class _Body extends StatelessWidget {
               ),
               _Detail(
                   label: 'Joined',
-                  value: formatShortDate(row.member.joiningDate)),
-              _Detail(label: 'Paid until', value: formatShortDate(row.paidUntil)),
+                  value: formatCalendarDate(row.member.joiningDate)),
+              _Detail(
+                  label: 'Paid until',
+                  value: formatCalendarDate(row.paidUntil)),
             ],
           ),
           const SizedBox(height: 24),

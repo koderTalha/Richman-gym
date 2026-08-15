@@ -5,7 +5,7 @@ import '../../bloc/members_bloc.dart';
 import '../../data/member_repository.dart';
 import '../../domain/money.dart';
 import '../../theme/app_theme.dart';
-import '../payments/payment_history_table.dart' show formatShortDate;
+import '../payments/payment_history_table.dart' show formatCalendarDate;
 import '../payments/record_payment_dialog.dart';
 import '../widgets/status_badge.dart';
 import 'import_members_screen.dart';
@@ -278,7 +278,7 @@ class _MembersTable extends StatelessWidget {
                         ),
                         Expanded(
                           flex: 2,
-                          child: Text(formatShortDate(row.paidUntil),
+                          child: Text(formatCalendarDate(row.paidUntil),
                               style: mutedStyleOf(context)),
                         ),
                         SizedBox(
