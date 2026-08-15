@@ -301,7 +301,16 @@ class _Preview extends StatelessWidget {
         const SizedBox(height: 12),
         Text(
           'Historical payments are imported without sending any WhatsApp '
-          'receipts. Re-importing the same sheet will not duplicate anything.',
+          'receipts. Importing the same sheet again recognises the members and '
+          'months already on file rather than repeating them.',
+          style: mutedStyleOf(context),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          'Rows are matched on phone number and name, falling back to the '
+          '"Enroll." number. A member renamed in this sheet but not in the app '
+          '— and with no "Enroll." column to go on — will come in as a second '
+          'record.',
           style: mutedStyleOf(context),
         ),
         if (ledger.paymentsUsingPlanFee > 0) ...[
@@ -320,6 +329,16 @@ class _Preview extends StatelessWidget {
             '${ledger.withoutPhone} members have no phone number. They will '
             'still be imported — they just cannot receive WhatsApp receipts '
             'until a number is added.',
+            style: TextStyle(fontSize: 12, color: context.palette.due),
+          ),
+        ],
+        if (ledger.year < DateTime.now().year) ...[
+          const SizedBox(height: 6),
+          Text(
+            'This sheet covers ${ledger.year}, a year that has ended, so '
+            'anyone new in it is added as an inactive member. That keeps them '
+            'out of this month’s payments-due list until you mark the ones '
+            'still training here as active again.',
             style: TextStyle(fontSize: 12, color: context.palette.due),
           ),
         ],
@@ -430,10 +449,28 @@ class _SummaryCard extends StatelessWidget {
                   color: context.palette.textPrimary)),
           const SizedBox(height: 14),
           _line(context, '${summary.membersCreated} members imported'),
-          _line(context, '${summary.membersMatched} existing members matched by phone'),
+          _line(context,
+              '${summary.membersMatched} existing members recognised'),
           _line(context, '${summary.paymentsCreated} historical payments created'),
           if (summary.paymentsSkipped > 0)
             _line(context, '${summary.paymentsSkipped} payments already existed, skipped'),
+          // Worth naming: these rows had no phone number and no enrolment
+          // number, so a matching name was all there was to go on. Two
+          // different people recorded that way become one member, and only the
+          // owner can tell whether that is right.
+          if (summary.membersMergedByName > 0)
+            _line(
+                context,
+                '${summary.membersMergedByName} rows matched on name alone — '
+                'check these are the same people, not namesakes',
+                tone: context.palette.due),
+          if (summary.membersAddedAsInactive > 0)
+            _line(
+                context,
+                '${summary.membersAddedAsInactive} were added as inactive '
+                'because this sheet covers a year that has ended — reactivate '
+                'the ones still training here',
+                tone: context.palette.due),
           if (summary.rowsNeedingAttention > 0)
             _line(context, '${summary.rowsNeedingAttention} rows skipped, need attention',
                 tone: context.palette.due),

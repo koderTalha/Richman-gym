@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:logging/logging.dart';
@@ -20,7 +22,9 @@ import 'services/whatsapp/whatsapp_client.dart';
 import 'services/record_payment_service.dart';
 import 'theme/app_theme.dart';
 import 'ui/app_shell.dart';
+import 'ui/first_run_password_screen.dart';
 import 'ui/login_screen.dart';
+import 'ui/startup_failure_screen.dart';
 
 final _log = Logger('startup');
 
@@ -32,42 +36,64 @@ Future<void> main() => runGuarded(() async {
 
       await initLogging();
 
-      // Must run before the database is opened: a staged restore replaces the
-      // very file drift is about to hold a lock on.
-      await BackupService.applyPendingRestore();
-
-      final db = AppDatabase();
-      // Idempotent: creates the admin account, settings, sections and plans on
-      // first launch and is a no-op afterwards.
-      await seedDatabase(db);
-
-      // Rolls each active membership into the current billing cycle, so members
-      // who owe this month read DUE rather than looking like lapsed
-      // memberships.
-      await BillingMaintenance(db).ensureCurrentPeriods();
-
-      // Cheap insurance: one snapshot a day, seven kept. Failure here must
-      // never stop the owner from opening the app.
       try {
-        await BackupService(db).autoBackup();
+        runApp(await _boot());
       } catch (error, stack) {
-        _log.severe('Automatic backup skipped', error, stack);
+        // Startup is the one place where an unhandled error costs the owner
+        // everything: runApp is never reached, so the window opens blank and
+        // stays that way, with nothing on screen to say what went wrong or
+        // where to look. A database that will not open — most often because
+        // something was restored over it — has to say so.
+        _log.severe('The app could not start', error, stack);
+        runApp(StartupFailureApp(error: error));
       }
-
-      // Read before the first frame so the app opens in the owner's chosen
-      // theme rather than flashing dark and correcting itself.
-      final theme = ThemeCubit.parse((await SettingsRepository(db).get()).themeMode);
-
-      // Likewise for the session: restoring here means the dashboard is the
-      // first thing painted, with no login form flashing past on the way.
-      final restored = await SessionRepository(db).restore();
-
-      runApp(RichManFitnessApp(
-        db: db,
-        initialTheme: theme,
-        restoredUser: restored,
-      ));
     });
+
+/// Everything that has to happen before the first frame can be painted.
+Future<Widget> _boot() async {
+  // Must run before the database is opened: a staged restore replaces the very
+  // file drift is about to hold a lock on.
+  await BackupService.applyPendingRestore();
+
+  final db = AppDatabase();
+
+  // Idempotent: creates the admin account, settings and plans on first launch
+  // and is a no-op afterwards. Also the first thing to touch the database, so
+  // it is where an unreadable file surfaces.
+  await seedDatabase(db);
+
+  // Rolls each active membership into the current billing cycle, so members who
+  // owe this month read DUE rather than looking like lapsed memberships.
+  await BillingMaintenance(db).ensureCurrentPeriods();
+
+  // Read before the first frame so the app opens in the owner's chosen theme
+  // rather than flashing dark and correcting itself.
+  final theme = ThemeCubit.parse((await SettingsRepository(db).get()).themeMode);
+
+  // Likewise for the session: restoring here means the dashboard is the first
+  // thing painted, with no login form flashing past on the way.
+  final restored = await SessionRepository(db).restore();
+
+  // Cheap insurance: one snapshot a day, seven kept. Deliberately not awaited —
+  // it snapshots the database and builds a workbook out of the gym's whole
+  // history, and making the owner wait behind that every morning is a poor
+  // trade for a backup that is just as good taken a second later.
+  unawaited(_autoBackup(db));
+
+  return RichManFitnessApp(
+    db: db,
+    initialTheme: theme,
+    restoredUser: restored,
+  );
+}
+
+Future<void> _autoBackup(AppDatabase db) async {
+  try {
+    await BackupService(db).autoBackup();
+  } catch (error, stack) {
+    _log.severe('Automatic backup skipped', error, stack);
+  }
+}
 
 class RichManFitnessApp extends StatelessWidget {
   const RichManFitnessApp({
@@ -129,8 +155,12 @@ class RichManFitnessApp extends StatelessWidget {
             darkTheme: buildDarkTheme(),
             themeMode: themeMode,
             home: BlocBuilder<AuthBloc, AuthState>(
-              builder: (context, state) =>
-                  state.isSignedIn ? const AppShell() : const LoginScreen(),
+              builder: (context, state) {
+                if (state.mustChangePassword) {
+                  return const FirstRunPasswordScreen();
+                }
+                return state.isSignedIn ? const AppShell() : const LoginScreen();
+              },
             ),
           ),
         ),

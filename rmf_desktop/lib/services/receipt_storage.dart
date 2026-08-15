@@ -36,4 +36,17 @@ class ReceiptStorage {
     if (!await file.exists()) return null;
     return file.readAsBytes();
   }
+
+  /// Removes a file written for a receipt that was never committed.
+  ///
+  /// Best-effort: a leftover image is untidy, but failing to delete one must
+  /// not turn into a second error on top of whatever went wrong first.
+  Future<void> delete(String relativePath) async {
+    try {
+      final file = await resolve(relativePath);
+      if (await file.exists()) await file.delete();
+    } catch (_) {
+      // Nothing useful to do; the file is orphaned either way.
+    }
+  }
 }

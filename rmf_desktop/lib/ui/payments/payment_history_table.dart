@@ -11,11 +11,20 @@ const _monthAbbr = [
   'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
 ];
 
-String formatShortDate(DateTime? date) {
-  if (date == null) return '—';
-  return '${date.day.toString().padLeft(2, '0')} '
-      '${_monthAbbr[date.month - 1]} ${date.year}';
-}
+/// For a real moment in time — when a payment was taken — shown on the gym's
+/// own clock.
+String formatShortDate(DateTime? date) =>
+    date == null ? '—' : _format(date.toLocal());
+
+/// For dates the app anchors to UTC midnight on purpose: joining dates and
+/// cycle boundaries. Reading those on the local clock lands on the day before
+/// in any negative-offset timezone.
+String formatCalendarDate(DateTime? date) =>
+    date == null ? '—' : _format(date.toUtc());
+
+String _format(DateTime at) =>
+    '${at.day.toString().padLeft(2, '0')} '
+    '${_monthAbbr[at.month - 1]} ${at.year}';
 
 String paymentMethodLabel(PaymentMethod method) => switch (method) {
       PaymentMethod.cash => 'Cash',

@@ -39,11 +39,31 @@ DateTime _monthStart(int monthsAgo, DateTime now) =>
 DateTime _addMonths(DateTime date, int months) =>
     DateTime.utc(date.year, date.month + months, date.day);
 
+const defaultAdminEmail = 'admin@richmanfitness.local';
+
+/// The password a fresh install ships with.
+///
+/// It is printed in the source of an app anyone can download, so it is a way
+/// into the gym's financial records for as long as it is still in use. The app
+/// therefore refuses to go any further than the change-password screen while
+/// the account still has it — see `AuthBloc`.
+const defaultAdminPassword = 'RichMan#2026';
+
+/// Whether [passwordHash] is still the one every copy of the app ships with.
+bool isDefaultAdminPassword(String passwordHash) {
+  try {
+    return BCrypt.checkpw(defaultAdminPassword, passwordHash);
+  } catch (_) {
+    // A hash this build cannot parse is certainly not the shipped one.
+    return false;
+  }
+}
+
 /// Idempotent: safe to run on every launch. Only fills in what is missing.
 Future<void> seedDatabase(
   AppDatabase db, {
-  String adminEmail = 'admin@richmanfitness.local',
-  String adminPassword = 'RichMan#2026',
+  String adminEmail = defaultAdminEmail,
+  String adminPassword = defaultAdminPassword,
   String adminName = 'Gym Owner',
   // Off by default: a real installation must start with the gym's own members,
   // not twenty invented ones. Tests opt in explicitly.

@@ -74,8 +74,48 @@ class AppDatabase extends _$AppDatabase {
           // Enforce the foreign keys declared in tables.dart; SQLite ignores
           // them unless this pragma is set on every connection.
           await customStatement('PRAGMA foreign_keys = ON');
+          await _createIndexes();
         },
       );
+
+  /// Indexes live here rather than in a numbered migration.
+  ///
+  /// `IF NOT EXISTS` makes each one idempotent, so a fresh install and an
+  /// install upgraded from any earlier version end up identical without
+  /// spending a schema version on something that changes no data. Every one of
+  /// these backs a lookup the app does in a loop — the importer resolving a
+  /// row to a member, the members screen deriving status, the receipts screen
+  /// finding the latest send attempt.
+  Future<void> _createIndexes() async {
+    const indexes = [
+      'CREATE INDEX IF NOT EXISTS idx_members_phone ON members (phone)',
+      'CREATE INDEX IF NOT EXISTS idx_memberships_member ON memberships (member_id)',
+      'CREATE INDEX IF NOT EXISTS idx_periods_membership ON membership_periods (membership_id)',
+      'CREATE INDEX IF NOT EXISTS idx_payments_member ON payments (member_id)',
+      'CREATE INDEX IF NOT EXISTS idx_payments_period ON payments (membership_period_id)',
+      'CREATE INDEX IF NOT EXISTS idx_messages_receipt ON whats_app_messages (receipt_id)',
+    ];
+    for (final statement in indexes) {
+      await customStatement(statement);
+    }
+
+    // A member is meant to have at most one open enrolment: every lookup of
+    // "their current plan" uses getSingleOrNull, which throws outright on a
+    // second row. Enforcing it in SQLite means a bug that would otherwise
+    // wedge the member and payment screens fails at the write instead.
+    //
+    // Deliberately best-effort: an existing database that already holds a
+    // duplicate must still open, or the owner is locked out of the very screen
+    // that would let them fix it.
+    try {
+      await customStatement(
+        'CREATE UNIQUE INDEX IF NOT EXISTS idx_memberships_one_open '
+        'ON memberships (member_id) WHERE end_date IS NULL',
+      );
+    } catch (_) {
+      // Already-duplicated data. MemberRepository copes at read time.
+    }
+  }
 
   static QueryExecutor _open() {
     return driftDatabase(name: 'richmanfitness');

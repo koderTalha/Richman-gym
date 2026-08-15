@@ -15,6 +15,11 @@ class BillingMaintenance {
 
   /// Ensures every active membership has a billing cycle covering [now].
   /// Idempotent: running it repeatedly creates nothing new.
+  ///
+  /// Whether somebody is still a member is the owner's call, made by
+  /// deactivating them — never inferred here from how long it has been since
+  /// they last paid. A member who has not paid since January is exactly the
+  /// member the owner needs to see owing money, not one to quietly write off.
   Future<int> ensureCurrentPeriods({DateTime? now}) async {
     final at = (now ?? DateTime.now()).toUtc();
     final today = DateTime.utc(at.year, at.month, at.day);
@@ -37,6 +42,24 @@ class BillingMaintenance {
       for (final p in await db.select(db.membershipPlans).get()) p.id: p
     };
 
+    // Cycles are read per *member*, not per enrolment: changing plan opens a
+    // new enrolment, and the cycle the member already paid this month stays on
+    // the old one. Looking only at the open enrolment would see no cycle and
+    // roll a duplicate unpaid one for a month that is already settled.
+    final allMemberships = await db.select(db.memberships).get();
+    final memberByMembership = {
+      for (final m in allMemberships) m.id: m.memberId,
+    };
+
+    final periodsByMember = <int, List<MembershipPeriod>>{};
+    for (final period in await (db.select(db.membershipPeriods)
+          ..orderBy([(p) => OrderingTerm(expression: p.periodStart)]))
+        .get()) {
+      final memberId = memberByMembership[period.membershipId];
+      if (memberId == null) continue;
+      periodsByMember.putIfAbsent(memberId, () => []).add(period);
+    }
+
     var created = 0;
 
     await db.transaction(() async {
@@ -44,17 +67,13 @@ class BillingMaintenance {
         if (!activeMemberIds.contains(membership.memberId)) continue;
 
         final duration = plans[membership.planId]?.durationMonths ?? 1;
+        final periods = periodsByMember[membership.memberId] ?? const [];
 
-        final periods = await (db.select(db.membershipPeriods)
-              ..where((p) => p.membershipId.equals(membership.id))
-              ..orderBy([(p) => OrderingTerm(expression: p.periodStart)]))
-            .get();
-
-        final covered = periods.any((p) =>
-            !p.periodStart.isAfter(today) && today.isBefore(p.periodEnd));
         // Drift hands DateTimes back in local time. The instant is right, but
         // reading .month off a local value lands on the wrong month in any
         // negative-offset timezone, so normalise before doing calendar maths.
+        final covered = periods.any((p) =>
+            !p.periodStart.isAfter(today) && today.isBefore(p.periodEnd));
         if (covered) continue;
 
         // Continue the existing cadence where possible, so a quarterly member
@@ -65,7 +84,6 @@ class BillingMaintenance {
           periods: periods,
           duration: duration,
           today: today,
-          fallback: membership.startDate,
         );
 
         await db.into(db.membershipPeriods).insert(
@@ -89,7 +107,6 @@ class BillingMaintenance {
     required List<MembershipPeriod> periods,
     required int duration,
     required DateTime today,
-    required DateTime fallback,
   }) {
     final monthStart = DateTime.utc(today.year, today.month, 1);
     if (periods.isEmpty) return monthStart;

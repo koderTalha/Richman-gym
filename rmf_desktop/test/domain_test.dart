@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:rich_man_fitness/domain/billing_period.dart';
 import 'package:rich_man_fitness/domain/member_status.dart';
 import 'package:rich_man_fitness/domain/money.dart';
+import 'package:rich_man_fitness/domain/name.dart';
 import 'package:rich_man_fitness/domain/phone.dart';
 import 'package:rich_man_fitness/domain/receipt_number.dart';
 
@@ -35,6 +36,58 @@ void main() {
     test('avoids float drift on fractional amounts', () {
       expect(toMinorUnits(3000.5), 300050);
       expect(formatMinorUnits(300050), 'Rs. 3,000.50');
+    });
+  });
+
+  group('normalizeName', () {
+    test('ignores casing', () {
+      expect(normalizeName('ALI KHAN'), normalizeName('Ali Khan'));
+    });
+
+    test('collapses repeated and surrounding whitespace', () {
+      expect(normalizeName('  Ali   Khan '), 'ali khan');
+    });
+
+    test('keeps different people apart', () {
+      // Compared as values rather than collapsed to a boolean first, so a
+      // failure prints what the two names actually normalized to.
+      expect(normalizeName('Ali Khan'), isNot(normalizeName('Ali Khani')));
+    });
+
+    // Hand-typed sheets vary in punctuation far more often than in casing:
+    // "Md. Ali Khan" one year and "Md Ali Khan" the next is one man, and
+    // comparing the raw text filed him as two members with two sets of
+    // payments.
+    test('folds punctuation that carries no meaning', () {
+      expect(normalizeName('Md. Ali Khan'), normalizeName('Md Ali Khan'));
+      expect(normalizeName("Ali O'Khan"), normalizeName('Ali OKhan'));
+      expect(normalizeName('Ali-Raza Khan'), normalizeName('Ali Raza Khan'));
+      expect(normalizeName('Khan, Ali'), normalizeName('Khan Ali'));
+    });
+
+    test('but not letters or digits', () {
+      expect(normalizeName('Ali Khan 2'), isNot(normalizeName('Ali Khan')));
+      expect(normalizeName('Muhammad Ali'), isNot(normalizeName('Muhammed Ali')));
+    });
+
+    test('namesMatch is the same rule, stated once', () {
+      expect(namesMatch('  MD.  ALI   KHAN ', 'Md Ali Khan'), isTrue);
+      expect(namesMatch('Ali Khan', 'Ali Khani'), isFalse);
+    });
+  });
+
+  group('escapeLikePattern', () {
+    test('neutralises the wildcards LIKE would otherwise expand', () {
+      expect(escapeLikePattern('50%'), r'50\%');
+      expect(escapeLikePattern('a_b'), r'a\_b');
+    });
+
+    test('escapes the escape character itself', () {
+      expect(escapeLikePattern(r'a\b'), r'a\\b');
+    });
+
+    test('leaves ordinary search terms alone', () {
+      expect(escapeLikePattern('Ali Khan'), 'Ali Khan');
     });
   });
 
