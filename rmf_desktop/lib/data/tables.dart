@@ -17,7 +17,7 @@ enum WhatsAppProviderKind { manual, mock, meta }
 
 /// What an audit event is about, so the Logs screen can group and filter
 /// without parsing [AuditEvents.action] apart.
-enum AuditCategory { member, payment, receipt, whatsapp, billing }
+enum AuditCategory { member, payment, receipt, whatsapp, billing, update }
 
 /// Whether the operation an audit event describes actually happened.
 ///
@@ -96,6 +96,14 @@ class GymSettings extends Table {
   /// 'dark' or 'light'. Text rather than a boolean so adding a 'system' option
   /// later needs no migration. Dark is the default the gym has been using.
   TextColumn get themeMode => text().withDefault(const Constant('dark'))();
+
+  /// When the app last asked GitHub whether a newer release exists. Null means
+  /// never, which is what an install upgraded from an earlier version reads as.
+  DateTimeColumn get lastUpdateCheckAt => dateTime().nullable()();
+
+  /// A version the owner answered "Later" to, so the banner stops asking about
+  /// that one and starts again at the next release.
+  TextColumn get dismissedUpdateVersion => text().nullable()();
 
   @override
   Set<Column> get primaryKey => {id};

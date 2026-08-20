@@ -44,6 +44,10 @@ dependencies:
   # Already present transitively; promoted to a direct dependency because the
   # WhatsApp media upload sets the MIME type on the multipart file part itself.
   http_parser: ^4.1.2
+  # Reads the version Flutter compiles into the executable, so the update check
+  # compares against what is actually installed rather than a constant somebody
+  # has to remember to edit.
+  package_info_plus: ^9.0.0
   intl: ^0.20.3
   bcrypt: ^1.2.0
   # Already present transitively; promoted to a direct dependency because the
@@ -56,6 +60,7 @@ dependencies:
   file_selector: ^1.1.0
   flutter_bloc: ^9.1.1
   equatable: ^2.1.0
+  crypto: ^3.0.7
 
 dev_dependencies:
   flutter_test:

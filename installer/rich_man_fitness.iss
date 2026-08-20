@@ -50,6 +50,14 @@ ArchitecturesInstallIn64BitMode=x64compatible
 CloseApplications=yes
 RestartApplications=no
 
+; The owner meets this icon three times: on the shortcut, on the setup file they
+; double-click, and in Apps & features. The shortcut gets it from the icon
+; compiled into the executable; these two have to be pointed at it.
+;
+; Path is relative to this file, matching how SourceDir is passed in.
+SetupIconFile=..\rmf_desktop\windows\runner\resources\app_icon.ico
+UninstallDisplayIcon={app}\{#AppExeName}
+
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
@@ -67,7 +75,10 @@ Name: "{group}\Uninstall {#AppName}"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExeName}"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\{#AppExeName}"; Description: "Open {#AppName}"; Flags: nowait postinstall skipifsilent
+; No skipifsilent: the app updates itself by running this installer with
+; /VERYSILENT, and the owner should see it reopen on the new version rather
+; than being left looking at a closed window.
+Filename: "{app}\{#AppExeName}"; Description: "Open {#AppName}"; Flags: nowait postinstall
 
 ; Nothing is listed under [UninstallDelete].
 ;

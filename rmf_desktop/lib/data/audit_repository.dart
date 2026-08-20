@@ -28,6 +28,11 @@ abstract final class AuditAction {
   static const receiptRenderFailed = 'receipt.render_failed';
   static const receiptFilesOrphaned = 'receipt.files_orphaned';
 
+  static const updateAvailable = 'update.available';
+  static const updateInstalling = 'update.installing';
+  static const updateVerifyFailed = 'update.verify_failed';
+  static const updateBackupFailed = 'update.backup_failed';
+
   static const whatsAppResendRequested = 'whatsapp.resend_requested';
   static const whatsAppSent = 'whatsapp.sent';
   static const whatsAppFailed = 'whatsapp.failed';

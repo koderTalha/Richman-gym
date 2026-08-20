@@ -33,7 +33,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 7;
+  int get schemaVersion => 8;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -78,6 +78,12 @@ class AppDatabase extends _$AppDatabase {
             await m.addColumn(payments, payments.updatedAt);
             await m.addColumn(payments, payments.updatedById);
             await m.createTable(auditEvents);
+          }
+          // v8 lets the app update itself: it remembers when it last checked
+          // for a release and which one the owner said "Later" to.
+          if (from < 8) {
+            await m.addColumn(gymSettings, gymSettings.lastUpdateCheckAt);
+            await m.addColumn(gymSettings, gymSettings.dismissedUpdateVersion);
           }
         },
         beforeOpen: (details) async {
