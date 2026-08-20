@@ -69,6 +69,27 @@ dev_dependencies:
   flutter_lints: ^6.0.0
   drift_dev: ^2.34.0
   build_runner: 2.15.1
+  flutter_launcher_icons: ^0.14.4
+
+# The app icon, generated from one source image rather than by hand-editing the
+# per-platform files. Regenerate after changing the artwork with:
+#
+#     dart run flutter_launcher_icons
+#
+# assets/icon/app_icon.png is the black-backed, trimmed icon tile the generators
+# consume; assets/icon/rm_logo.png is the original transparent mark it was
+# derived from. Windows and macOS have no background option here, so the black
+# has to be baked into the source rather than configured.
+flutter_launcher_icons:
+  image_path: assets/icon/app_icon.png
+  windows:
+    generate: true
+    image_path: assets/icon/app_icon.png
+    # The largest Windows asks for; the generator writes the smaller sizes too.
+    icon_size: 256
+  macos:
+    generate: true
+    image_path: assets/icon/app_icon.png
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
