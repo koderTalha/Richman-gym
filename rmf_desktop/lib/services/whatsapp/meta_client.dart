@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
+import 'package:http_parser/http_parser.dart';
 import 'package:logging/logging.dart';
 
 import '../../data/database.dart';
@@ -9,6 +10,7 @@ import 'whatsapp_client.dart';
 final _log = Logger('whatsapp');
 
 const _graphVersion = 'v21.0';
+final _receiptMediaType = MediaType('image', 'png');
 
 /// Result of checking Meta credentials without sending a message.
 class MetaVerification {
@@ -116,11 +118,15 @@ class MetaWhatsAppClient implements WhatsAppClient {
     final request = http.MultipartRequest('POST', _uri('media'))
       ..headers['Authorization'] = 'Bearer $accessToken'
       ..fields['messaging_product'] = 'whatsapp'
-      ..fields['type'] = 'image/png'
+      ..fields['type'] = '$_receiptMediaType'
+      // The part itself must carry the type too. Left off, multipart defaults
+      // to application/octet-stream and Meta rejects the upload with error 100
+      // even though the `type` field above is correct.
       ..files.add(http.MultipartFile.fromBytes(
         'file',
         input.imageBytes,
         filename: input.fileName,
+        contentType: _receiptMediaType,
       ));
 
     final response =
