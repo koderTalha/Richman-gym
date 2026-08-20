@@ -3,9 +3,11 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:logging/logging.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 import 'bloc/auth_bloc.dart';
 import 'bloc/theme_cubit.dart';
+import 'bloc/update_bloc.dart';
 import 'data/audit_repository.dart';
 import 'data/database.dart';
 import 'data/member_repository.dart';
@@ -19,8 +21,10 @@ import 'services/billing_maintenance.dart';
 import 'services/billing_month_checker.dart';
 import 'services/payment_edit_service.dart';
 import 'services/logging/app_logger.dart';
+import 'domain/app_version.dart';
 import 'services/receipt_renderer.dart';
 import 'services/receipt_storage.dart';
+import 'services/update/update_service.dart';
 import 'services/record_payment_service.dart';
 import 'theme/app_theme.dart';
 import 'ui/app_shell.dart';
@@ -76,6 +80,13 @@ Future<Widget> _boot() async {
   // thing painted, with no login form flashing past on the way.
   final restored = await SessionRepository(db).restore();
 
+  // Read from the executable rather than a constant, so the update check
+  // compares against what is genuinely installed. Falls back to the version
+  // this source was built from if the platform cannot say.
+  final packageInfo = await PackageInfo.fromPlatform();
+  final version = AppVersion.tryParse(packageInfo.version) ??
+      const AppVersion(0, 0, 0);
+
   // Cheap insurance: one snapshot a day, seven kept. Deliberately not awaited —
   // it snapshots the database and builds a workbook out of the gym's whole
   // history, and making the owner wait behind that every morning is a poor
@@ -86,6 +97,7 @@ Future<Widget> _boot() async {
     db: db,
     initialTheme: theme,
     restoredUser: restored,
+    version: version,
   );
 }
 
@@ -103,10 +115,14 @@ class RichManFitnessApp extends StatelessWidget {
     required this.db,
     this.initialTheme = ThemeMode.dark,
     this.restoredUser,
+    this.version = const AppVersion(0, 0, 0),
   });
 
   final AppDatabase db;
   final ThemeMode initialTheme;
+
+  /// The version this copy was built as, for the update check.
+  final AppVersion version;
 
   /// Signed in on a previous run; null means show the login screen.
   final User? restoredUser;
@@ -147,6 +163,14 @@ class RichManFitnessApp extends StatelessWidget {
           create: (_) => ReceiptRepository(db),
         ),
         RepositoryProvider<RecordPaymentService>.value(value: recordPayments),
+        RepositoryProvider<UpdateService>(
+          create: (_) => UpdateService(
+            db: db,
+            currentVersion: version,
+            audit: audit,
+            settings: settings,
+          ),
+        ),
         RepositoryProvider<PaymentEditService>(
           create: (_) => PaymentEditService(
             db: db,
@@ -164,6 +188,14 @@ class RichManFitnessApp extends StatelessWidget {
           // Above MaterialApp so the login screen follows the theme too.
           BlocProvider(
             create: (_) => ThemeCubit(settings, initial: initialTheme),
+          ),
+          // Above MaterialApp so the banner in the shell and the card in
+          // Settings read one state machine. Checks on open, at most once a
+          // day; a failure is a log line, not something on screen.
+          BlocProvider(
+            create: (context) =>
+                UpdateBloc(context.read<UpdateService>())
+                  ..add(const UpdateCheckRequested()),
           ),
         ],
         child: BlocBuilder<ThemeCubit, ThemeMode>(

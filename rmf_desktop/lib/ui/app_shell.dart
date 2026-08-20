@@ -10,6 +10,7 @@ import 'members/members_screen.dart';
 import 'payments/payments_screen.dart';
 import 'receipts/receipts_screen.dart';
 import 'settings/settings_screen.dart';
+import 'widgets/update_banner.dart';
 import 'whatsapp/whatsapp_screen.dart';
 
 class NavDestination {
@@ -67,6 +68,9 @@ class _AppShellState extends State<AppShell> {
               children: [
                 _TopBar(userName: user?.name ?? 'Admin',
                     userEmail: user?.email ?? ''),
+                // Sits under the top bar, above whichever screen is showing,
+                // so it is visible from anywhere without covering anything.
+                const UpdateBanner(),
                 Expanded(
                   child: Container(
                     color: context.palette.surfaceBase,

@@ -6,10 +6,17 @@ name: Windows build
 on:
   push:
     branches: [main]
+    # A v-prefixed tag publishes a release. The app's own updater reads that
+    # release, so the tag is what actually ships to the gym.
+    tags: ['v*']
   pull_request:
     branches: [main]
   # Lets you build a .exe on demand from the Actions tab without pushing.
   workflow_dispatch:
+
+# Only the release step needs to write; everything else reads.
+permissions:
+  contents: write
 
 defaults:
   run:
@@ -103,6 +110,22 @@ jobs:
         shell: pwsh
         working-directory: .
 
+      # The app looks for RichManFitness-Setup-<pubspec version>.exe inside the
+      # release for tag v<version>. If the two disagree it would find nothing
+      # and silently never update, so this fails the build instead.
+      - name: Check the tag matches the app version
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          $tag = "${{ github.ref_name }}".TrimStart('v')
+          $app = "${{ steps.version.outputs.value }}"
+          if ($tag -ne $app) {
+            throw "Tag v$tag does not match pubspec version $app. " +
+                  "The updater would look for an installer that is not there."
+          }
+          Write-Host "Tag and app version agree: $app"
+        shell: pwsh
+        working-directory: .
+
       - name: Install Inno Setup
         run: choco install innosetup --no-progress -y
         shell: pwsh
@@ -124,3 +147,30 @@ jobs:
           path: dist/*.exe
           if-no-files-found: error
           retention-days: 90
+
+      # --- Release ---------------------------------------------------------
+      # Only on a tag. The checksum is computed from the very installer being
+      # uploaded, in the same job: the app refuses to run a download that does
+      # not match it, so a hand-typed digest would lock every gym PC out of
+      # updating.
+      - name: Publish the release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $version = "${{ steps.version.outputs.value }}"
+          $installer = "dist\RichManFitness-Setup-$version.exe"
+          if (-not (Test-Path $installer)) { throw "Installer missing: $installer" }
+
+          $digest = (Get-FileHash $installer -Algorithm SHA256).Hash.ToLower()
+          $checksum = "$installer.sha256"
+          "$digest  RichManFitness-Setup-$version.exe" |
+            Out-File -FilePath $checksum -Encoding ascii -NoNewline
+          Write-Host "SHA-256: $digest"
+
+          gh release create "${{ github.ref_name }}" `
+            "$installer" "$checksum" `
+            --title "Rich Man Fitness $version" `
+            --generate-notes
+        shell: pwsh
+        working-directory: .

@@ -8,6 +8,7 @@ import '../../data/settings_repository.dart';
 import '../../domain/money.dart';
 import '../../theme/app_theme.dart';
 import 'backup_card.dart';
+import 'update_card.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -57,6 +58,11 @@ class _SettingsView extends StatelessWidget {
                 _PlansCard(plans: state.plans),
                 const SizedBox(height: 16),
                 BackupCard(
+                  card: ({required title, subtitle, required child}) =>
+                      _Card(title: title, subtitle: subtitle, child: child),
+                ),
+                const SizedBox(height: 16),
+                UpdateCard(
                   card: ({required title, subtitle, required child}) =>
                       _Card(title: title, subtitle: subtitle, child: child),
                 ),

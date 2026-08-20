@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 1.0.3+3
+version: 1.1.0+4
 
 environment:
   sdk: ^3.10.4
@@ -44,6 +44,10 @@ dependencies:
   # Already present transitively; promoted to a direct dependency because the
   # WhatsApp media upload sets the MIME type on the multipart file part itself.
   http_parser: ^4.1.2
+  # Reads the version Flutter compiles into the executable, so the update check
+  # compares against what is actually installed rather than a constant somebody
+  # has to remember to edit.
+  package_info_plus: ^9.0.0
   intl: ^0.20.3
   bcrypt: ^1.2.0
   # Already present transitively; promoted to a direct dependency because the
@@ -56,6 +60,7 @@ dependencies:
   file_selector: ^1.1.0
   flutter_bloc: ^9.1.1
   equatable: ^2.1.0
+  crypto: ^3.0.7
 
 dev_dependencies:
   flutter_test:
@@ -69,6 +74,27 @@ dev_dependencies:
   flutter_lints: ^6.0.0
   drift_dev: ^2.34.0
   build_runner: 2.15.1
+  flutter_launcher_icons: ^0.14.4
+
+# The app icon, generated from one source image rather than by hand-editing the
+# per-platform files. Regenerate after changing the artwork with:
+#
+#     dart run flutter_launcher_icons
+#
+# assets/icon/app_icon.png is the black-backed, trimmed icon tile the generators
+# consume; assets/icon/rm_logo.png is the original transparent mark it was
+# derived from. Windows and macOS have no background option here, so the black
+# has to be baked into the source rather than configured.
+flutter_launcher_icons:
+  image_path: assets/icon/app_icon.png
+  windows:
+    generate: true
+    image_path: assets/icon/app_icon.png
+    # The largest Windows asks for; the generator writes the smaller sizes too.
+    icon_size: 256
+  macos:
+    generate: true
+    image_path: assets/icon/app_icon.png
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec

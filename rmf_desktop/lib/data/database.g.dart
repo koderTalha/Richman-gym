@@ -876,6 +876,29 @@ class $GymSettingsTable extends GymSettings
     requiredDuringInsert: false,
     defaultValue: const Constant('dark'),
   );
+  static const VerificationMeta _lastUpdateCheckAtMeta = const VerificationMeta(
+    'lastUpdateCheckAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> lastUpdateCheckAt =
+      GeneratedColumn<DateTime>(
+        'last_update_check_at',
+        aliasedName,
+        true,
+        type: DriftSqlType.dateTime,
+        requiredDuringInsert: false,
+      );
+  static const VerificationMeta _dismissedUpdateVersionMeta =
+      const VerificationMeta('dismissedUpdateVersion');
+  @override
+  late final GeneratedColumn<String> dismissedUpdateVersion =
+      GeneratedColumn<String>(
+        'dismissed_update_version',
+        aliasedName,
+        true,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+      );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -896,6 +919,8 @@ class $GymSettingsTable extends GymSettings
     whatsappBusinessNumber,
     whatsappMockFails,
     themeMode,
+    lastUpdateCheckAt,
+    dismissedUpdateVersion,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -1035,6 +1060,24 @@ class $GymSettingsTable extends GymSettings
         themeMode.isAcceptableOrUnknown(data['theme_mode']!, _themeModeMeta),
       );
     }
+    if (data.containsKey('last_update_check_at')) {
+      context.handle(
+        _lastUpdateCheckAtMeta,
+        lastUpdateCheckAt.isAcceptableOrUnknown(
+          data['last_update_check_at']!,
+          _lastUpdateCheckAtMeta,
+        ),
+      );
+    }
+    if (data.containsKey('dismissed_update_version')) {
+      context.handle(
+        _dismissedUpdateVersionMeta,
+        dismissedUpdateVersion.isAcceptableOrUnknown(
+          data['dismissed_update_version']!,
+          _dismissedUpdateVersionMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -1118,6 +1161,14 @@ class $GymSettingsTable extends GymSettings
         DriftSqlType.string,
         data['${effectivePrefix}theme_mode'],
       )!,
+      lastUpdateCheckAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}last_update_check_at'],
+      ),
+      dismissedUpdateVersion: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}dismissed_update_version'],
+      ),
     );
   }
 
@@ -1165,6 +1216,14 @@ class GymSetting extends DataClass implements Insertable<GymSetting> {
   /// 'dark' or 'light'. Text rather than a boolean so adding a 'system' option
   /// later needs no migration. Dark is the default the gym has been using.
   final String themeMode;
+
+  /// When the app last asked GitHub whether a newer release exists. Null means
+  /// never, which is what an install upgraded from an earlier version reads as.
+  final DateTime? lastUpdateCheckAt;
+
+  /// A version the owner answered "Later" to, so the banner stops asking about
+  /// that one and starts again at the next release.
+  final String? dismissedUpdateVersion;
   const GymSetting({
     required this.id,
     required this.gymName,
@@ -1184,6 +1243,8 @@ class GymSetting extends DataClass implements Insertable<GymSetting> {
     this.whatsappBusinessNumber,
     required this.whatsappMockFails,
     required this.themeMode,
+    this.lastUpdateCheckAt,
+    this.dismissedUpdateVersion,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -1234,6 +1295,14 @@ class GymSetting extends DataClass implements Insertable<GymSetting> {
     }
     map['whatsapp_mock_fails'] = Variable<bool>(whatsappMockFails);
     map['theme_mode'] = Variable<String>(themeMode);
+    if (!nullToAbsent || lastUpdateCheckAt != null) {
+      map['last_update_check_at'] = Variable<DateTime>(lastUpdateCheckAt);
+    }
+    if (!nullToAbsent || dismissedUpdateVersion != null) {
+      map['dismissed_update_version'] = Variable<String>(
+        dismissedUpdateVersion,
+      );
+    }
     return map;
   }
 
@@ -1278,6 +1347,12 @@ class GymSetting extends DataClass implements Insertable<GymSetting> {
           : Value(whatsappBusinessNumber),
       whatsappMockFails: Value(whatsappMockFails),
       themeMode: Value(themeMode),
+      lastUpdateCheckAt: lastUpdateCheckAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(lastUpdateCheckAt),
+      dismissedUpdateVersion: dismissedUpdateVersion == null && nullToAbsent
+          ? const Value.absent()
+          : Value(dismissedUpdateVersion),
     );
   }
 
@@ -1317,6 +1392,12 @@ class GymSetting extends DataClass implements Insertable<GymSetting> {
       ),
       whatsappMockFails: serializer.fromJson<bool>(json['whatsappMockFails']),
       themeMode: serializer.fromJson<String>(json['themeMode']),
+      lastUpdateCheckAt: serializer.fromJson<DateTime?>(
+        json['lastUpdateCheckAt'],
+      ),
+      dismissedUpdateVersion: serializer.fromJson<String?>(
+        json['dismissedUpdateVersion'],
+      ),
     );
   }
   @override
@@ -1349,6 +1430,10 @@ class GymSetting extends DataClass implements Insertable<GymSetting> {
       ),
       'whatsappMockFails': serializer.toJson<bool>(whatsappMockFails),
       'themeMode': serializer.toJson<String>(themeMode),
+      'lastUpdateCheckAt': serializer.toJson<DateTime?>(lastUpdateCheckAt),
+      'dismissedUpdateVersion': serializer.toJson<String?>(
+        dismissedUpdateVersion,
+      ),
     };
   }
 
@@ -1371,6 +1456,8 @@ class GymSetting extends DataClass implements Insertable<GymSetting> {
     Value<String?> whatsappBusinessNumber = const Value.absent(),
     bool? whatsappMockFails,
     String? themeMode,
+    Value<DateTime?> lastUpdateCheckAt = const Value.absent(),
+    Value<String?> dismissedUpdateVersion = const Value.absent(),
   }) => GymSetting(
     id: id ?? this.id,
     gymName: gymName ?? this.gymName,
@@ -1400,6 +1487,12 @@ class GymSetting extends DataClass implements Insertable<GymSetting> {
         : this.whatsappBusinessNumber,
     whatsappMockFails: whatsappMockFails ?? this.whatsappMockFails,
     themeMode: themeMode ?? this.themeMode,
+    lastUpdateCheckAt: lastUpdateCheckAt.present
+        ? lastUpdateCheckAt.value
+        : this.lastUpdateCheckAt,
+    dismissedUpdateVersion: dismissedUpdateVersion.present
+        ? dismissedUpdateVersion.value
+        : this.dismissedUpdateVersion,
   );
   GymSetting copyWithCompanion(GymSettingsCompanion data) {
     return GymSetting(
@@ -1441,6 +1534,12 @@ class GymSetting extends DataClass implements Insertable<GymSetting> {
           ? data.whatsappMockFails.value
           : this.whatsappMockFails,
       themeMode: data.themeMode.present ? data.themeMode.value : this.themeMode,
+      lastUpdateCheckAt: data.lastUpdateCheckAt.present
+          ? data.lastUpdateCheckAt.value
+          : this.lastUpdateCheckAt,
+      dismissedUpdateVersion: data.dismissedUpdateVersion.present
+          ? data.dismissedUpdateVersion.value
+          : this.dismissedUpdateVersion,
     );
   }
 
@@ -1464,7 +1563,9 @@ class GymSetting extends DataClass implements Insertable<GymSetting> {
           ..write('whatsappBusinessAccountId: $whatsappBusinessAccountId, ')
           ..write('whatsappBusinessNumber: $whatsappBusinessNumber, ')
           ..write('whatsappMockFails: $whatsappMockFails, ')
-          ..write('themeMode: $themeMode')
+          ..write('themeMode: $themeMode, ')
+          ..write('lastUpdateCheckAt: $lastUpdateCheckAt, ')
+          ..write('dismissedUpdateVersion: $dismissedUpdateVersion')
           ..write(')'))
         .toString();
   }
@@ -1489,6 +1590,8 @@ class GymSetting extends DataClass implements Insertable<GymSetting> {
     whatsappBusinessNumber,
     whatsappMockFails,
     themeMode,
+    lastUpdateCheckAt,
+    dismissedUpdateVersion,
   );
   @override
   bool operator ==(Object other) =>
@@ -1511,7 +1614,9 @@ class GymSetting extends DataClass implements Insertable<GymSetting> {
           other.whatsappBusinessAccountId == this.whatsappBusinessAccountId &&
           other.whatsappBusinessNumber == this.whatsappBusinessNumber &&
           other.whatsappMockFails == this.whatsappMockFails &&
-          other.themeMode == this.themeMode);
+          other.themeMode == this.themeMode &&
+          other.lastUpdateCheckAt == this.lastUpdateCheckAt &&
+          other.dismissedUpdateVersion == this.dismissedUpdateVersion);
 }
 
 class GymSettingsCompanion extends UpdateCompanion<GymSetting> {
@@ -1533,6 +1638,8 @@ class GymSettingsCompanion extends UpdateCompanion<GymSetting> {
   final Value<String?> whatsappBusinessNumber;
   final Value<bool> whatsappMockFails;
   final Value<String> themeMode;
+  final Value<DateTime?> lastUpdateCheckAt;
+  final Value<String?> dismissedUpdateVersion;
   const GymSettingsCompanion({
     this.id = const Value.absent(),
     this.gymName = const Value.absent(),
@@ -1552,6 +1659,8 @@ class GymSettingsCompanion extends UpdateCompanion<GymSetting> {
     this.whatsappBusinessNumber = const Value.absent(),
     this.whatsappMockFails = const Value.absent(),
     this.themeMode = const Value.absent(),
+    this.lastUpdateCheckAt = const Value.absent(),
+    this.dismissedUpdateVersion = const Value.absent(),
   });
   GymSettingsCompanion.insert({
     this.id = const Value.absent(),
@@ -1572,6 +1681,8 @@ class GymSettingsCompanion extends UpdateCompanion<GymSetting> {
     this.whatsappBusinessNumber = const Value.absent(),
     this.whatsappMockFails = const Value.absent(),
     this.themeMode = const Value.absent(),
+    this.lastUpdateCheckAt = const Value.absent(),
+    this.dismissedUpdateVersion = const Value.absent(),
   });
   static Insertable<GymSetting> custom({
     Expression<int>? id,
@@ -1592,6 +1703,8 @@ class GymSettingsCompanion extends UpdateCompanion<GymSetting> {
     Expression<String>? whatsappBusinessNumber,
     Expression<bool>? whatsappMockFails,
     Expression<String>? themeMode,
+    Expression<DateTime>? lastUpdateCheckAt,
+    Expression<String>? dismissedUpdateVersion,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -1617,6 +1730,9 @@ class GymSettingsCompanion extends UpdateCompanion<GymSetting> {
         'whatsapp_business_number': whatsappBusinessNumber,
       if (whatsappMockFails != null) 'whatsapp_mock_fails': whatsappMockFails,
       if (themeMode != null) 'theme_mode': themeMode,
+      if (lastUpdateCheckAt != null) 'last_update_check_at': lastUpdateCheckAt,
+      if (dismissedUpdateVersion != null)
+        'dismissed_update_version': dismissedUpdateVersion,
     });
   }
 
@@ -1639,6 +1755,8 @@ class GymSettingsCompanion extends UpdateCompanion<GymSetting> {
     Value<String?>? whatsappBusinessNumber,
     Value<bool>? whatsappMockFails,
     Value<String>? themeMode,
+    Value<DateTime?>? lastUpdateCheckAt,
+    Value<String?>? dismissedUpdateVersion,
   }) {
     return GymSettingsCompanion(
       id: id ?? this.id,
@@ -1662,6 +1780,9 @@ class GymSettingsCompanion extends UpdateCompanion<GymSetting> {
           whatsappBusinessNumber ?? this.whatsappBusinessNumber,
       whatsappMockFails: whatsappMockFails ?? this.whatsappMockFails,
       themeMode: themeMode ?? this.themeMode,
+      lastUpdateCheckAt: lastUpdateCheckAt ?? this.lastUpdateCheckAt,
+      dismissedUpdateVersion:
+          dismissedUpdateVersion ?? this.dismissedUpdateVersion,
     );
   }
 
@@ -1736,6 +1857,14 @@ class GymSettingsCompanion extends UpdateCompanion<GymSetting> {
     if (themeMode.present) {
       map['theme_mode'] = Variable<String>(themeMode.value);
     }
+    if (lastUpdateCheckAt.present) {
+      map['last_update_check_at'] = Variable<DateTime>(lastUpdateCheckAt.value);
+    }
+    if (dismissedUpdateVersion.present) {
+      map['dismissed_update_version'] = Variable<String>(
+        dismissedUpdateVersion.value,
+      );
+    }
     return map;
   }
 
@@ -1759,7 +1888,9 @@ class GymSettingsCompanion extends UpdateCompanion<GymSetting> {
           ..write('whatsappBusinessAccountId: $whatsappBusinessAccountId, ')
           ..write('whatsappBusinessNumber: $whatsappBusinessNumber, ')
           ..write('whatsappMockFails: $whatsappMockFails, ')
-          ..write('themeMode: $themeMode')
+          ..write('themeMode: $themeMode, ')
+          ..write('lastUpdateCheckAt: $lastUpdateCheckAt, ')
+          ..write('dismissedUpdateVersion: $dismissedUpdateVersion')
           ..write(')'))
         .toString();
   }
@@ -8061,6 +8192,8 @@ typedef $$GymSettingsTableCreateCompanionBuilder =
       Value<String?> whatsappBusinessNumber,
       Value<bool> whatsappMockFails,
       Value<String> themeMode,
+      Value<DateTime?> lastUpdateCheckAt,
+      Value<String?> dismissedUpdateVersion,
     });
 typedef $$GymSettingsTableUpdateCompanionBuilder =
     GymSettingsCompanion Function({
@@ -8082,6 +8215,8 @@ typedef $$GymSettingsTableUpdateCompanionBuilder =
       Value<String?> whatsappBusinessNumber,
       Value<bool> whatsappMockFails,
       Value<String> themeMode,
+      Value<DateTime?> lastUpdateCheckAt,
+      Value<String?> dismissedUpdateVersion,
     });
 
 class $$GymSettingsTableFilterComposer
@@ -8187,6 +8322,16 @@ class $$GymSettingsTableFilterComposer
     column: $table.themeMode,
     builder: (column) => ColumnFilters(column),
   );
+
+  ColumnFilters<DateTime> get lastUpdateCheckAt => $composableBuilder(
+    column: $table.lastUpdateCheckAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get dismissedUpdateVersion => $composableBuilder(
+    column: $table.dismissedUpdateVersion,
+    builder: (column) => ColumnFilters(column),
+  );
 }
 
 class $$GymSettingsTableOrderingComposer
@@ -8287,6 +8432,16 @@ class $$GymSettingsTableOrderingComposer
     column: $table.themeMode,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<DateTime> get lastUpdateCheckAt => $composableBuilder(
+    column: $table.lastUpdateCheckAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get dismissedUpdateVersion => $composableBuilder(
+    column: $table.dismissedUpdateVersion,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$GymSettingsTableAnnotationComposer
@@ -8372,6 +8527,16 @@ class $$GymSettingsTableAnnotationComposer
 
   GeneratedColumn<String> get themeMode =>
       $composableBuilder(column: $table.themeMode, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get lastUpdateCheckAt => $composableBuilder(
+    column: $table.lastUpdateCheckAt,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get dismissedUpdateVersion => $composableBuilder(
+    column: $table.dismissedUpdateVersion,
+    builder: (column) => column,
+  );
 }
 
 class $$GymSettingsTableTableManager
@@ -8424,6 +8589,8 @@ class $$GymSettingsTableTableManager
                 Value<String?> whatsappBusinessNumber = const Value.absent(),
                 Value<bool> whatsappMockFails = const Value.absent(),
                 Value<String> themeMode = const Value.absent(),
+                Value<DateTime?> lastUpdateCheckAt = const Value.absent(),
+                Value<String?> dismissedUpdateVersion = const Value.absent(),
               }) => GymSettingsCompanion(
                 id: id,
                 gymName: gymName,
@@ -8443,6 +8610,8 @@ class $$GymSettingsTableTableManager
                 whatsappBusinessNumber: whatsappBusinessNumber,
                 whatsappMockFails: whatsappMockFails,
                 themeMode: themeMode,
+                lastUpdateCheckAt: lastUpdateCheckAt,
+                dismissedUpdateVersion: dismissedUpdateVersion,
               ),
           createCompanionCallback:
               ({
@@ -8465,6 +8634,8 @@ class $$GymSettingsTableTableManager
                 Value<String?> whatsappBusinessNumber = const Value.absent(),
                 Value<bool> whatsappMockFails = const Value.absent(),
                 Value<String> themeMode = const Value.absent(),
+                Value<DateTime?> lastUpdateCheckAt = const Value.absent(),
+                Value<String?> dismissedUpdateVersion = const Value.absent(),
               }) => GymSettingsCompanion.insert(
                 id: id,
                 gymName: gymName,
@@ -8484,6 +8655,8 @@ class $$GymSettingsTableTableManager
                 whatsappBusinessNumber: whatsappBusinessNumber,
                 whatsappMockFails: whatsappMockFails,
                 themeMode: themeMode,
+                lastUpdateCheckAt: lastUpdateCheckAt,
+                dismissedUpdateVersion: dismissedUpdateVersion,
               ),
           withReferenceMapper: (p0) => p0
               .map((e) => (e.readTable(table), BaseReferences(db, table, e)))

@@ -2,6 +2,8 @@ PODS:
   - file_selector_macos (0.0.1):
     - FlutterMacOS
   - FlutterMacOS (1.0.0)
+  - package_info_plus (0.0.1):
+    - FlutterMacOS
   - printing (1.0.0):
     - FlutterMacOS
   - url_launcher_macos (0.0.1):
@@ -10,6 +12,7 @@ PODS:
 DEPENDENCIES:
   - file_selector_macos (from `Flutter/ephemeral/.symlinks/plugins/file_selector_macos/macos`)
   - FlutterMacOS (from `Flutter/ephemeral`)
+  - package_info_plus (from `Flutter/ephemeral/.symlinks/plugins/package_info_plus/macos`)
   - printing (from `Flutter/ephemeral/.symlinks/plugins/printing/macos`)
   - url_launcher_macos (from `Flutter/ephemeral/.symlinks/plugins/url_launcher_macos/macos`)
 
@@ -18,6 +21,8 @@ EXTERNAL SOURCES:
     :path: Flutter/ephemeral/.symlinks/plugins/file_selector_macos/macos
   FlutterMacOS:
     :path: Flutter/ephemeral
+  package_info_plus:
+    :path: Flutter/ephemeral/.symlinks/plugins/package_info_plus/macos
   printing:
     :path: Flutter/ephemeral/.symlinks/plugins/printing/macos
   url_launcher_macos:
@@ -26,6 +31,7 @@ EXTERNAL SOURCES:
 SPEC CHECKSUMS:
   file_selector_macos: 9e9e068e90ebee155097d00e89ae91edb2374db7
   FlutterMacOS: d0db08ddef1a9af05a5ec4b724367152bb0500b1
+  package_info_plus: f0052d280d17aa382b932f399edf32507174e870
   printing: c4cf83c78fd684f9bc318e6aadc18972aa48f617
   url_launcher_macos: f87a979182d112f911de6820aefddaf56ee9fbfd
 

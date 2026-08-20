@@ -34,6 +34,7 @@ void main() {
   Future<void> buildOldDatabase(int version) async {
     final hasSections = version < 4;
     final hasSessions = version >= 6;
+    final hasAuditTrail = version >= 7;
     final db = NativeDatabase(dbFile);
     final executor = DatabaseConnection(db);
 
@@ -49,6 +50,10 @@ void main() {
         'whatsapp_business_account_id TEXT NULL',
         'whatsapp_business_number TEXT NULL',
       ],
+      // v5 remembered the theme. Omitting it left a v6- or v7-shaped database
+      // that drift reads back as a null in a non-nullable column, which is a
+      // fault in this builder rather than in any migration.
+      if (version >= 5) "theme_mode TEXT NOT NULL DEFAULT 'dark'",
     ];
 
     Future<void> run(String sql) => executor.executor.runCustom(sql, const []);
@@ -161,9 +166,33 @@ void main() {
         notes TEXT NULL,
         source TEXT NOT NULL DEFAULT 'manual',
         recorded_by_id INTEGER NOT NULL REFERENCES users (id),
+        ${hasAuditTrail ? 'updated_at INTEGER NULL, updated_by_id INTEGER NULL REFERENCES users (id),' : ''}
         idempotency_key TEXT NOT NULL UNIQUE,
         created_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
       )''');
+
+    // The audit log arrived in v7. Deliberately without foreign keys to
+    // members or payments — see the table's own documentation.
+    if (hasAuditTrail) {
+      await run('''
+        CREATE TABLE audit_events (
+          id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+          category TEXT NOT NULL,
+          action TEXT NOT NULL,
+          outcome TEXT NOT NULL,
+          actor_id INTEGER NULL,
+          actor_name TEXT NULL,
+          member_id INTEGER NULL,
+          member_name TEXT NULL,
+          payment_id INTEGER NULL,
+          receipt_number TEXT NULL,
+          amount_minor INTEGER NULL,
+          period_label TEXT NULL,
+          summary TEXT NOT NULL,
+          detail TEXT NULL,
+          created_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+        )''');
+    }
 
     await run('''
       CREATE TABLE receipts (
@@ -241,6 +270,11 @@ void main() {
         "VALUES (1, 'RMF-2026-000001', 1, 'RMF-2026-000001.png')");
     await run("INSERT INTO receipt_counters (year, last_number) "
         "VALUES (2026, 1)");
+    if (hasAuditTrail) {
+      await run("INSERT INTO audit_events (category, action, outcome, "
+          "member_name, summary) VALUES ('payment', 'payment.edited', "
+          "'success', 'Legacy Member', 'Payment edited for Legacy Member')");
+    }
 
     await run('PRAGMA user_version = $version');
     await executor.executor.close();
@@ -390,8 +424,8 @@ void main() {
     });
   }
 
-  group('upgrading a v6 database to v7', () {
-    test('reaches schema version 7', () async {
+  group('upgrading a v6 database', () {
+    test('reaches the current schema version', () async {
       await buildOldDatabase(6);
       final db = await openWithCurrentCode();
       addTearDown(db.close);
@@ -401,8 +435,9 @@ void main() {
           .map((r) => r.read<int>('user_version'))
           .getSingle();
 
-      expect(version, 7);
-      expect(db.schemaVersion, 7);
+      // Against the code, not a literal: this assertion should not need
+      // editing every time a release adds a migration.
+      expect(version, db.schemaVersion);
     });
 
     test('keeps the payment, its receipt and the numbering sequence', () async {
@@ -495,6 +530,68 @@ void main() {
       expect(event.amountMinor, 300000);
       expect(event.receiptNumber, 'RMF-2026-000001',
           reason: 'the log has to stay readable once the payment is gone');
+    });
+  });
+
+  group('upgrading a v7 database to v8', () {
+    test('reaches the current schema version', () async {
+      await buildOldDatabase(7);
+      final db = await openWithCurrentCode();
+      addTearDown(db.close);
+
+      final version = await db
+          .customSelect('PRAGMA user_version')
+          .map((r) => r.read<int>('user_version'))
+          .getSingle();
+
+      expect(version, db.schemaVersion);
+      expect(db.schemaVersion, 8);
+    });
+
+    test('keeps the members, payments and receipts', () async {
+      await buildOldDatabase(7);
+      final db = await openWithCurrentCode();
+      addTearDown(db.close);
+
+      expect((await db.select(db.members).getSingle()).fullName,
+          'Legacy Member');
+      expect((await db.select(db.payments).getSingle()).amountMinor, 300000);
+      expect((await db.select(db.receipts).getSingle()).receiptNumber,
+          'RMF-2026-000001');
+    });
+
+    test('keeps the audit history written by the previous version', () async {
+      await buildOldDatabase(7);
+      final db = await openWithCurrentCode();
+      addTearDown(db.close);
+
+      final event = await db.select(db.auditEvents).getSingle();
+      expect(event.action, 'payment.edited');
+      expect(event.memberName, 'Legacy Member');
+      expect(event.category, AuditCategory.payment);
+    });
+
+    test('the update-check columns start empty and are writable', () async {
+      await buildOldDatabase(7);
+      final db = await openWithCurrentCode();
+      addTearDown(db.close);
+
+      var settings = await db.select(db.gymSettings).getSingle();
+      expect(settings.lastUpdateCheckAt, isNull,
+          reason: 'an upgraded install has never checked for a release');
+      expect(settings.dismissedUpdateVersion, isNull);
+
+      final checkedAt = DateTime.utc(2026, 8, 21, 8, 30);
+      await (db.update(db.gymSettings)..where((s) => s.id.equals(1))).write(
+        GymSettingsCompanion(
+          lastUpdateCheckAt: Value(checkedAt),
+          dismissedUpdateVersion: const Value('1.2.0'),
+        ),
+      );
+
+      settings = await db.select(db.gymSettings).getSingle();
+      expect(settings.lastUpdateCheckAt!.isAtSameMomentAs(checkedAt), isTrue);
+      expect(settings.dismissedUpdateVersion, '1.2.0');
     });
   });
 

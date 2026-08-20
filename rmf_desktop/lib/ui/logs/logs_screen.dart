@@ -368,6 +368,7 @@ class _CategoryChip extends StatelessWidget {
       AuditCategory.receipt => 'Receipt',
       AuditCategory.whatsapp => 'WhatsApp',
       AuditCategory.billing => 'Billing',
+      AuditCategory.update => 'Update',
     };
 
     return Align(
@@ -486,6 +487,10 @@ String auditActionLabel(String action) => switch (action) {
       AuditAction.receiptResaveFailed => 'Receipt not saved',
       AuditAction.receiptRenderFailed => 'Receipt not generated',
       AuditAction.receiptFilesOrphaned => 'Receipt files left behind',
+      AuditAction.updateAvailable => 'Update available',
+      AuditAction.updateInstalling => 'Installing update',
+      AuditAction.updateVerifyFailed => 'Update failed verification',
+      AuditAction.updateBackupFailed => 'Update stopped, backup failed',
       AuditAction.whatsAppResendRequested => 'Resend requested',
       AuditAction.whatsAppSent => 'Receipt sent',
       AuditAction.whatsAppFailed => 'Send failed',
