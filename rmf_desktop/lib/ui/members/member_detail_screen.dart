@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import '../../bloc/auth_bloc.dart';
 import '../../bloc/member_detail_bloc.dart';
 import '../../data/member_repository.dart';
 import '../../data/payment_repository.dart';
@@ -23,6 +24,7 @@ class MemberDetailScreen extends StatelessWidget {
         memberRepository: context.read<MemberRepository>(),
         paymentRepository: context.read<PaymentRepository>(),
         memberId: memberId,
+        actorId: context.read<AuthBloc>().state.user!.id,
       )..add(const MemberDetailRequested()),
       child: const _MemberDetailView(),
     );
@@ -69,9 +71,70 @@ class _MemberDetailView extends StatelessWidget {
     }
   }
 
+  Future<void> _confirmDelete(BuildContext context, MemberRow row) async {
+    final bloc = context.read<MemberDetailBloc>();
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: dialogContext.palette.surfaceRaised,
+        title: const Text('Delete this member?'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'This permanently removes ${row.member.fullName} '
+              '(#${row.member.memberCode}). It cannot be undone.',
+              style: TextStyle(
+                  fontSize: 13, color: dialogContext.palette.textPrimary),
+            ),
+            const SizedBox(height: 12),
+            Text('What will be removed:',
+                style: labelStyleOf(dialogContext)),
+            const SizedBox(height: 6),
+            Text(
+              '• Their profile and contact details\n'
+              '• Their plan enrolment history\n'
+              '• Their billing cycles\n'
+              '• Any notes kept against them',
+              style: mutedStyleOf(dialogContext),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'No payments are recorded for this member, so no money or '
+              'receipts are affected.',
+              style: mutedStyleOf(dialogContext),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: dialogContext.palette.expired,
+            ),
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Delete member'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) bloc.add(const MemberDeleteRequested());
+  }
+
   @override
   Widget build(BuildContext context) {
-    return BlocBuilder<MemberDetailBloc, MemberDetailState>(
+    return BlocListener<MemberDetailBloc, MemberDetailState>(
+      listenWhen: (a, b) =>
+          a.status != b.status && b.status == MemberDetailStatus.deleted,
+      // The member no longer exists, so neither should the screen showing them.
+      listener: (context, state) => Navigator.of(context).pop(true),
+      child: BlocBuilder<MemberDetailBloc, MemberDetailState>(
       builder: (context, state) {
         return PopScope(
           canPop: false,
@@ -92,14 +155,26 @@ class _MemberDetailView extends StatelessWidget {
                 const Center(child: CircularProgressIndicator()),
               MemberDetailStatus.notFound =>
                 const Center(child: Text('Member not found.')),
-              MemberDetailStatus.ready =>
-                _Body(row: state.member!, payments: state.payments,
-                    onToggleActive: () =>
-                        _confirmToggleActive(context, state.member!)),
+              MemberDetailStatus.deleting =>
+                const Center(child: CircularProgressIndicator()),
+              MemberDetailStatus.deleted => const SizedBox.shrink(),
+              MemberDetailStatus.ready => _Body(
+                  row: state.member!,
+                  payments: state.payments,
+                  canDelete: state.canDelete,
+                  error: state.error,
+                  onToggleActive: () =>
+                      _confirmToggleActive(context, state.member!),
+                  onDelete: () => _confirmDelete(context, state.member!),
+                  onPaymentsChanged: () => context
+                      .read<MemberDetailBloc>()
+                      .add(const MemberDetailRequested()),
+                ),
             },
           ),
         );
       },
+      ),
     );
   }
 }
@@ -108,12 +183,25 @@ class _Body extends StatelessWidget {
   const _Body({
     required this.row,
     required this.payments,
+    required this.canDelete,
+    required this.error,
     required this.onToggleActive,
+    required this.onDelete,
+    required this.onPaymentsChanged,
   });
 
   final MemberRow row;
   final List<PaymentRow> payments;
+  final bool canDelete;
+  final String? error;
   final VoidCallback onToggleActive;
+  final VoidCallback onDelete;
+  final VoidCallback onPaymentsChanged;
+
+  /// Why Delete is unavailable, said before it is pressed rather than after.
+  String get _deleteBlockedReason =>
+      '${payments.length} payment${payments.length == 1 ? '' : 's'} recorded — '
+      'deactivate instead, or delete the payments first';
 
   @override
   Widget build(BuildContext context) {
@@ -162,6 +250,20 @@ class _Body extends StatelessWidget {
                 label: Text(row.member.deactivatedAt == null
                     ? 'Deactivate'
                     : 'Reactivate'),
+              ),
+              const SizedBox(width: 10),
+              Tooltip(
+                message: canDelete
+                    ? 'Permanently remove this member'
+                    : _deleteBlockedReason,
+                child: OutlinedButton.icon(
+                  onPressed: canDelete ? onDelete : null,
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: context.palette.expired,
+                  ),
+                  icon: const Icon(Icons.delete_outline, size: 16),
+                  label: const Text('Delete'),
+                ),
               ),
               const SizedBox(width: 10),
               Builder(
@@ -216,10 +318,27 @@ class _Body extends StatelessWidget {
                   value: formatCalendarDate(row.paidUntil)),
             ],
           ),
+          if (error != null) ...[
+            const SizedBox(height: 18),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: context.palette.expiredBg,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(error!,
+                  style: TextStyle(
+                      color: context.palette.expired, fontSize: 13)),
+            ),
+          ],
           const SizedBox(height: 24),
           Text('PAYMENT HISTORY', style: labelStyleOf(context)),
           const SizedBox(height: 10),
-          PaymentHistoryTable(rows: payments, showMember: false),
+          PaymentHistoryTable(
+            rows: payments,
+            showMember: false,
+            onMutated: onPaymentsChanged,
+          ),
         ],
       ),
     );

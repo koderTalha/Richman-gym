@@ -27,7 +27,13 @@ void main() {
 
   /// Builds a database that looks the way version [version] left it, with a
   /// member, a plan, a membership, a billing cycle, a payment and a receipt.
+  ///
+  /// Two structural details follow the real history: `sections` existed only
+  /// until v4 removed it, and `app_sessions` only from v6 onwards. Getting
+  /// those wrong would test an upgrade path no installation ever had.
   Future<void> buildOldDatabase(int version) async {
+    final hasSections = version < 4;
+    final hasSessions = version >= 6;
     final db = NativeDatabase(dbFile);
     final executor = DatabaseConnection(db);
 
@@ -76,13 +82,24 @@ void main() {
       )''');
 
     // Sections existed until v4 removed them.
-    await run('''
-      CREATE TABLE sections (
-        id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
-        name TEXT NOT NULL UNIQUE,
-        description TEXT NULL,
-        is_active INTEGER NOT NULL DEFAULT 1
-      )''');
+    if (hasSections) {
+      await run('''
+        CREATE TABLE sections (
+          id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+          name TEXT NOT NULL UNIQUE,
+          description TEXT NULL,
+          is_active INTEGER NOT NULL DEFAULT 1
+        )''');
+    }
+
+    if (hasSessions) {
+      await run('''
+        CREATE TABLE app_sessions (
+          id INTEGER NOT NULL DEFAULT 1 PRIMARY KEY,
+          user_id INTEGER NULL REFERENCES users (id) ON DELETE CASCADE,
+          signed_in_at INTEGER NULL
+        )''');
+    }
 
     await run('''
       CREATE TABLE membership_plans (
@@ -107,7 +124,7 @@ void main() {
         address TEXT NULL,
         emergency_contact TEXT NULL,
         joining_date INTEGER NOT NULL,
-        section_id INTEGER NULL REFERENCES sections (id),
+        ${hasSections ? 'section_id INTEGER NULL REFERENCES sections (id),' : ''}
         deactivated_at INTEGER NULL,
         created_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
       )''');
@@ -196,12 +213,22 @@ void main() {
         "VALUES (1, 'Gym Owner', 'admin@richmanfitness.local', 'hashed-secret')");
     await run("INSERT INTO gym_settings (id, gym_name, receipt_prefix, "
         "receipt_footer_message) VALUES (1, 'Rich Man Fitness', 'RMF', 'Thanks.')");
-    await run("INSERT INTO sections (id, name) VALUES (1, 'Boys')");
+    if (hasSections) {
+      await run("INSERT INTO sections (id, name) VALUES (1, 'Boys')");
+    }
     await run("INSERT INTO membership_plans (id, name, duration_months, "
         "price_minor) VALUES (1, 'Monthly', 1, 300000)");
-    await run("INSERT INTO members (id, member_code, full_name, phone, gender, "
-        "joining_date, section_id) VALUES "
-        "(1, 7, 'Legacy Member', '+923000000023', 'Male', 1767225600, 1)");
+    await run(hasSections
+        ? "INSERT INTO members (id, member_code, full_name, phone, gender, "
+            "joining_date, section_id) VALUES "
+            "(1, 7, 'Legacy Member', '+923000000023', 'Male', 1767225600, 1)"
+        : "INSERT INTO members (id, member_code, full_name, phone, gender, "
+            "joining_date) VALUES "
+            "(1, 7, 'Legacy Member', '+923000000023', 'Male', 1767225600)");
+    if (hasSessions) {
+      await run('INSERT INTO app_sessions (id, user_id, signed_in_at) '
+          'VALUES (1, 1, 1767571200)');
+    }
     await run("INSERT INTO memberships (id, member_id, plan_id, start_date) "
         "VALUES (1, 1, 1, 1767225600)");
     await run("INSERT INTO membership_periods (id, membership_id, period_start, "
@@ -333,6 +360,17 @@ void main() {
         expect(settings.whatsappBusinessAccountId, '123456789');
       });
 
+      test('v7 leaves existing payments marked as never edited', () async {
+        await buildOldDatabase(from);
+        final db = await openWithCurrentCode();
+        addTearDown(db.close);
+
+        final payment = await db.select(db.payments).getSingle();
+        expect(payment.updatedAt, isNull,
+            reason: 'a payment nobody has corrected must not look corrected');
+        expect(payment.updatedById, isNull);
+      });
+
       test('the upgraded database still accepts new records', () async {
         await buildOldDatabase(from);
         final db = await openWithCurrentCode();
@@ -351,6 +389,114 @@ void main() {
       });
     });
   }
+
+  group('upgrading a v6 database to v7', () {
+    test('reaches schema version 7', () async {
+      await buildOldDatabase(6);
+      final db = await openWithCurrentCode();
+      addTearDown(db.close);
+
+      final version = await db
+          .customSelect('PRAGMA user_version')
+          .map((r) => r.read<int>('user_version'))
+          .getSingle();
+
+      expect(version, 7);
+      expect(db.schemaVersion, 7);
+    });
+
+    test('keeps the payment, its receipt and the numbering sequence', () async {
+      await buildOldDatabase(6);
+      final db = await openWithCurrentCode();
+      addTearDown(db.close);
+
+      final payment = await db.select(db.payments).getSingle();
+      expect(payment.amountMinor, 300000);
+      expect(payment.idempotencyKey, 'legacy-payment-1');
+
+      expect((await db.select(db.receipts).getSingle()).receiptNumber,
+          'RMF-2026-000001');
+      expect((await db.select(db.receiptCounters).getSingle()).lastNumber, 1);
+    });
+
+    test('keeps the owner signed in', () async {
+      await buildOldDatabase(6);
+      final db = await openWithCurrentCode();
+      addTearDown(db.close);
+
+      final session = await db.select(db.appSessions).getSingle();
+      expect(session.userId, 1,
+          reason: 'an upgrade must not sign the owner out');
+    });
+
+    test('the new payment audit columns are writable', () async {
+      await buildOldDatabase(6);
+      final db = await openWithCurrentCode();
+      addTearDown(db.close);
+
+      final editedAt = DateTime.utc(2026, 8, 20, 9, 30);
+      await (db.update(db.payments)..where((p) => p.id.equals(1))).write(
+        PaymentsCompanion(
+          updatedAt: Value(editedAt),
+          updatedById: const Value(1),
+        ),
+      );
+
+      final payment = await db.select(db.payments).getSingle();
+      // Timestamps go to SQLite as unix seconds and come back on the local
+      // clock, so the instant is what matches, not the DateTime object.
+      expect(payment.updatedAt!.isAtSameMomentAs(editedAt), isTrue);
+      expect(payment.updatedById, 1);
+    });
+
+    test('the audit log table is created and accepts events', () async {
+      await buildOldDatabase(6);
+      final db = await openWithCurrentCode();
+      addTearDown(db.close);
+
+      await db.into(db.auditEvents).insert(AuditEventsCompanion.insert(
+            category: AuditCategory.payment,
+            action: 'payment.edited',
+            outcome: AuditOutcome.success,
+            summary: 'Payment edited for Legacy Member',
+          ));
+
+      final event = await db.select(db.auditEvents).getSingle();
+      expect(event.action, 'payment.edited');
+      expect(event.category, AuditCategory.payment);
+    });
+
+    test('an audit event outlives the payment it describes', () async {
+      await buildOldDatabase(6);
+      final db = await openWithCurrentCode();
+      addTearDown(db.close);
+
+      await db.into(db.auditEvents).insert(AuditEventsCompanion.insert(
+            category: AuditCategory.payment,
+            action: 'payment.deleted',
+            outcome: AuditOutcome.success,
+            memberId: const Value(1),
+            memberName: const Value('Legacy Member'),
+            paymentId: const Value(1),
+            receiptNumber: const Value('RMF-2026-000001'),
+            amountMinor: const Value(300000),
+            summary: 'Payment deleted for Legacy Member',
+          ));
+
+      // Exactly the deletion the event records, foreign keys enforced.
+      await db.customStatement('PRAGMA foreign_keys = ON');
+      await (db.delete(db.receipts)..where((r) => r.paymentId.equals(1))).go();
+      await (db.delete(db.payments)..where((p) => p.id.equals(1))).go();
+
+      final event = await db.select(db.auditEvents).getSingle();
+      expect(event.paymentId, 1,
+          reason: 'the id is copied, not a foreign key, so it survives');
+      expect(event.memberName, 'Legacy Member');
+      expect(event.amountMinor, 300000);
+      expect(event.receiptNumber, 'RMF-2026-000001',
+          reason: 'the log has to stay readable once the payment is gone');
+    });
+  });
 
   test('opening an already-current database changes nothing', () async {
     await buildOldDatabase(4);

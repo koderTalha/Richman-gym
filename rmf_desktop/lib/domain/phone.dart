@@ -28,3 +28,17 @@ String? normalizePhone(String? raw, {IsoCode isoCode = defaultIsoCode}) {
 
 bool isValidPhone(String? raw, {IsoCode isoCode = defaultIsoCode}) =>
     normalizePhone(raw, isoCode: isoCode) != null;
+
+/// Hides all but the last four digits, for the audit log.
+///
+/// The Logs screen is a browsing surface: it is read to answer "what happened
+/// last Tuesday", not to place a call, and a full list of members' numbers is
+/// not something it needs to put on screen. The `WhatsAppMessages` row keeps
+/// the number in full, because that is the record of what was actually dialled
+/// and is what a delivery problem has to be diagnosed against.
+String maskPhone(String? phone) {
+  if (phone == null) return '—';
+  final trimmed = phone.trim();
+  if (trimmed.length <= 4) return trimmed.isEmpty ? '—' : trimmed;
+  return '••••${trimmed.substring(trimmed.length - 4)}';
+}

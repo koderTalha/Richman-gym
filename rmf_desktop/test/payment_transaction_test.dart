@@ -92,7 +92,7 @@ void main() {
         db: db,
         renderer: renderer,
         storage: _FakeStorage(workspace),
-        clientFactory: MockWhatsAppClient.new,
+        clientFactory: () async => MockWhatsAppClient(),
       );
 
   test('the rest of the app keeps working while a receipt renders', () async {

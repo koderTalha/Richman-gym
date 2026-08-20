@@ -6,6 +6,7 @@ import 'package:logging/logging.dart';
 
 import 'bloc/auth_bloc.dart';
 import 'bloc/theme_cubit.dart';
+import 'data/audit_repository.dart';
 import 'data/database.dart';
 import 'data/member_repository.dart';
 import 'data/payment_repository.dart';
@@ -15,10 +16,11 @@ import 'data/session_repository.dart';
 import 'data/settings_repository.dart';
 import 'services/backup_service.dart';
 import 'services/billing_maintenance.dart';
+import 'services/billing_month_checker.dart';
+import 'services/payment_edit_service.dart';
 import 'services/logging/app_logger.dart';
 import 'services/receipt_renderer.dart';
 import 'services/receipt_storage.dart';
-import 'services/whatsapp/whatsapp_client.dart';
 import 'services/record_payment_service.dart';
 import 'theme/app_theme.dart';
 import 'ui/app_shell.dart';
@@ -113,14 +115,30 @@ class RichManFitnessApp extends StatelessWidget {
   Widget build(BuildContext context) {
     final settings = SettingsRepository(db);
     final storage = ReceiptStorage();
+    final audit = AuditRepository(db);
+    final renderer = ReceiptRenderer();
+
+    // Rebuilt per send, so changing the provider in Settings takes effect
+    // immediately without restarting the app.
+    final recordPayments = RecordPaymentService(
+      db: db,
+      renderer: renderer,
+      storage: storage,
+      clientFactory: settings.buildClient,
+      audit: audit,
+    );
 
     return MultiRepositoryProvider(
       providers: [
         RepositoryProvider<AppDatabase>.value(value: db),
         RepositoryProvider<SettingsRepository>.value(value: settings),
         RepositoryProvider<ReceiptStorage>.value(value: storage),
+        RepositoryProvider<AuditRepository>.value(value: audit),
+        RepositoryProvider<BillingMonthChecker>(
+          create: (_) => BillingMonthChecker(db, settings: settings),
+        ),
         RepositoryProvider<MemberRepository>(
-          create: (_) => MemberRepository(db),
+          create: (_) => MemberRepository(db, audit: audit),
         ),
         RepositoryProvider<PaymentRepository>(
           create: (_) => PaymentRepository(db),
@@ -128,14 +146,15 @@ class RichManFitnessApp extends StatelessWidget {
         RepositoryProvider<ReceiptRepository>(
           create: (_) => ReceiptRepository(db),
         ),
-        RepositoryProvider<RecordPaymentService>(
-          create: (_) => RecordPaymentService(
+        RepositoryProvider<RecordPaymentService>.value(value: recordPayments),
+        RepositoryProvider<PaymentEditService>(
+          create: (_) => PaymentEditService(
             db: db,
-            renderer: ReceiptRenderer(),
+            renderer: renderer,
             storage: storage,
-            // Rebuilt per send, so changing the provider in Settings takes
-            // effect immediately without restarting the app.
-            clientFactory: () => _LazyWhatsAppClient(settings),
+            audit: audit,
+            payments: recordPayments,
+            settings: settings,
           ),
         ),
       ],
@@ -169,19 +188,3 @@ class RichManFitnessApp extends StatelessWidget {
   }
 }
 
-/// Defers provider selection until the moment of sending, so the client always
-/// reflects what is currently saved in Settings.
-class _LazyWhatsAppClient implements WhatsAppClient {
-  _LazyWhatsAppClient(this._settings);
-
-  final SettingsRepository _settings;
-
-  @override
-  WhatsAppProviderKind get kind => WhatsAppProviderKind.mock;
-
-  @override
-  Future<WhatsAppSendResult> send(WhatsAppSendInput input) async {
-    final client = await _settings.buildClient();
-    return client.send(input);
-  }
-}

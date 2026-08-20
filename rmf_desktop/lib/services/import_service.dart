@@ -245,10 +245,14 @@ class ImportService {
           // Scoped to the member rather than to one enrolment: a plan change
           // opens a new enrolment, and the cycle this month was billed under
           // may well belong to the old one.
-          var period = await periodForMemberStarting(
+          //
+          // Matched by containment, so a ledger column falling inside a
+          // multi-month cycle recorded through the app is recognised as
+          // already billed instead of opening a second, overlapping cycle.
+          var period = await periodForMemberContaining(
             db,
             memberId: memberId,
-            periodStart: periodStart,
+            month: periodStart,
           );
 
           period ??= await db.into(db.membershipPeriods).insertReturning(

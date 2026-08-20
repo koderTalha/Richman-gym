@@ -21,7 +21,13 @@ class MemberActiveToggled extends MemberDetailEvent {
   List<Object?> get props => [active];
 }
 
-enum MemberDetailStatus { loading, ready, notFound }
+/// Remove the member outright. Refused by the repository while any payment is
+/// recorded against them.
+class MemberDeleteRequested extends MemberDetailEvent {
+  const MemberDeleteRequested();
+}
+
+enum MemberDetailStatus { loading, ready, notFound, deleting, deleted }
 
 class MemberDetailState extends Equatable {
   const MemberDetailState({
@@ -29,6 +35,7 @@ class MemberDetailState extends Equatable {
     this.member,
     this.payments = const [],
     this.changed = false,
+    this.error,
   });
 
   final MemberDetailStatus status;
@@ -38,22 +45,36 @@ class MemberDetailState extends Equatable {
   /// True once something changed, so the list behind can refresh on pop.
   final bool changed;
 
+  /// Owner-facing, e.g. why a deletion was refused.
+  final String? error;
+
+  /// Deleting is only offered while nothing financial points at the member.
+  /// The repository enforces this too; this is what greys the button out and
+  /// lets it explain itself before it is pressed.
+  bool get canDelete =>
+      status == MemberDetailStatus.ready && payments.isEmpty;
+
+  bool get busy => status == MemberDetailStatus.deleting;
+
   MemberDetailState copyWith({
     MemberDetailStatus? status,
     MemberRow? member,
     List<PaymentRow>? payments,
     bool? changed,
+    String? error,
+    bool clearError = false,
   }) =>
       MemberDetailState(
         status: status ?? this.status,
         member: member ?? this.member,
         payments: payments ?? this.payments,
         changed: changed ?? this.changed,
+        error: clearError ? null : (error ?? this.error),
       );
 
   @override
   List<Object?> get props =>
-      [status, member?.id, member?.status, payments.length, changed];
+      [status, member?.id, member?.status, payments.length, changed, error];
 }
 
 class MemberDetailBloc extends Bloc<MemberDetailEvent, MemberDetailState> {
@@ -61,16 +82,21 @@ class MemberDetailBloc extends Bloc<MemberDetailEvent, MemberDetailState> {
     required MemberRepository memberRepository,
     required PaymentRepository paymentRepository,
     required this.memberId,
+    required this.actorId,
   })  : _members = memberRepository,
         _payments = paymentRepository,
         super(const MemberDetailState()) {
     on<MemberDetailRequested>((_, emit) => _load(emit));
     on<MemberActiveToggled>(_onToggleActive);
+    on<MemberDeleteRequested>(_onDelete);
   }
 
   final MemberRepository _members;
   final PaymentRepository _payments;
   final int memberId;
+
+  /// Who is signed in, recorded against everything this bloc does.
+  final int actorId;
 
   Future<void> _load(Emitter<MemberDetailState> emit) async {
     final member = await _members.byId(memberId);
@@ -83,14 +109,39 @@ class MemberDetailBloc extends Bloc<MemberDetailEvent, MemberDetailState> {
       status: MemberDetailStatus.ready,
       member: member,
       payments: payments,
+      clearError: true,
     ));
+  }
+
+  Future<void> _onDelete(
+    MemberDeleteRequested event,
+    Emitter<MemberDetailState> emit,
+  ) async {
+    if (state.busy) return;
+    emit(state.copyWith(status: MemberDetailStatus.deleting, clearError: true));
+
+    final result = await _members.deleteMember(id: memberId, actorId: actorId);
+
+    switch (result) {
+      case MemberDeleted():
+        emit(state.copyWith(
+            status: MemberDetailStatus.deleted, changed: true));
+      case MemberDeleteRefused(:final message):
+        // Reload first — the payments the refusal is about are worth showing —
+        // then put the reason back, since the reload clears it.
+        await _load(emit);
+        emit(state.copyWith(error: message));
+      case MemberDeleteNotFound():
+        emit(state.copyWith(
+            status: MemberDetailStatus.deleted, changed: true));
+    }
   }
 
   Future<void> _onToggleActive(
     MemberActiveToggled event,
     Emitter<MemberDetailState> emit,
   ) async {
-    await _members.setActive(memberId, event.active);
+    await _members.setActive(memberId, event.active, actorId: actorId);
     emit(state.copyWith(changed: true));
     await _load(emit);
   }

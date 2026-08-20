@@ -114,6 +114,9 @@ class _PaymentsViewState extends State<_PaymentsView> {
                         child: PaymentHistoryTable(
                           rows: state.rows,
                           emptyMessage: 'No payments match this view.',
+                          onMutated: () => context
+                              .read<PaymentsBloc>()
+                              .add(const PaymentsRequested()),
                         ),
                       ),
               ),

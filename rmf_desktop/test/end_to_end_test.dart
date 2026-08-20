@@ -6,6 +6,7 @@ import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 import 'package:rich_man_fitness/data/database.dart';
+import 'package:rich_man_fitness/domain/payment_errors.dart';
 import 'package:rich_man_fitness/data/member_repository.dart';
 import 'package:rich_man_fitness/data/payment_repository.dart';
 import 'package:rich_man_fitness/data/receipt_repository.dart';
@@ -79,7 +80,7 @@ void main() {
       db: db,
       renderer: _FakeRenderer(),
       storage: _FakeStorage(Directory(p.join(workspace.path, 'receipts'))),
-      clientFactory: () => client,
+      clientFactory: () async => client,
     );
 
     adminId = (await db.select(db.users).getSingle()).id;
@@ -298,7 +299,7 @@ void main() {
         db: db,
         renderer: _FakeRenderer(),
         storage: _FakeStorage(Directory(p.join(workspace.path, 'r2'))),
-        clientFactory: () => failing,
+        clientFactory: () async => failing,
       );
 
       final memberId = await addMember('Member One', '+923000000022');
@@ -320,7 +321,7 @@ void main() {
         db: db,
         renderer: _FakeRenderer(),
         storage: _FakeStorage(Directory(p.join(workspace.path, 'r3'))),
-        clientFactory: () => useFailing ? failing : client,
+        clientFactory: () async => useFailing ? failing : client,
       );
 
       final result = await service.call(input(memberId, 'retry-me'));
@@ -344,7 +345,7 @@ void main() {
         db: db,
         renderer: _FakeRenderer(),
         storage: _FakeStorage(Directory(p.join(workspace.path, 'r4'))),
-        clientFactory: () => useFailing ? failing : client,
+        clientFactory: () async => useFailing ? failing : client,
       );
 
       final result = await service.call(input(memberId, 'k'));
@@ -414,9 +415,11 @@ void main() {
             joiningDate: DateTime.utc(2026, 1, 1),
           ));
 
+      // A refusal the owner is meant to read, not a crash: the dialog shows
+      // this message as written.
       expect(
         () => payments.call(input(memberId, 'k')),
-        throwsA(isA<StateError>().having(
+        throwsA(isA<PaymentRuleException>().having(
             (e) => e.message, 'message', contains('no active membership'))),
       );
     });

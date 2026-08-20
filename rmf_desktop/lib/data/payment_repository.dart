@@ -9,6 +9,8 @@ class PaymentRow {
     required this.payment,
     required this.member,
     required this.periodLabel,
+    required this.planDurationMonths,
+    required this.periodStart,
     required this.receipt,
     required this.whatsAppStatus,
     required this.recordedByName,
@@ -17,6 +19,14 @@ class PaymentRow {
   final Payment payment;
   final Member member;
   final String periodLabel;
+
+  /// Length of the plan the cycle was billed under. Carried so the edit form
+  /// can label the billing period correctly without looking the plan up again.
+  final int planDurationMonths;
+
+  /// UTC start of that cycle, or null for a payment with no cycle. The edit
+  /// form opens on this month rather than on today's.
+  final DateTime? periodStart;
   final Receipt? receipt;
   final WhatsAppStatus? whatsAppStatus;
   final String recordedByName;
@@ -122,6 +132,8 @@ class PaymentRepository {
       return PaymentRow(
         payment: payment,
         member: members[payment.memberId]!,
+        planDurationMonths: duration,
+        periodStart: period?.periodStart.toUtc(),
         periodLabel: period == null
             ? '—'
             : formatBillingPeriod(period.periodStart, duration),
