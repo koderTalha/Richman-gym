@@ -7,6 +7,7 @@ import '../../data/receipt_repository.dart';
 import '../../data/settings_repository.dart';
 import '../../services/record_payment_service.dart';
 import '../../services/whatsapp/whatsapp_client.dart';
+import '../../domain/dates.dart';
 import '../../theme/app_theme.dart';
 import '../widgets/status_badge.dart';
 
@@ -102,18 +103,22 @@ class _WhatsAppView extends StatelessWidget {
                     WhatsAppScreenStatus.failed => Center(
                         child: Text('Could not load messages: ${state.error}',
                             style: TextStyle(color: context.palette.expired))),
-                    WhatsAppScreenStatus.ready => state.rows.isEmpty
+                    WhatsAppScreenStatus.ready => state.threads.isEmpty
                         ? Center(
                             child: Text('No WhatsApp messages in this view.',
                                 style: mutedStyleOf(context)))
                         : ListView.separated(
-                            itemCount: state.rows.length,
+                            itemCount: state.threads.length,
                             separatorBuilder: (_, _) =>
                                 const SizedBox(height: 8),
-                            itemBuilder: (context, i) => _MessageCard(
-                              row: state.rows[i],
+                            itemBuilder: (context, i) => _ThreadCard(
+                              // Keyed by receipt so expanding one card does
+                              // not follow the index onto another after a
+                              // filter change or a reload.
+                              key: ValueKey(state.threads[i].receipt.id),
+                              thread: state.threads[i],
                               retrying: state.retryingReceiptId ==
-                                  state.rows[i].message.receiptId,
+                                  state.threads[i].receipt.id,
                             ),
                           ),
                   },
@@ -220,15 +225,29 @@ class _Info extends StatelessWidget {
   }
 }
 
-class _MessageCard extends StatelessWidget {
-  const _MessageCard({required this.row, required this.retrying});
+/// One receipt, its current delivery state, and every attempt behind it.
+class _ThreadCard extends StatefulWidget {
+  const _ThreadCard({
+    super.key,
+    required this.thread,
+    required this.retrying,
+  });
 
-  final WhatsAppMessageRow row;
+  final WhatsAppThread thread;
   final bool retrying;
 
   @override
+  State<_ThreadCard> createState() => _ThreadCardState();
+}
+
+class _ThreadCardState extends State<_ThreadCard> {
+  bool _expanded = false;
+
+  WhatsAppThread get _thread => widget.thread;
+
+  @override
   Widget build(BuildContext context) {
-    final message = row.message;
+    final latest = _thread.latest;
 
     return Container(
       padding: const EdgeInsets.all(14),
@@ -237,63 +256,167 @@ class _MessageCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: context.palette.border),
       ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('${_thread.member.fullName} · ${latest.phone}',
+                        style: TextStyle(
+                            fontSize: 13, color: context.palette.textPrimary)),
+                    const SizedBox(height: 2),
+                    Text(_thread.receipt.receiptNumber,
+                        style: TextStyle(
+                            fontFamily: 'monospace',
+                            fontSize: 11,
+                            color: context.palette.textMuted)),
+                    const SizedBox(height: 4),
+                    Text(_summary(), style: mutedStyleOf(context)),
+                    // Only the current state is shown up front. Errors that
+                    // have since been retried past belong in the history, not
+                    // in six lines of red on the way to it.
+                    if (latest.errorMessage != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Text(latest.errorMessage!,
+                            style: TextStyle(
+                                fontSize: 11, color: context.palette.expired)),
+                      ),
+                    if (latest.externalMessageId != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 2),
+                        child: Text(latest.externalMessageId!,
+                            style: TextStyle(
+                                fontSize: 11, color: context.palette.textHint)),
+                      ),
+                  ],
+                ),
+              ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  WhatsAppStatusBadge(status: _thread.status),
+                  if (_thread.needsRetry) ...[
+                    const SizedBox(height: 8),
+                    OutlinedButton(
+                      onPressed: widget.retrying
+                          ? null
+                          : () => context.read<WhatsAppBloc>().add(
+                              WhatsAppRetryRequested(_thread.receipt.id)),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 8),
+                        textStyle: const TextStyle(fontSize: 12),
+                      ),
+                      child: Text(widget.retrying ? 'Retrying…' : 'Retry'),
+                    ),
+                  ],
+                ],
+              ),
+            ],
+          ),
+          if (_thread.attemptCount > 1) ...[
+            const SizedBox(height: 6),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                onPressed: () => setState(() => _expanded = !_expanded),
+                icon: Icon(_expanded ? Icons.expand_less : Icons.expand_more,
+                    size: 16),
+                label: Text(_expanded
+                    ? 'Hide attempts'
+                    : 'Show all ${_thread.attemptCount} attempts'),
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 6),
+                  textStyle: const TextStyle(fontSize: 12),
+                  foregroundColor: context.palette.textSecondary,
+                ),
+              ),
+            ),
+            if (_expanded) ...[
+              const Divider(height: 12),
+              for (final attempt in _thread.attempts)
+                _AttemptLine(attempt: attempt),
+            ],
+          ],
+        ],
+      ),
+    );
+  }
+
+  /// The one line that replaces the repeated rows: how many tries it took, and
+  /// when the last one happened.
+  String _summary() {
+    final when = formatDayMonthYear(_thread.lastActivityAt.toLocal());
+    if (_thread.attemptCount == 1) return '1 attempt · $when';
+
+    final failed = _thread.failedAttempts;
+    return [
+      '${_thread.attemptCount} attempts',
+      if (failed > 0) '$failed failed',
+      'last $when',
+    ].join(' · ');
+  }
+}
+
+/// One send attempt inside an expanded thread.
+class _AttemptLine extends StatelessWidget {
+  const _AttemptLine({required this.attempt});
+
+  final WhatsAppMessage attempt;
+
+  @override
+  Widget build(BuildContext context) {
+    final at = attempt.sentAt ?? attempt.failedAt ?? attempt.createdAt;
+    final detail = attempt.errorMessage ?? attempt.externalMessageId;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('${row.member.fullName} · ${message.phone}',
-                    style: TextStyle(
-                        fontSize: 13, color: context.palette.textPrimary)),
-                const SizedBox(height: 2),
-                Text(
-                  '${row.receipt.receiptNumber}'
-                  '${message.attemptNumber > 1 ? " · attempt ${message.attemptNumber}" : ""}',
-                  style: TextStyle(
-                      fontFamily: 'monospace',
-                      fontSize: 11,
-                      color: context.palette.textMuted),
-                ),
-                if (message.externalMessageId != null)
-                  Text(message.externalMessageId!,
-                      style: TextStyle(
-                          fontSize: 11, color: context.palette.textHint)),
-                if (message.errorMessage != null)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 4),
-                    child: Text(message.errorMessage!,
-                        style: TextStyle(
-                            fontSize: 11, color: context.palette.expired)),
-                  ),
-              ],
-            ),
+          SizedBox(
+            width: 28,
+            child: Text('#${attempt.attemptNumber}',
+                style: TextStyle(
+                    fontSize: 11,
+                    fontFamily: 'monospace',
+                    color: context.palette.textMuted)),
           ),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              WhatsAppStatusBadge(status: message.status),
-              if (message.status == WhatsAppStatus.failed) ...[
-                const SizedBox(height: 8),
-                OutlinedButton(
-                  onPressed: retrying
-                      ? null
-                      : () => context
-                          .read<WhatsAppBloc>()
-                          .add(WhatsAppRetryRequested(message.receiptId)),
-                  style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 12, vertical: 8),
-                    textStyle: const TextStyle(fontSize: 12),
-                  ),
-                  child: Text(retrying ? 'Retrying…' : 'Retry'),
-                ),
-              ],
-            ],
+          SizedBox(
+            width: 76,
+            child: Text(_time(at),
+                style: TextStyle(
+                    fontSize: 11, color: context.palette.textMuted)),
+          ),
+          SizedBox(width: 92, child: WhatsAppStatusBadge(status: attempt.status)),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              detail ?? '—',
+              style: TextStyle(
+                fontSize: 11,
+                height: 1.4,
+                color: attempt.status == WhatsAppStatus.failed
+                    ? context.palette.expired
+                    : context.palette.textHint,
+              ),
+            ),
           ),
         ],
       ),
     );
+  }
+
+  static String _time(DateTime at) {
+    final local = at.toLocal();
+    return '${formatDayMonthYear(local)} '
+        '${local.hour.toString().padLeft(2, '0')}:'
+        '${local.minute.toString().padLeft(2, '0')}';
   }
 }

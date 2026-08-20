@@ -22,16 +22,45 @@ class ReceiptRow {
   WhatsAppStatus? get whatsAppStatus => latestMessage?.status;
 }
 
-class WhatsAppMessageRow {
-  const WhatsAppMessageRow({
-    required this.message,
+/// One receipt's complete send history.
+///
+/// A retry appends an attempt rather than replacing the last one, so a receipt
+/// the owner chased four times has five rows in `whats_app_messages`. Listing
+/// those rows one per line put the same member and receipt on screen five times
+/// over, with a Retry button beside each — five buttons for one thing to retry.
+/// The receipt is the unit that gets sent, so it is the unit shown.
+class WhatsAppThread {
+  const WhatsAppThread({
     required this.member,
     required this.receipt,
+    required this.attempts,
   });
 
-  final WhatsAppMessage message;
   final Member member;
   final Receipt receipt;
+
+  /// Newest attempt first. Never empty — a thread exists because an attempt
+  /// was made.
+  final List<WhatsAppMessage> attempts;
+
+  WhatsAppMessage get latest => attempts.first;
+
+  /// What the receipt's delivery actually stands at now, which is the latest
+  /// attempt and not the worst one: six failures followed by a success is a
+  /// receipt the member has.
+  WhatsAppStatus get status => latest.status;
+
+  int get attemptCount => attempts.length;
+
+  /// Only the latest attempt is worth retrying, and only if it failed.
+  bool get needsRetry => status == WhatsAppStatus.failed;
+
+  /// How many attempts failed along the way, for the summary line.
+  int get failedAttempts =>
+      attempts.where((a) => a.status == WhatsAppStatus.failed).length;
+
+  DateTime get lastActivityAt =>
+      latest.sentAt ?? latest.failedAt ?? latest.createdAt;
 }
 
 class ReceiptRepository {
@@ -94,32 +123,60 @@ class ReceiptRepository {
         .toList();
   }
 
-  Future<List<WhatsAppMessageRow>> messages({
+  /// Send history, one entry per receipt, newest activity first.
+  ///
+  /// [status] filters on each receipt's *latest* attempt, so filtering by
+  /// Failed lists what still needs attention rather than every receipt that
+  /// ever hiccuped.
+  ///
+  /// Bounded in SQL rather than in Dart: the latest attempt per receipt is
+  /// picked, filtered, ordered and limited by the database, and only then are
+  /// the attempts for that page of receipts read.
+  Future<List<WhatsAppThread>> sendHistory({
     WhatsAppStatus? status,
-    int limit = 300,
+    int limit = 200,
   }) async {
-    var query = db.select(db.whatsAppMessages)
+    // The highest id per receipt is its latest attempt: ids are handed out in
+    // order, and a retry always inserts.
+    final latestIds = db.selectOnly(db.whatsAppMessages)
+      ..addColumns([db.whatsAppMessages.id.max()])
+      ..groupBy([db.whatsAppMessages.receiptId]);
+
+    final query = db.select(db.whatsAppMessages)
+      ..where((m) => m.id.isInQuery(latestIds))
       ..orderBy([
-        (m) => OrderingTerm(expression: m.id, mode: OrderingMode.desc)
+        (m) => OrderingTerm(expression: m.id, mode: OrderingMode.desc),
       ])
       ..limit(limit);
 
     if (status != null) {
-      query = query..where((m) => m.status.equalsValue(status));
+      query.where((m) => m.status.equalsValue(status));
     }
 
-    final messages = await query.get();
-    if (messages.isEmpty) return const [];
+    final newest = await query.get();
+    if (newest.isEmpty) return const [];
 
-    final memberIds = messages.map((m) => m.memberId).toSet().toList();
+    final receiptIds = newest.map((m) => m.receiptId).toList();
+
+    // Every attempt belonging to this page, newest first within each receipt.
+    final attempts = <int, List<WhatsAppMessage>>{};
+    for (final message in await (db.select(db.whatsAppMessages)
+          ..where((m) => m.receiptId.isIn(receiptIds))
+          ..orderBy([
+            (m) => OrderingTerm(
+                expression: m.attemptNumber, mode: OrderingMode.desc),
+          ]))
+        .get()) {
+      attempts.putIfAbsent(message.receiptId, () => []).add(message);
+    }
+
     final members = {
       for (final m in await (db.select(db.members)
-            ..where((m) => m.id.isIn(memberIds)))
+            ..where((m) => m.id.isIn(
+                newest.map((message) => message.memberId).toSet().toList())))
           .get())
         m.id: m,
     };
-
-    final receiptIds = messages.map((m) => m.receiptId).toSet().toList();
     final receipts = {
       for (final r in await (db.select(db.receipts)
             ..where((r) => r.id.isIn(receiptIds)))
@@ -127,15 +184,16 @@ class ReceiptRepository {
         r.id: r,
     };
 
-    return messages
-        .where((m) =>
-            members.containsKey(m.memberId) && receipts.containsKey(m.receiptId))
-        .map((m) => WhatsAppMessageRow(
-              message: m,
-              member: members[m.memberId]!,
-              receipt: receipts[m.receiptId]!,
-            ))
-        .toList();
+    return [
+      for (final message in newest)
+        if (members[message.memberId] != null &&
+            receipts[message.receiptId] != null)
+          WhatsAppThread(
+            member: members[message.memberId]!,
+            receipt: receipts[message.receiptId]!,
+            attempts: attempts[message.receiptId] ?? [message],
+          ),
+    ];
   }
 
   Future<int> failedCount() async {
