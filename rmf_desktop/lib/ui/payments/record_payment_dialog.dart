@@ -4,15 +4,16 @@ import 'package:printing/printing.dart';
 
 import '../../bloc/auth_bloc.dart';
 import '../../bloc/record_payment_bloc.dart';
-import '../../data/database.dart';
 import '../../data/member_repository.dart';
+import '../../domain/billing_month_check.dart';
 import '../../domain/billing_period.dart';
-import '../../domain/money.dart';
 import '../../domain/phone.dart';
 import '../../services/receipt_storage.dart';
+import '../../services/billing_month_checker.dart';
 import '../../services/record_payment_service.dart';
 import '../../theme/app_theme.dart';
-import 'payment_history_table.dart';
+import 'billing_warnings_dialog.dart';
+import 'payment_form_fields.dart';
 
 /// Opens the Record Payment flow. Resolves to true if a payment was recorded,
 /// so the caller can refresh.
@@ -21,6 +22,7 @@ Future<bool?> showRecordPaymentDialog(
   required MemberRow member,
 }) {
   final service = context.read<RecordPaymentService>();
+  final checker = context.read<BillingMonthChecker>();
   final userId = context.read<AuthBloc>().state.user!.id;
 
   return showDialog<bool>(
@@ -29,6 +31,7 @@ Future<bool?> showRecordPaymentDialog(
     builder: (_) => BlocProvider(
       create: (_) => RecordPaymentBloc(
         service: service,
+        checker: checker,
         memberId: member.id,
         memberName: member.member.fullName,
         memberPhone: member.member.phone,
@@ -50,126 +53,82 @@ class _RecordPaymentDialog extends StatefulWidget {
 
 class _RecordPaymentDialogState extends State<_RecordPaymentDialog> {
   final _formKey = GlobalKey<FormState>();
-  final _amount = TextEditingController();
-  final _reference = TextEditingController();
-  final _notes = TextEditingController();
+  late final PaymentFormController _form;
 
-  PaymentMethod _method = PaymentMethod.cash;
-  DateTime _paymentDate = DateTime.now();
-  late String _billingMonth;
   late bool _sendWhatsApp;
   bool _recordedAnything = false;
 
   bool get _phoneUsable => isValidPhone(widget.member.member.phone);
 
+  /// Drives the billing-period label, so a quarterly member does not read as
+  /// paying for a single month.
+  int get _planDuration => widget.member.plan?.durationMonths ?? 1;
+
   @override
   void initState() {
     super.initState();
-    _billingMonth = currentBillingMonth();
+    _form = PaymentFormController(
+      billingMonth: currentBillingMonth(),
+      initialAmountMinor: widget.member.feeMinor,
+    );
     _sendWhatsApp = _phoneUsable;
-    final fee = widget.member.feeMinor;
-    if (fee != null) _amount.text = fromMinorUnits(fee).toStringAsFixed(0);
   }
 
   @override
   void dispose() {
-    _amount.dispose();
-    _reference.dispose();
-    _notes.dispose();
+    _form.dispose();
     super.dispose();
   }
 
-  Future<void> _submit() async {
+  void _submit() {
     if (!_formKey.currentState!.validate()) return;
 
-    // Warn before billing a month that already has a payment: legitimate
-    // occasionally, a costly mistake more often.
-    final existing = await context
-        .read<RecordPaymentService>()
-        .existingPaymentForPeriod(
-          memberId: widget.member.id,
-          billingMonth: _billingMonth,
-        );
-
-    if (existing != null && mounted) {
-      final periodLabel =
-          formatBillingPeriod(parseBillingMonth(_billingMonth), 1);
-      final confirmed = await showDialog<bool>(
-        context: context,
-        builder: (dialogContext) => AlertDialog(
-          backgroundColor: context.palette.surfaceRaised,
-          title: const Text('Already paid'),
-          content: Text(
-            '$periodLabel is already recorded as paid — '
-            '${formatMinorUnits(existing.amountMinor)} on '
-            '${formatShortDate(existing.paymentDate)}.\n\n'
-            'Record another payment for the same month?',
-            style: mutedStyleOf(context),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(false),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.of(dialogContext).pop(true),
-              child: const Text('Record anyway'),
-            ),
-          ],
-        ),
-      );
-      if (confirmed != true) return;
-    }
-
-    if (!mounted) return;
-
+    // The billing-month rules run in the bloc, which is what lets Record and
+    // Edit Payment share one implementation of them.
     context.read<RecordPaymentBloc>().add(
           RecordPaymentSubmitted(
-            amountMinor: toMinorUnits(double.parse(_amount.text.trim())),
-            method: _method,
-            paymentDate: _paymentDate,
-            billingMonth: _billingMonth,
+            amountMinor: _form.amountMinor,
+            method: _form.method,
+            paymentDate: _form.paymentDate,
+            billingMonth: _form.billingMonth,
             sendWhatsApp: _sendWhatsApp,
-            referenceNumber: _reference.text,
-            notes: _notes.text,
+            referenceNumber: _form.reference.text,
+            notes: _form.notes.text,
           ),
         );
   }
 
-  Future<void> _pickDate() async {
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: _paymentDate,
-      firstDate: DateTime(2020),
-      lastDate: DateTime.now().add(const Duration(days: 1)),
+  /// Shows the one warnings dialog and hands the answer back to the bloc.
+  Future<void> _askToConfirm(List<BillingMonthFinding> findings) async {
+    final proceed = await confirmBillingWarnings(
+      context,
+      findings,
+      continueLabel: 'Record anyway',
     );
-    if (picked != null) setState(() => _paymentDate = picked);
-  }
+    if (!mounted) return;
 
-  Future<void> _pickBillingMonth() async {
-    final parts = _billingMonth.split('-');
-    final initial = DateTime(int.parse(parts[0]), int.parse(parts[1]));
-
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: initial,
-      firstDate: DateTime(2020),
-      lastDate: DateTime(DateTime.now().year + 2),
-      initialDatePickerMode: DatePickerMode.year,
-      helpText: 'Select any day in the billing month',
-    );
-    if (picked != null) {
-      setState(() => _billingMonth =
-          '${picked.year}-${picked.month.toString().padLeft(2, '0')}');
-    }
+    final bloc = context.read<RecordPaymentBloc>();
+    bloc.add(proceed
+        ? const RecordPaymentConfirmed()
+        : const RecordPaymentConfirmationDismissed());
   }
 
   @override
   Widget build(BuildContext context) {
-    return BlocListener<RecordPaymentBloc, RecordPaymentState>(
-      listenWhen: (a, b) =>
-          a.status != b.status && b.status == RecordPaymentStatus.success,
-      listener: (context, state) => _recordedAnything = true,
+    return MultiBlocListener(
+      listeners: [
+        BlocListener<RecordPaymentBloc, RecordPaymentState>(
+          listenWhen: (a, b) =>
+              a.status != b.status && b.status == RecordPaymentStatus.success,
+          listener: (context, state) => _recordedAnything = true,
+        ),
+        BlocListener<RecordPaymentBloc, RecordPaymentState>(
+          listenWhen: (a, b) =>
+              a.status != b.status &&
+              b.status == RecordPaymentStatus.awaitingConfirmation,
+          listener: (context, state) => _askToConfirm(state.findings),
+        ),
+      ],
       child: Dialog(
         backgroundColor: context.palette.surfaceRaised,
         child: ConstrainedBox(
@@ -188,7 +147,7 @@ class _RecordPaymentDialogState extends State<_RecordPaymentDialog> {
                               state: state,
                               memberName: widget.member.member.fullName,
                             )
-                          : _form(state),
+                          : _formBody(state),
                     ),
                   ),
                 ],
@@ -233,95 +192,23 @@ class _RecordPaymentDialogState extends State<_RecordPaymentDialog> {
         ),
       );
 
-  Widget _form(RecordPaymentState state) {
-    final submitting = state.status == RecordPaymentStatus.submitting;
+  Widget _formBody(RecordPaymentState state) {
+    final busy = state.busy;
 
     return Form(
       key: _formKey,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: TextFormField(
-                  controller: _amount,
-                  decoration: const InputDecoration(
-                      labelText: 'Amount (PKR) *', isDense: true),
-                  keyboardType: TextInputType.number,
-                  autofocus: true,
-                  validator: (v) {
-                    final parsed = double.tryParse((v ?? '').trim());
-                    if (parsed == null || parsed <= 0) {
-                      return 'Enter an amount greater than zero';
-                    }
-                    return null;
-                  },
-                ),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: DropdownButtonFormField<PaymentMethod>(
-                  initialValue: _method,
-                  decoration: const InputDecoration(
-                      labelText: 'Payment method', isDense: true),
-                  items: PaymentMethod.values
-                      .map((m) => DropdownMenuItem(
-                          value: m, child: Text(paymentMethodLabel(m))))
-                      .toList(),
-                  onChanged: (v) => setState(() => _method = v ?? _method),
-                ),
-              ),
-            ],
+          PaymentFormFields(
+            controller: _form,
+            planDurationMonths: _planDuration,
+            enabled: !busy,
           ),
-          const SizedBox(height: 14),
-          Row(
-            children: [
-              Expanded(
-                child: InkWell(
-                  onTap: _pickDate,
-                  child: InputDecorator(
-                    decoration: const InputDecoration(
-                        labelText: 'Payment date', isDense: true),
-                    child: Text(formatShortDate(_paymentDate),
-                        style: TextStyle(
-                            fontSize: 14, color: context.palette.textPrimary)),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: InkWell(
-                  onTap: _pickBillingMonth,
-                  child: InputDecorator(
-                    decoration: const InputDecoration(
-                        labelText: 'Billing period', isDense: true),
-                    child: Text(
-                      formatBillingPeriod(parseBillingMonth(_billingMonth), 1),
-                      style: TextStyle(
-                          fontSize: 14, color: context.palette.textPrimary),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          TextFormField(
-            controller: _reference,
-            decoration: const InputDecoration(
-              labelText: 'Transaction / reference no. (optional)',
-              hintText: 'e.g. 114828',
-              isDense: true,
-            ),
-          ),
-          const SizedBox(height: 14),
-          TextFormField(
-            controller: _notes,
-            decoration: const InputDecoration(
-                labelText: 'Notes (optional)', isDense: true),
-            maxLines: 2,
-          ),
+          if (state.findings.isNotEmpty) ...[
+            const SizedBox(height: 14),
+            _BlockedBanner(findings: state.findings),
+          ],
           const SizedBox(height: 16),
           Container(
             decoration: BoxDecoration(
@@ -331,7 +218,7 @@ class _RecordPaymentDialogState extends State<_RecordPaymentDialog> {
             ),
             child: CheckboxListTile(
               value: _sendWhatsApp,
-              onChanged: _phoneUsable
+              onChanged: _phoneUsable && !state.busy
                   ? (v) => setState(() => _sendWhatsApp = v ?? false)
                   : null,
               controlAffinity: ListTileControlAffinity.leading,
@@ -362,8 +249,8 @@ class _RecordPaymentDialogState extends State<_RecordPaymentDialog> {
           ],
           const SizedBox(height: 20),
           FilledButton(
-            onPressed: submitting ? null : _submit,
-            child: Text(submitting ? 'Recording…' : 'Confirm Payment'),
+            onPressed: busy ? null : _submit,
+            child: Text(busy ? 'Recording…' : 'Confirm Payment'),
           ),
         ],
       ),
@@ -531,6 +418,33 @@ class _Step extends StatelessWidget {
             child: Text(label,
                 style: TextStyle(color: color, fontSize: 13)),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Billing months that cannot be right, shown on the form rather than as a
+/// dialog: there is nothing to confirm, only something to correct.
+class _BlockedBanner extends StatelessWidget {
+  const _BlockedBanner({required this.findings});
+
+  final List<BillingMonthFinding> findings;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: context.palette.expiredBg,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (final finding in findings)
+            Text(finding.message,
+                style: TextStyle(color: context.palette.expired, fontSize: 13)),
         ],
       ),
     );

@@ -1,12 +1,18 @@
 import 'package:drift/drift.dart';
 import 'package:logging/logging.dart';
 
+import '../data/audit_repository.dart';
 import '../data/database.dart';
 import '../data/membership_queries.dart';
+import '../domain/billing_month_check.dart';
 import '../domain/billing_period.dart';
+import '../domain/dates.dart';
 import '../domain/money.dart';
+import '../domain/payment_errors.dart';
+import '../domain/payment_method.dart';
 import '../domain/phone.dart';
 import '../domain/receipt_number.dart';
+import 'billing_month_checker.dart';
 import 'receipt_renderer.dart';
 import 'receipt_storage.dart';
 import 'whatsapp/whatsapp_client.dart';
@@ -25,6 +31,7 @@ class RecordPaymentInput {
     required this.idempotencyKey,
     this.referenceNumber,
     this.notes,
+    this.acknowledgedIssues = const [],
   });
 
   final int memberId;
@@ -43,6 +50,10 @@ class RecordPaymentInput {
   final String idempotencyKey;
   final String? referenceNumber;
   final String? notes;
+
+  /// Billing-month warnings the owner confirmed. Recorded so the log shows a
+  /// decision was made rather than that the check never ran.
+  final List<BillingMonthIssue> acknowledgedIssues;
 }
 
 sealed class WhatsAppOutcome {
@@ -103,14 +114,29 @@ class RecordPaymentService {
     required this.renderer,
     required this.storage,
     required this.clientFactory,
-  });
+    AuditRepository? audit,
+    BillingMonthChecker? checker,
+  })  : _audit = audit ?? AuditRepository(db),
+        _checker = checker ?? BillingMonthChecker(db);
 
   final AppDatabase db;
   final ReceiptRenderer renderer;
   final ReceiptStorage storage;
+  final AuditRepository _audit;
 
-  /// Resolved lazily so a provider/config change takes effect without a restart.
-  final WhatsAppClient Function() clientFactory;
+  /// The same rules the dialog runs before submitting. Checked again here so a
+  /// month that cannot be right is refused by the code that writes the money,
+  /// not only by the form in front of it.
+  final BillingMonthChecker _checker;
+
+  /// Resolved per send, so a provider or credential change in Settings takes
+  /// effect without a restart.
+  ///
+  /// Asynchronous because choosing the provider means reading the settings row.
+  /// A synchronous factory could only ever hand back a wrapper that did not yet
+  /// know which provider it was — which is how every attempt came to be
+  /// recorded against `mock`, real Meta sends included.
+  final Future<WhatsAppClient> Function() clientFactory;
 
   /// An existing payment for the cycle the owner is about to bill, if any.
   ///
@@ -124,10 +150,13 @@ class RecordPaymentService {
     // Scoped to the member, not to their open enrolment: changing plan leaves
     // the month they already paid on the closed enrolment, and missing it here
     // meant the warning went quiet exactly when it was most needed.
-    final period = await periodForMemberStarting(
+    //
+    // By containment rather than start month, so a quarterly member's
+    // August-October cycle is found when the owner picks September.
+    final period = await periodForMemberContaining(
       db,
       memberId: memberId,
-      periodStart: parseBillingMonth(billingMonth),
+      month: parseBillingMonth(billingMonth),
     );
     if (period == null) return null;
 
@@ -147,7 +176,7 @@ class RecordPaymentService {
     final membership = await openMembershipFor(db, input.memberId);
 
     if (membership == null) {
-      throw StateError(
+      throw PaymentRuleException(
         '${member.fullName} has no active membership. '
         'Assign a plan before recording a payment.',
       );
@@ -161,11 +190,25 @@ class RecordPaymentService {
         await (db.select(db.gymSettings)..where((s) => s.id.equals(1)))
             .getSingle();
 
+    await _guardBillingMonth(input, member);
+
     final bounds = periodBounds(input.billingMonth, plan.durationMonths);
     final receiptYear = input.paymentDate.year;
 
+    // Which cycle this month belongs to, if one already exists. Read before
+    // rendering because the receipt has to name that cycle's own months: on a
+    // three-month plan, a payment picked as September belongs to — and must
+    // read as — August 2026 - October 2026.
+    final existingCycle = await periodForMemberContaining(
+      db,
+      memberId: member.id,
+      month: bounds.periodStart,
+    );
+    final cycleStart =
+        existingCycle?.periodStart.toUtc() ?? bounds.periodStart;
+
     final periodLabel =
-        formatBillingPeriod(bounds.periodStart, plan.durationMonths);
+        formatBillingPeriod(cycleStart, plan.durationMonths);
     final amountLabel =
         formatMinorUnits(input.amountMinor, settings.currency);
 
@@ -193,12 +236,12 @@ class RecordPaymentService {
     final rendered = await renderer.render(ReceiptData(
       gymName: settings.gymName,
       receiptNumber: receiptNumber,
-      paymentDate: _formatDate(input.paymentDate),
+      paymentDate: formatDayMonthYear(input.paymentDate),
       memberName: member.fullName,
       memberCode: member.memberCode,
       membershipLabel: plan.name,
       billingPeriod: periodLabel,
-      paymentMethod: _methodLabel(input.method),
+      paymentMethod: paymentMethodLabel(input.method),
       referenceNumber: input.referenceNumber,
       amountLabel: amountLabel,
       footerMessage: settings.receiptFooterMessage,
@@ -213,10 +256,13 @@ class RecordPaymentService {
     final ({int paymentId, int receiptId}) committed;
     try {
       committed = await db.transaction(() async {
-        var period = await periodForMemberStarting(
+        // Resolved again inside the transaction: the read above was for the
+        // receipt text, and between then and here another submit could have
+        // opened the cycle.
+        var period = await periodForMemberContaining(
           db,
           memberId: member.id,
-          periodStart: bounds.periodStart,
+          month: bounds.periodStart,
         );
 
         period ??= await db.into(db.membershipPeriods).insertReturning(
@@ -302,6 +348,48 @@ class RecordPaymentService {
     );
   }
 
+  /// Refuses a billing month that cannot be right, and records the warnings
+  /// the owner chose to continue past.
+  Future<void> _guardBillingMonth(
+    RecordPaymentInput input,
+    Member member,
+  ) async {
+    final check = await _checker.check(
+      memberId: input.memberId,
+      billingMonth: input.billingMonth,
+    );
+
+    if (check.review.isBlocked) {
+      final message = check.review.blocking.map((f) => f.message).join(' ');
+      await _audit.record(
+        category: AuditCategory.billing,
+        action: AuditAction.billingMonthBlocked,
+        outcome: AuditOutcome.refused,
+        actorId: input.recordedById,
+        memberId: member.id,
+        memberName: member.fullName,
+        summary: 'Payment blocked: ${input.billingMonth} is not a valid '
+            'billing month for ${member.fullName}',
+        detail: check.review.blocking.map((f) => f.message).toList(),
+      );
+      throw PaymentRuleException(message);
+    }
+
+    if (input.acknowledgedIssues.isEmpty) return;
+
+    await _audit.record(
+      category: AuditCategory.billing,
+      action: AuditAction.billingMonthConfirmed,
+      outcome: AuditOutcome.success,
+      actorId: input.recordedById,
+      memberId: member.id,
+      memberName: member.fullName,
+      summary: 'Billing-month warnings confirmed for ${member.fullName} '
+          '(${input.billingMonth})',
+      detail: input.acknowledgedIssues.map((i) => i.name).toList(),
+    );
+  }
+
   /// What was recorded for [idempotencyKey] on an earlier submit, if anything.
   Future<RecordPaymentResult?> _resultForKey(String idempotencyKey) async {
     final payment = await (db.select(db.payments)
@@ -347,7 +435,7 @@ class RecordPaymentService {
 
     late final WhatsAppClient client;
     try {
-      client = clientFactory();
+      client = await clientFactory();
     } catch (e, s) {
       _log.severe('WhatsApp client could not be built', e, s);
       return _recordFailure(
@@ -541,21 +629,4 @@ class RecordPaymentService {
   String? _blankToNull(String? value) =>
       (value == null || value.trim().isEmpty) ? null : value.trim();
 
-  static String _formatDate(DateTime date) {
-    const months = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
-    ];
-    return '${date.day.toString().padLeft(2, '0')} '
-        '${months[date.month - 1]} ${date.year}';
-  }
-
-  static String _methodLabel(PaymentMethod method) => switch (method) {
-        PaymentMethod.cash => 'Cash',
-        PaymentMethod.bankTransfer => 'Bank Transfer',
-        PaymentMethod.easypaisa => 'Easypaisa',
-        PaymentMethod.jazzcash => 'JazzCash',
-        PaymentMethod.card => 'Card',
-        PaymentMethod.other => 'Other',
-      };
 }

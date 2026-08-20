@@ -360,6 +360,9 @@ class ExcelExportService {
     return '${two(at.day)}-${_monthLabels[at.month - 1]}-${at.year % 100}';
   }
 
+  /// Deliberately not `paymentMethodLabel`: the workbook follows the wording
+  /// of the ledger the owner has always kept, which is not the wording the app
+  /// screens use.
   static String _methodLabel(PaymentMethod method) => switch (method) {
         PaymentMethod.cash => 'Cash Payment',
         PaymentMethod.bankTransfer => 'Bank Transfer',

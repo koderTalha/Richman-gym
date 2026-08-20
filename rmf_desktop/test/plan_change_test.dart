@@ -141,7 +141,7 @@ void main() {
       db: db,
       renderer: _FakeRenderer(),
       storage: _FakeStorage(workspace),
-      clientFactory: MockWhatsAppClient.new,
+      clientFactory: () async => MockWhatsAppClient(),
     );
 
     final existing = await service.existingPaymentForPeriod(

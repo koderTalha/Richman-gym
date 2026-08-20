@@ -15,6 +15,18 @@ enum WhatsAppStatus { queued, sent, delivered, read, failed }
 
 enum WhatsAppProviderKind { manual, mock, meta }
 
+/// What an audit event is about, so the Logs screen can group and filter
+/// without parsing [AuditEvents.action] apart.
+enum AuditCategory { member, payment, receipt, whatsapp, billing }
+
+/// Whether the operation an audit event describes actually happened.
+///
+/// `refused` is not a failure: it is the app declining on purpose, e.g. a
+/// member who cannot be deleted while their payments exist. Worth recording
+/// separately, because a run of refusals is a sign the owner is trying to do
+/// something the app is not letting them do.
+enum AuditOutcome { success, refused, failed }
+
 class Users extends Table {
   IntColumn get id => integer().autoIncrement()();
   TextColumn get name => text()();
@@ -173,6 +185,13 @@ class Payments extends Table {
       textEnum<PaymentSource>().withDefault(const Constant('manual'))();
   IntColumn get recordedById => integer().references(Users, #id)();
 
+  /// Set when a recorded payment is corrected. The receipt is re-rendered in
+  /// place under its original number, so without these two columns nothing on
+  /// the row itself would show it had ever been touched. Null means never
+  /// edited, which is what every row predating v7 reads as.
+  DateTimeColumn get updatedAt => dateTime().nullable()();
+  IntColumn get updatedById => integer().nullable().references(Users, #id)();
+
   /// Unique per submission — the accidental double-click guard.
   TextColumn get idempotencyKey => text().unique()();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
@@ -222,5 +241,48 @@ class MemberNotes extends Table {
   IntColumn get memberId => integer().references(Members, #id)();
   TextColumn get body => text()();
   IntColumn get createdById => integer().references(Users, #id)();
+  DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
+}
+
+/// One row per meaningful business mutation, written for the owner to read.
+///
+/// Deliberately holds **no foreign keys** to members or payments. Foreign keys
+/// are enforced on every connection, so a reference to the row being deleted
+/// would either block the deletion this event exists to record, or be cascaded
+/// away together with it. The member's name, the receipt number, the amount and
+/// the period label are copied in instead — that copy is the whole point, and
+/// is what keeps a deletion legible after its subject is gone.
+class AuditEvents extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  TextColumn get category => textEnum<AuditCategory>()();
+
+  /// Dotted machine name, e.g. 'payment.edited'. Paired with [summary] rather
+  /// than shown to the owner directly.
+  TextColumn get action => text()();
+  TextColumn get outcome => textEnum<AuditOutcome>()();
+
+  /// Who did it. Copied, not referenced — see the class comment.
+  IntColumn get actorId => integer().nullable()();
+  TextColumn get actorName => text().nullable()();
+
+  /// What it was done to. Also copied.
+  IntColumn get memberId => integer().nullable()();
+  TextColumn get memberName => text().nullable()();
+  IntColumn get paymentId => integer().nullable()();
+  TextColumn get receiptNumber => text().nullable()();
+
+  /// Minor units, matching Payments.amountMinor.
+  IntColumn get amountMinor => integer().nullable()();
+
+  /// Already formatted, e.g. "August 2026 - October 2026". Stored rather than
+  /// derived because the cycle it describes may no longer exist.
+  TextColumn get periodLabel => text().nullable()();
+
+  /// One readable line, e.g. "Payment edited for Ali Raza (RMF-2026-000012)".
+  TextColumn get summary => text()();
+
+  /// Supporting detail, one "Field: before → after" per line, or an error
+  /// category. Never holds tokens, credentials or raw API response bodies.
+  TextColumn get detail => text().nullable()();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
 }

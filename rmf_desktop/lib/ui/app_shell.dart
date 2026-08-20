@@ -5,6 +5,7 @@ import '../bloc/auth_bloc.dart';
 import '../bloc/theme_cubit.dart';
 import '../theme/app_theme.dart';
 import 'dashboard_screen.dart';
+import 'logs/logs_screen.dart';
 import 'members/members_screen.dart';
 import 'payments/payments_screen.dart';
 import 'receipts/receipts_screen.dart';
@@ -33,6 +34,7 @@ final navDestinations = <NavDestination>[
       (_) => const ReceiptsScreen()),
   NavDestination('WhatsApp', Icons.chat_outlined,
       (_) => const WhatsAppScreen()),
+  NavDestination('Logs', Icons.article_outlined, (_) => const LogsScreen()),
   NavDestination('Reports', Icons.bar_chart_outlined, (_) => const SizedBox(),
       enabled: false),
   NavDestination('Settings', Icons.settings_outlined,

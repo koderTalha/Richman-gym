@@ -39,7 +39,7 @@ enum WhatsAppScreenStatus { loading, ready, failed }
 class WhatsAppState extends Equatable {
   const WhatsAppState({
     this.status = WhatsAppScreenStatus.loading,
-    this.rows = const [],
+    this.threads = const [],
     this.filter,
     this.config,
     this.retryingReceiptId,
@@ -48,7 +48,8 @@ class WhatsAppState extends Equatable {
   });
 
   final WhatsAppScreenStatus status;
-  final List<WhatsAppMessageRow> rows;
+  /// One entry per receipt, each carrying its own attempt history.
+  final List<WhatsAppThread> threads;
   final WhatsAppStatus? filter;
   final WhatsAppConfig? config;
   final int? retryingReceiptId;
@@ -57,7 +58,7 @@ class WhatsAppState extends Equatable {
 
   WhatsAppState copyWith({
     WhatsAppScreenStatus? status,
-    List<WhatsAppMessageRow>? rows,
+    List<WhatsAppThread>? threads,
     WhatsAppStatus? filter,
     bool clearFilter = false,
     WhatsAppConfig? config,
@@ -68,7 +69,7 @@ class WhatsAppState extends Equatable {
   }) =>
       WhatsAppState(
         status: status ?? this.status,
-        rows: rows ?? this.rows,
+        threads: threads ?? this.threads,
         filter: clearFilter ? null : (filter ?? this.filter),
         config: config ?? this.config,
         retryingReceiptId:
@@ -80,7 +81,7 @@ class WhatsAppState extends Equatable {
   @override
   List<Object?> get props => [
         status,
-        rows.length,
+        threads.length,
         filter,
         config?.kind,
         config?.isConfigured,
@@ -117,7 +118,7 @@ class WhatsAppBloc extends Bloc<WhatsAppEvent, WhatsAppState> {
     try {
       emit(state.copyWith(
         status: WhatsAppScreenStatus.ready,
-        rows: await _repository.messages(status: state.filter),
+        threads: await _repository.sendHistory(status: state.filter),
         config: await _settings.whatsAppConfig(),
         clearRetrying: true,
       ));

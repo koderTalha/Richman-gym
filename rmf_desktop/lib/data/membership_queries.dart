@@ -66,3 +66,55 @@ Future<Payment?> paymentForPeriod(AppDatabase db, int periodId) async {
       .get();
   return rows.isEmpty ? null : rows.first;
 }
+
+/// The member's billing cycle that *contains* [month], whichever enrolment it
+/// belongs to.
+///
+/// Distinct from [periodForMemberStarting], and the reason a multi-month plan
+/// cannot be billed twice for the same cycle: on a three-month plan there is no
+/// cycle *starting* in September, but September sits squarely inside the
+/// August-October one. A lookup matching only the start month found nothing
+/// there, so the duplicate warning stayed silent and a second payment could be
+/// taken for a cycle already settled.
+///
+/// Comparisons are against UTC-anchored boundaries, matching how cycles are
+/// stored: start inclusive, end exclusive.
+Future<MembershipPeriod?> periodForMemberContaining(
+  AppDatabase db, {
+  required int memberId,
+  required DateTime month,
+}) async {
+  final membershipIds =
+      (await allMembershipsFor(db, memberId)).map((m) => m.id).toList();
+  if (membershipIds.isEmpty) return null;
+
+  final at = month.toUtc();
+
+  final rows = await (db.select(db.membershipPeriods)
+        ..where((p) =>
+            p.membershipId.isIn(membershipIds) &
+            p.periodStart.isSmallerOrEqualValue(at) &
+            p.periodEnd.isBiggerThanValue(at))
+        ..orderBy([
+          (p) => OrderingTerm(
+              expression: p.periodStart, mode: OrderingMode.desc)
+        ])
+        ..limit(1))
+      .get();
+  return rows.isEmpty ? null : rows.first;
+}
+
+/// Every billing cycle the member has, oldest first.
+Future<List<MembershipPeriod>> periodsForMember(
+  AppDatabase db,
+  int memberId,
+) async {
+  final membershipIds =
+      (await allMembershipsFor(db, memberId)).map((m) => m.id).toList();
+  if (membershipIds.isEmpty) return const [];
+
+  return (db.select(db.membershipPeriods)
+        ..where((p) => p.membershipId.isIn(membershipIds))
+        ..orderBy([(p) => OrderingTerm(expression: p.periodStart)]))
+      .get();
+}

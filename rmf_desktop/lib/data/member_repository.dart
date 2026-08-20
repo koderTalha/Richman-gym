@@ -2,8 +2,46 @@ import 'package:drift/drift.dart';
 
 import '../domain/member_status.dart';
 import '../domain/name.dart';
+import 'audit_repository.dart';
 import 'database.dart';
 import 'membership_queries.dart';
+
+/// The outcome of trying to delete a member. Typed, so the UI never has to
+/// read a message to work out what happened.
+sealed class MemberDeleteResult {
+  const MemberDeleteResult();
+}
+
+class MemberDeleted extends MemberDeleteResult {
+  const MemberDeleted(this.memberName);
+  final String memberName;
+}
+
+/// The member has money recorded against them, so they are kept.
+///
+/// Deactivating is the answer for somebody who has left: the gym's revenue
+/// history, receipts and exports all depend on their payments continuing to
+/// exist. Deleting is for the mistake — the duplicate import, the member
+/// entered twice — which by definition has no payments.
+class MemberDeleteRefused extends MemberDeleteResult {
+  const MemberDeleteRefused({
+    required this.memberName,
+    required this.paymentCount,
+  });
+
+  final String memberName;
+  final int paymentCount;
+
+  String get message => '$memberName has $paymentCount '
+      '${paymentCount == 1 ? 'payment' : 'payments'} recorded. Deactivate them '
+      'instead, or delete the payments first.';
+}
+
+class MemberDeleteNotFound extends MemberDeleteResult {
+  const MemberDeleteNotFound();
+
+  String get message => 'That member no longer exists.';
+}
 
 /// A member joined with everything the list and profile screens need, plus the
 /// status derived from real payment records.
@@ -57,9 +95,15 @@ Member? matchByName(Iterable<Member> candidates, String fullName) {
 }
 
 class MemberRepository {
-  MemberRepository(this.db);
+  MemberRepository(this.db, {AuditRepository? audit})
+      : _audit = audit ?? AuditRepository(db);
 
   final AppDatabase db;
+
+  /// Member deletions and deactivations are exactly the changes the owner will
+  /// later want to account for, so they are recorded rather than left to be
+  /// inferred from a member who is simply no longer there.
+  final AuditRepository _audit;
 
   /// Builds the status view for every member in one pass.
   ///
@@ -415,12 +459,121 @@ class MemberRepository {
   }
 
   /// Soft deactivation only — payments and receipts must survive.
-  Future<void> setActive(int id, bool active) async {
+  Future<void> setActive(int id, bool active, {int? actorId}) async {
+    final member =
+        await (db.select(db.members)..where((m) => m.id.equals(id)))
+            .getSingleOrNull();
+
     await (db.update(db.members)..where((m) => m.id.equals(id))).write(
       MembersCompanion(
         deactivatedAt: Value(active ? null : DateTime.now().toUtc()),
       ),
     );
+
+    if (member == null) return;
+    await _audit.record(
+      category: AuditCategory.member,
+      action: active
+          ? AuditAction.memberReactivated
+          : AuditAction.memberDeactivated,
+      outcome: AuditOutcome.success,
+      actorId: actorId,
+      memberId: id,
+      memberName: member.fullName,
+      summary: '${member.fullName} '
+          '${active ? 'reactivated' : 'deactivated'}',
+    );
+  }
+
+  /// Removes a member and everything that exists only to describe them.
+  ///
+  /// Refused outright while any payment is recorded against them: their money
+  /// is the gym's own history, and a delete that quietly rewrote last year's
+  /// revenue would be the most damaging thing in this application. That guard
+  /// runs inside the transaction, so a payment taken at the same moment on
+  /// another screen cannot slip past it.
+  ///
+  /// Foreign keys are enforced on every connection, so the order below is not a
+  /// preference: notes and billing cycles point at the member and their
+  /// enrolments, and have to go first.
+  Future<MemberDeleteResult> deleteMember({
+    required int id,
+    int? actorId,
+  }) async {
+    final member =
+        await (db.select(db.members)..where((m) => m.id.equals(id)))
+            .getSingleOrNull();
+    if (member == null) return const MemberDeleteNotFound();
+
+    final outcome = await db.transaction(() async {
+      final payments = await (db.select(db.payments)
+            ..where((p) => p.memberId.equals(id)))
+          .get();
+
+      if (payments.isNotEmpty) {
+        return MemberDeleteRefused(
+          memberName: member.fullName,
+          paymentCount: payments.length,
+        );
+      }
+
+      final membershipIds =
+          (await (db.select(db.memberships)..where((m) => m.memberId.equals(id)))
+                  .get())
+              .map((m) => m.id)
+              .toList();
+
+      await (db.delete(db.memberNotes)..where((n) => n.memberId.equals(id)))
+          .go();
+
+      if (membershipIds.isNotEmpty) {
+        await (db.delete(db.membershipPeriods)
+              ..where((p) => p.membershipId.isIn(membershipIds)))
+            .go();
+      }
+
+      await (db.delete(db.memberships)..where((m) => m.memberId.equals(id)))
+          .go();
+      await (db.delete(db.members)..where((m) => m.id.equals(id))).go();
+
+      return MemberDeleted(member.fullName);
+    });
+
+    switch (outcome) {
+      case MemberDeleted():
+        await _audit.record(
+          category: AuditCategory.member,
+          action: AuditAction.memberDeleted,
+          outcome: AuditOutcome.success,
+          actorId: actorId,
+          memberId: id,
+          memberName: member.fullName,
+          summary: '${member.fullName} deleted '
+              '(member #${member.memberCode})',
+          detail: const [
+            'No payments were recorded against this member.',
+            'Their notes, plan enrolment and billing cycles were removed.',
+          ],
+        );
+      case MemberDeleteRefused(:final paymentCount):
+        await _audit.record(
+          category: AuditCategory.member,
+          action: AuditAction.memberDeleteRefused,
+          outcome: AuditOutcome.refused,
+          actorId: actorId,
+          memberId: id,
+          memberName: member.fullName,
+          summary: 'Deletion of ${member.fullName} refused — '
+              '$paymentCount payment${paymentCount == 1 ? '' : 's'} recorded',
+          detail: const [
+            'Payments must be deleted before the member can be.',
+          ],
+        );
+      case MemberDeleteNotFound():
+        break;
+    }
+
+    return outcome;
   }
 
 

@@ -23,6 +23,7 @@ part 'database.g.dart';
     ReceiptCounters,
     WhatsAppMessages,
     MemberNotes,
+    AuditEvents,
   ],
 )
 class AppDatabase extends _$AppDatabase {
@@ -32,7 +33,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 6;
+  int get schemaVersion => 7;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -69,6 +70,15 @@ class AppDatabase extends _$AppDatabase {
           if (from < 6) {
             await m.createTable(appSessions);
           }
+          // v7 makes corrections traceable: two columns recording who last
+          // edited a payment, and the audit log the Logs screen reads. Both
+          // columns are nullable, so every payment recorded before this
+          // release reads as never edited rather than as edited by nobody.
+          if (from < 7) {
+            await m.addColumn(payments, payments.updatedAt);
+            await m.addColumn(payments, payments.updatedById);
+            await m.createTable(auditEvents);
+          }
         },
         beforeOpen: (details) async {
           // Enforce the foreign keys declared in tables.dart; SQLite ignores
@@ -94,6 +104,8 @@ class AppDatabase extends _$AppDatabase {
       'CREATE INDEX IF NOT EXISTS idx_payments_member ON payments (member_id)',
       'CREATE INDEX IF NOT EXISTS idx_payments_period ON payments (membership_period_id)',
       'CREATE INDEX IF NOT EXISTS idx_messages_receipt ON whats_app_messages (receipt_id)',
+      // The Logs screen always reads newest-first, and pages with a limit.
+      'CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_events (created_at)',
     ];
     for (final statement in indexes) {
       await customStatement(statement);

@@ -3880,6 +3880,31 @@ class $PaymentsTable extends Payments with TableInfo<$PaymentsTable, Payment> {
       'REFERENCES users (id)',
     ),
   );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+    'updated_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _updatedByIdMeta = const VerificationMeta(
+    'updatedById',
+  );
+  @override
+  late final GeneratedColumn<int> updatedById = GeneratedColumn<int>(
+    'updated_by_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES users (id)',
+    ),
+  );
   static const VerificationMeta _idempotencyKeyMeta = const VerificationMeta(
     'idempotencyKey',
   );
@@ -3916,6 +3941,8 @@ class $PaymentsTable extends Payments with TableInfo<$PaymentsTable, Payment> {
     notes,
     source,
     recordedById,
+    updatedAt,
+    updatedById,
     idempotencyKey,
     createdAt,
   ];
@@ -3999,6 +4026,21 @@ class $PaymentsTable extends Payments with TableInfo<$PaymentsTable, Payment> {
     } else if (isInserting) {
       context.missing(_recordedByIdMeta);
     }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    }
+    if (data.containsKey('updated_by_id')) {
+      context.handle(
+        _updatedByIdMeta,
+        updatedById.isAcceptableOrUnknown(
+          data['updated_by_id']!,
+          _updatedByIdMeta,
+        ),
+      );
+    }
     if (data.containsKey('idempotency_key')) {
       context.handle(
         _idempotencyKeyMeta,
@@ -4069,6 +4111,14 @@ class $PaymentsTable extends Payments with TableInfo<$PaymentsTable, Payment> {
         DriftSqlType.int,
         data['${effectivePrefix}recorded_by_id'],
       )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}updated_at'],
+      ),
+      updatedById: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}updated_by_id'],
+      ),
       idempotencyKey: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}idempotency_key'],
@@ -4103,6 +4153,13 @@ class Payment extends DataClass implements Insertable<Payment> {
   final PaymentSource source;
   final int recordedById;
 
+  /// Set when a recorded payment is corrected. The receipt is re-rendered in
+  /// place under its original number, so without these two columns nothing on
+  /// the row itself would show it had ever been touched. Null means never
+  /// edited, which is what every row predating v7 reads as.
+  final DateTime? updatedAt;
+  final int? updatedById;
+
   /// Unique per submission — the accidental double-click guard.
   final String idempotencyKey;
   final DateTime createdAt;
@@ -4117,6 +4174,8 @@ class Payment extends DataClass implements Insertable<Payment> {
     this.notes,
     required this.source,
     required this.recordedById,
+    this.updatedAt,
+    this.updatedById,
     required this.idempotencyKey,
     required this.createdAt,
   });
@@ -4147,6 +4206,12 @@ class Payment extends DataClass implements Insertable<Payment> {
       );
     }
     map['recorded_by_id'] = Variable<int>(recordedById);
+    if (!nullToAbsent || updatedAt != null) {
+      map['updated_at'] = Variable<DateTime>(updatedAt);
+    }
+    if (!nullToAbsent || updatedById != null) {
+      map['updated_by_id'] = Variable<int>(updatedById);
+    }
     map['idempotency_key'] = Variable<String>(idempotencyKey);
     map['created_at'] = Variable<DateTime>(createdAt);
     return map;
@@ -4170,6 +4235,12 @@ class Payment extends DataClass implements Insertable<Payment> {
           : Value(notes),
       source: Value(source),
       recordedById: Value(recordedById),
+      updatedAt: updatedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(updatedAt),
+      updatedById: updatedById == null && nullToAbsent
+          ? const Value.absent()
+          : Value(updatedById),
       idempotencyKey: Value(idempotencyKey),
       createdAt: Value(createdAt),
     );
@@ -4195,6 +4266,8 @@ class Payment extends DataClass implements Insertable<Payment> {
         serializer.fromJson<String>(json['source']),
       ),
       recordedById: serializer.fromJson<int>(json['recordedById']),
+      updatedAt: serializer.fromJson<DateTime?>(json['updatedAt']),
+      updatedById: serializer.fromJson<int?>(json['updatedById']),
       idempotencyKey: serializer.fromJson<String>(json['idempotencyKey']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
     );
@@ -4217,6 +4290,8 @@ class Payment extends DataClass implements Insertable<Payment> {
         $PaymentsTable.$convertersource.toJson(source),
       ),
       'recordedById': serializer.toJson<int>(recordedById),
+      'updatedAt': serializer.toJson<DateTime?>(updatedAt),
+      'updatedById': serializer.toJson<int?>(updatedById),
       'idempotencyKey': serializer.toJson<String>(idempotencyKey),
       'createdAt': serializer.toJson<DateTime>(createdAt),
     };
@@ -4233,6 +4308,8 @@ class Payment extends DataClass implements Insertable<Payment> {
     Value<String?> notes = const Value.absent(),
     PaymentSource? source,
     int? recordedById,
+    Value<DateTime?> updatedAt = const Value.absent(),
+    Value<int?> updatedById = const Value.absent(),
     String? idempotencyKey,
     DateTime? createdAt,
   }) => Payment(
@@ -4250,6 +4327,8 @@ class Payment extends DataClass implements Insertable<Payment> {
     notes: notes.present ? notes.value : this.notes,
     source: source ?? this.source,
     recordedById: recordedById ?? this.recordedById,
+    updatedAt: updatedAt.present ? updatedAt.value : this.updatedAt,
+    updatedById: updatedById.present ? updatedById.value : this.updatedById,
     idempotencyKey: idempotencyKey ?? this.idempotencyKey,
     createdAt: createdAt ?? this.createdAt,
   );
@@ -4275,6 +4354,10 @@ class Payment extends DataClass implements Insertable<Payment> {
       recordedById: data.recordedById.present
           ? data.recordedById.value
           : this.recordedById,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+      updatedById: data.updatedById.present
+          ? data.updatedById.value
+          : this.updatedById,
       idempotencyKey: data.idempotencyKey.present
           ? data.idempotencyKey.value
           : this.idempotencyKey,
@@ -4295,6 +4378,8 @@ class Payment extends DataClass implements Insertable<Payment> {
           ..write('notes: $notes, ')
           ..write('source: $source, ')
           ..write('recordedById: $recordedById, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('updatedById: $updatedById, ')
           ..write('idempotencyKey: $idempotencyKey, ')
           ..write('createdAt: $createdAt')
           ..write(')'))
@@ -4313,6 +4398,8 @@ class Payment extends DataClass implements Insertable<Payment> {
     notes,
     source,
     recordedById,
+    updatedAt,
+    updatedById,
     idempotencyKey,
     createdAt,
   );
@@ -4330,6 +4417,8 @@ class Payment extends DataClass implements Insertable<Payment> {
           other.notes == this.notes &&
           other.source == this.source &&
           other.recordedById == this.recordedById &&
+          other.updatedAt == this.updatedAt &&
+          other.updatedById == this.updatedById &&
           other.idempotencyKey == this.idempotencyKey &&
           other.createdAt == this.createdAt);
 }
@@ -4345,6 +4434,8 @@ class PaymentsCompanion extends UpdateCompanion<Payment> {
   final Value<String?> notes;
   final Value<PaymentSource> source;
   final Value<int> recordedById;
+  final Value<DateTime?> updatedAt;
+  final Value<int?> updatedById;
   final Value<String> idempotencyKey;
   final Value<DateTime> createdAt;
   const PaymentsCompanion({
@@ -4358,6 +4449,8 @@ class PaymentsCompanion extends UpdateCompanion<Payment> {
     this.notes = const Value.absent(),
     this.source = const Value.absent(),
     this.recordedById = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.updatedById = const Value.absent(),
     this.idempotencyKey = const Value.absent(),
     this.createdAt = const Value.absent(),
   });
@@ -4372,6 +4465,8 @@ class PaymentsCompanion extends UpdateCompanion<Payment> {
     this.notes = const Value.absent(),
     this.source = const Value.absent(),
     required int recordedById,
+    this.updatedAt = const Value.absent(),
+    this.updatedById = const Value.absent(),
     required String idempotencyKey,
     this.createdAt = const Value.absent(),
   }) : memberId = Value(memberId),
@@ -4391,6 +4486,8 @@ class PaymentsCompanion extends UpdateCompanion<Payment> {
     Expression<String>? notes,
     Expression<String>? source,
     Expression<int>? recordedById,
+    Expression<DateTime>? updatedAt,
+    Expression<int>? updatedById,
     Expression<String>? idempotencyKey,
     Expression<DateTime>? createdAt,
   }) {
@@ -4406,6 +4503,8 @@ class PaymentsCompanion extends UpdateCompanion<Payment> {
       if (notes != null) 'notes': notes,
       if (source != null) 'source': source,
       if (recordedById != null) 'recorded_by_id': recordedById,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (updatedById != null) 'updated_by_id': updatedById,
       if (idempotencyKey != null) 'idempotency_key': idempotencyKey,
       if (createdAt != null) 'created_at': createdAt,
     });
@@ -4422,6 +4521,8 @@ class PaymentsCompanion extends UpdateCompanion<Payment> {
     Value<String?>? notes,
     Value<PaymentSource>? source,
     Value<int>? recordedById,
+    Value<DateTime?>? updatedAt,
+    Value<int?>? updatedById,
     Value<String>? idempotencyKey,
     Value<DateTime>? createdAt,
   }) {
@@ -4436,6 +4537,8 @@ class PaymentsCompanion extends UpdateCompanion<Payment> {
       notes: notes ?? this.notes,
       source: source ?? this.source,
       recordedById: recordedById ?? this.recordedById,
+      updatedAt: updatedAt ?? this.updatedAt,
+      updatedById: updatedById ?? this.updatedById,
       idempotencyKey: idempotencyKey ?? this.idempotencyKey,
       createdAt: createdAt ?? this.createdAt,
     );
@@ -4478,6 +4581,12 @@ class PaymentsCompanion extends UpdateCompanion<Payment> {
     if (recordedById.present) {
       map['recorded_by_id'] = Variable<int>(recordedById.value);
     }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    if (updatedById.present) {
+      map['updated_by_id'] = Variable<int>(updatedById.value);
+    }
     if (idempotencyKey.present) {
       map['idempotency_key'] = Variable<String>(idempotencyKey.value);
     }
@@ -4500,6 +4609,8 @@ class PaymentsCompanion extends UpdateCompanion<Payment> {
           ..write('notes: $notes, ')
           ..write('source: $source, ')
           ..write('recordedById: $recordedById, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('updatedById: $updatedById, ')
           ..write('idempotencyKey: $idempotencyKey, ')
           ..write('createdAt: $createdAt')
           ..write(')'))
@@ -6306,6 +6417,892 @@ class MemberNotesCompanion extends UpdateCompanion<MemberNote> {
   }
 }
 
+class $AuditEventsTable extends AuditEvents
+    with TableInfo<$AuditEventsTable, AuditEvent> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $AuditEventsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  @override
+  late final GeneratedColumnWithTypeConverter<AuditCategory, String> category =
+      GeneratedColumn<String>(
+        'category',
+        aliasedName,
+        false,
+        type: DriftSqlType.string,
+        requiredDuringInsert: true,
+      ).withConverter<AuditCategory>($AuditEventsTable.$convertercategory);
+  static const VerificationMeta _actionMeta = const VerificationMeta('action');
+  @override
+  late final GeneratedColumn<String> action = GeneratedColumn<String>(
+    'action',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  @override
+  late final GeneratedColumnWithTypeConverter<AuditOutcome, String> outcome =
+      GeneratedColumn<String>(
+        'outcome',
+        aliasedName,
+        false,
+        type: DriftSqlType.string,
+        requiredDuringInsert: true,
+      ).withConverter<AuditOutcome>($AuditEventsTable.$converteroutcome);
+  static const VerificationMeta _actorIdMeta = const VerificationMeta(
+    'actorId',
+  );
+  @override
+  late final GeneratedColumn<int> actorId = GeneratedColumn<int>(
+    'actor_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _actorNameMeta = const VerificationMeta(
+    'actorName',
+  );
+  @override
+  late final GeneratedColumn<String> actorName = GeneratedColumn<String>(
+    'actor_name',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _memberIdMeta = const VerificationMeta(
+    'memberId',
+  );
+  @override
+  late final GeneratedColumn<int> memberId = GeneratedColumn<int>(
+    'member_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _memberNameMeta = const VerificationMeta(
+    'memberName',
+  );
+  @override
+  late final GeneratedColumn<String> memberName = GeneratedColumn<String>(
+    'member_name',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _paymentIdMeta = const VerificationMeta(
+    'paymentId',
+  );
+  @override
+  late final GeneratedColumn<int> paymentId = GeneratedColumn<int>(
+    'payment_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _receiptNumberMeta = const VerificationMeta(
+    'receiptNumber',
+  );
+  @override
+  late final GeneratedColumn<String> receiptNumber = GeneratedColumn<String>(
+    'receipt_number',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _amountMinorMeta = const VerificationMeta(
+    'amountMinor',
+  );
+  @override
+  late final GeneratedColumn<int> amountMinor = GeneratedColumn<int>(
+    'amount_minor',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _periodLabelMeta = const VerificationMeta(
+    'periodLabel',
+  );
+  @override
+  late final GeneratedColumn<String> periodLabel = GeneratedColumn<String>(
+    'period_label',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _summaryMeta = const VerificationMeta(
+    'summary',
+  );
+  @override
+  late final GeneratedColumn<String> summary = GeneratedColumn<String>(
+    'summary',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _detailMeta = const VerificationMeta('detail');
+  @override
+  late final GeneratedColumn<String> detail = GeneratedColumn<String>(
+    'detail',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    category,
+    action,
+    outcome,
+    actorId,
+    actorName,
+    memberId,
+    memberName,
+    paymentId,
+    receiptNumber,
+    amountMinor,
+    periodLabel,
+    summary,
+    detail,
+    createdAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'audit_events';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<AuditEvent> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('action')) {
+      context.handle(
+        _actionMeta,
+        action.isAcceptableOrUnknown(data['action']!, _actionMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_actionMeta);
+    }
+    if (data.containsKey('actor_id')) {
+      context.handle(
+        _actorIdMeta,
+        actorId.isAcceptableOrUnknown(data['actor_id']!, _actorIdMeta),
+      );
+    }
+    if (data.containsKey('actor_name')) {
+      context.handle(
+        _actorNameMeta,
+        actorName.isAcceptableOrUnknown(data['actor_name']!, _actorNameMeta),
+      );
+    }
+    if (data.containsKey('member_id')) {
+      context.handle(
+        _memberIdMeta,
+        memberId.isAcceptableOrUnknown(data['member_id']!, _memberIdMeta),
+      );
+    }
+    if (data.containsKey('member_name')) {
+      context.handle(
+        _memberNameMeta,
+        memberName.isAcceptableOrUnknown(data['member_name']!, _memberNameMeta),
+      );
+    }
+    if (data.containsKey('payment_id')) {
+      context.handle(
+        _paymentIdMeta,
+        paymentId.isAcceptableOrUnknown(data['payment_id']!, _paymentIdMeta),
+      );
+    }
+    if (data.containsKey('receipt_number')) {
+      context.handle(
+        _receiptNumberMeta,
+        receiptNumber.isAcceptableOrUnknown(
+          data['receipt_number']!,
+          _receiptNumberMeta,
+        ),
+      );
+    }
+    if (data.containsKey('amount_minor')) {
+      context.handle(
+        _amountMinorMeta,
+        amountMinor.isAcceptableOrUnknown(
+          data['amount_minor']!,
+          _amountMinorMeta,
+        ),
+      );
+    }
+    if (data.containsKey('period_label')) {
+      context.handle(
+        _periodLabelMeta,
+        periodLabel.isAcceptableOrUnknown(
+          data['period_label']!,
+          _periodLabelMeta,
+        ),
+      );
+    }
+    if (data.containsKey('summary')) {
+      context.handle(
+        _summaryMeta,
+        summary.isAcceptableOrUnknown(data['summary']!, _summaryMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_summaryMeta);
+    }
+    if (data.containsKey('detail')) {
+      context.handle(
+        _detailMeta,
+        detail.isAcceptableOrUnknown(data['detail']!, _detailMeta),
+      );
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  AuditEvent map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return AuditEvent(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      category: $AuditEventsTable.$convertercategory.fromSql(
+        attachedDatabase.typeMapping.read(
+          DriftSqlType.string,
+          data['${effectivePrefix}category'],
+        )!,
+      ),
+      action: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}action'],
+      )!,
+      outcome: $AuditEventsTable.$converteroutcome.fromSql(
+        attachedDatabase.typeMapping.read(
+          DriftSqlType.string,
+          data['${effectivePrefix}outcome'],
+        )!,
+      ),
+      actorId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}actor_id'],
+      ),
+      actorName: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}actor_name'],
+      ),
+      memberId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}member_id'],
+      ),
+      memberName: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}member_name'],
+      ),
+      paymentId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}payment_id'],
+      ),
+      receiptNumber: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}receipt_number'],
+      ),
+      amountMinor: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}amount_minor'],
+      ),
+      periodLabel: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}period_label'],
+      ),
+      summary: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}summary'],
+      )!,
+      detail: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}detail'],
+      ),
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+    );
+  }
+
+  @override
+  $AuditEventsTable createAlias(String alias) {
+    return $AuditEventsTable(attachedDatabase, alias);
+  }
+
+  static JsonTypeConverter2<AuditCategory, String, String> $convertercategory =
+      const EnumNameConverter<AuditCategory>(AuditCategory.values);
+  static JsonTypeConverter2<AuditOutcome, String, String> $converteroutcome =
+      const EnumNameConverter<AuditOutcome>(AuditOutcome.values);
+}
+
+class AuditEvent extends DataClass implements Insertable<AuditEvent> {
+  final int id;
+  final AuditCategory category;
+
+  /// Dotted machine name, e.g. 'payment.edited'. Paired with [summary] rather
+  /// than shown to the owner directly.
+  final String action;
+  final AuditOutcome outcome;
+
+  /// Who did it. Copied, not referenced — see the class comment.
+  final int? actorId;
+  final String? actorName;
+
+  /// What it was done to. Also copied.
+  final int? memberId;
+  final String? memberName;
+  final int? paymentId;
+  final String? receiptNumber;
+
+  /// Minor units, matching Payments.amountMinor.
+  final int? amountMinor;
+
+  /// Already formatted, e.g. "August 2026 - October 2026". Stored rather than
+  /// derived because the cycle it describes may no longer exist.
+  final String? periodLabel;
+
+  /// One readable line, e.g. "Payment edited for Ali Raza (RMF-2026-000012)".
+  final String summary;
+
+  /// Supporting detail, one "Field: before → after" per line, or an error
+  /// category. Never holds tokens, credentials or raw API response bodies.
+  final String? detail;
+  final DateTime createdAt;
+  const AuditEvent({
+    required this.id,
+    required this.category,
+    required this.action,
+    required this.outcome,
+    this.actorId,
+    this.actorName,
+    this.memberId,
+    this.memberName,
+    this.paymentId,
+    this.receiptNumber,
+    this.amountMinor,
+    this.periodLabel,
+    required this.summary,
+    this.detail,
+    required this.createdAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    {
+      map['category'] = Variable<String>(
+        $AuditEventsTable.$convertercategory.toSql(category),
+      );
+    }
+    map['action'] = Variable<String>(action);
+    {
+      map['outcome'] = Variable<String>(
+        $AuditEventsTable.$converteroutcome.toSql(outcome),
+      );
+    }
+    if (!nullToAbsent || actorId != null) {
+      map['actor_id'] = Variable<int>(actorId);
+    }
+    if (!nullToAbsent || actorName != null) {
+      map['actor_name'] = Variable<String>(actorName);
+    }
+    if (!nullToAbsent || memberId != null) {
+      map['member_id'] = Variable<int>(memberId);
+    }
+    if (!nullToAbsent || memberName != null) {
+      map['member_name'] = Variable<String>(memberName);
+    }
+    if (!nullToAbsent || paymentId != null) {
+      map['payment_id'] = Variable<int>(paymentId);
+    }
+    if (!nullToAbsent || receiptNumber != null) {
+      map['receipt_number'] = Variable<String>(receiptNumber);
+    }
+    if (!nullToAbsent || amountMinor != null) {
+      map['amount_minor'] = Variable<int>(amountMinor);
+    }
+    if (!nullToAbsent || periodLabel != null) {
+      map['period_label'] = Variable<String>(periodLabel);
+    }
+    map['summary'] = Variable<String>(summary);
+    if (!nullToAbsent || detail != null) {
+      map['detail'] = Variable<String>(detail);
+    }
+    map['created_at'] = Variable<DateTime>(createdAt);
+    return map;
+  }
+
+  AuditEventsCompanion toCompanion(bool nullToAbsent) {
+    return AuditEventsCompanion(
+      id: Value(id),
+      category: Value(category),
+      action: Value(action),
+      outcome: Value(outcome),
+      actorId: actorId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(actorId),
+      actorName: actorName == null && nullToAbsent
+          ? const Value.absent()
+          : Value(actorName),
+      memberId: memberId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(memberId),
+      memberName: memberName == null && nullToAbsent
+          ? const Value.absent()
+          : Value(memberName),
+      paymentId: paymentId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(paymentId),
+      receiptNumber: receiptNumber == null && nullToAbsent
+          ? const Value.absent()
+          : Value(receiptNumber),
+      amountMinor: amountMinor == null && nullToAbsent
+          ? const Value.absent()
+          : Value(amountMinor),
+      periodLabel: periodLabel == null && nullToAbsent
+          ? const Value.absent()
+          : Value(periodLabel),
+      summary: Value(summary),
+      detail: detail == null && nullToAbsent
+          ? const Value.absent()
+          : Value(detail),
+      createdAt: Value(createdAt),
+    );
+  }
+
+  factory AuditEvent.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return AuditEvent(
+      id: serializer.fromJson<int>(json['id']),
+      category: $AuditEventsTable.$convertercategory.fromJson(
+        serializer.fromJson<String>(json['category']),
+      ),
+      action: serializer.fromJson<String>(json['action']),
+      outcome: $AuditEventsTable.$converteroutcome.fromJson(
+        serializer.fromJson<String>(json['outcome']),
+      ),
+      actorId: serializer.fromJson<int?>(json['actorId']),
+      actorName: serializer.fromJson<String?>(json['actorName']),
+      memberId: serializer.fromJson<int?>(json['memberId']),
+      memberName: serializer.fromJson<String?>(json['memberName']),
+      paymentId: serializer.fromJson<int?>(json['paymentId']),
+      receiptNumber: serializer.fromJson<String?>(json['receiptNumber']),
+      amountMinor: serializer.fromJson<int?>(json['amountMinor']),
+      periodLabel: serializer.fromJson<String?>(json['periodLabel']),
+      summary: serializer.fromJson<String>(json['summary']),
+      detail: serializer.fromJson<String?>(json['detail']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'category': serializer.toJson<String>(
+        $AuditEventsTable.$convertercategory.toJson(category),
+      ),
+      'action': serializer.toJson<String>(action),
+      'outcome': serializer.toJson<String>(
+        $AuditEventsTable.$converteroutcome.toJson(outcome),
+      ),
+      'actorId': serializer.toJson<int?>(actorId),
+      'actorName': serializer.toJson<String?>(actorName),
+      'memberId': serializer.toJson<int?>(memberId),
+      'memberName': serializer.toJson<String?>(memberName),
+      'paymentId': serializer.toJson<int?>(paymentId),
+      'receiptNumber': serializer.toJson<String?>(receiptNumber),
+      'amountMinor': serializer.toJson<int?>(amountMinor),
+      'periodLabel': serializer.toJson<String?>(periodLabel),
+      'summary': serializer.toJson<String>(summary),
+      'detail': serializer.toJson<String?>(detail),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+    };
+  }
+
+  AuditEvent copyWith({
+    int? id,
+    AuditCategory? category,
+    String? action,
+    AuditOutcome? outcome,
+    Value<int?> actorId = const Value.absent(),
+    Value<String?> actorName = const Value.absent(),
+    Value<int?> memberId = const Value.absent(),
+    Value<String?> memberName = const Value.absent(),
+    Value<int?> paymentId = const Value.absent(),
+    Value<String?> receiptNumber = const Value.absent(),
+    Value<int?> amountMinor = const Value.absent(),
+    Value<String?> periodLabel = const Value.absent(),
+    String? summary,
+    Value<String?> detail = const Value.absent(),
+    DateTime? createdAt,
+  }) => AuditEvent(
+    id: id ?? this.id,
+    category: category ?? this.category,
+    action: action ?? this.action,
+    outcome: outcome ?? this.outcome,
+    actorId: actorId.present ? actorId.value : this.actorId,
+    actorName: actorName.present ? actorName.value : this.actorName,
+    memberId: memberId.present ? memberId.value : this.memberId,
+    memberName: memberName.present ? memberName.value : this.memberName,
+    paymentId: paymentId.present ? paymentId.value : this.paymentId,
+    receiptNumber: receiptNumber.present
+        ? receiptNumber.value
+        : this.receiptNumber,
+    amountMinor: amountMinor.present ? amountMinor.value : this.amountMinor,
+    periodLabel: periodLabel.present ? periodLabel.value : this.periodLabel,
+    summary: summary ?? this.summary,
+    detail: detail.present ? detail.value : this.detail,
+    createdAt: createdAt ?? this.createdAt,
+  );
+  AuditEvent copyWithCompanion(AuditEventsCompanion data) {
+    return AuditEvent(
+      id: data.id.present ? data.id.value : this.id,
+      category: data.category.present ? data.category.value : this.category,
+      action: data.action.present ? data.action.value : this.action,
+      outcome: data.outcome.present ? data.outcome.value : this.outcome,
+      actorId: data.actorId.present ? data.actorId.value : this.actorId,
+      actorName: data.actorName.present ? data.actorName.value : this.actorName,
+      memberId: data.memberId.present ? data.memberId.value : this.memberId,
+      memberName: data.memberName.present
+          ? data.memberName.value
+          : this.memberName,
+      paymentId: data.paymentId.present ? data.paymentId.value : this.paymentId,
+      receiptNumber: data.receiptNumber.present
+          ? data.receiptNumber.value
+          : this.receiptNumber,
+      amountMinor: data.amountMinor.present
+          ? data.amountMinor.value
+          : this.amountMinor,
+      periodLabel: data.periodLabel.present
+          ? data.periodLabel.value
+          : this.periodLabel,
+      summary: data.summary.present ? data.summary.value : this.summary,
+      detail: data.detail.present ? data.detail.value : this.detail,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('AuditEvent(')
+          ..write('id: $id, ')
+          ..write('category: $category, ')
+          ..write('action: $action, ')
+          ..write('outcome: $outcome, ')
+          ..write('actorId: $actorId, ')
+          ..write('actorName: $actorName, ')
+          ..write('memberId: $memberId, ')
+          ..write('memberName: $memberName, ')
+          ..write('paymentId: $paymentId, ')
+          ..write('receiptNumber: $receiptNumber, ')
+          ..write('amountMinor: $amountMinor, ')
+          ..write('periodLabel: $periodLabel, ')
+          ..write('summary: $summary, ')
+          ..write('detail: $detail, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    category,
+    action,
+    outcome,
+    actorId,
+    actorName,
+    memberId,
+    memberName,
+    paymentId,
+    receiptNumber,
+    amountMinor,
+    periodLabel,
+    summary,
+    detail,
+    createdAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is AuditEvent &&
+          other.id == this.id &&
+          other.category == this.category &&
+          other.action == this.action &&
+          other.outcome == this.outcome &&
+          other.actorId == this.actorId &&
+          other.actorName == this.actorName &&
+          other.memberId == this.memberId &&
+          other.memberName == this.memberName &&
+          other.paymentId == this.paymentId &&
+          other.receiptNumber == this.receiptNumber &&
+          other.amountMinor == this.amountMinor &&
+          other.periodLabel == this.periodLabel &&
+          other.summary == this.summary &&
+          other.detail == this.detail &&
+          other.createdAt == this.createdAt);
+}
+
+class AuditEventsCompanion extends UpdateCompanion<AuditEvent> {
+  final Value<int> id;
+  final Value<AuditCategory> category;
+  final Value<String> action;
+  final Value<AuditOutcome> outcome;
+  final Value<int?> actorId;
+  final Value<String?> actorName;
+  final Value<int?> memberId;
+  final Value<String?> memberName;
+  final Value<int?> paymentId;
+  final Value<String?> receiptNumber;
+  final Value<int?> amountMinor;
+  final Value<String?> periodLabel;
+  final Value<String> summary;
+  final Value<String?> detail;
+  final Value<DateTime> createdAt;
+  const AuditEventsCompanion({
+    this.id = const Value.absent(),
+    this.category = const Value.absent(),
+    this.action = const Value.absent(),
+    this.outcome = const Value.absent(),
+    this.actorId = const Value.absent(),
+    this.actorName = const Value.absent(),
+    this.memberId = const Value.absent(),
+    this.memberName = const Value.absent(),
+    this.paymentId = const Value.absent(),
+    this.receiptNumber = const Value.absent(),
+    this.amountMinor = const Value.absent(),
+    this.periodLabel = const Value.absent(),
+    this.summary = const Value.absent(),
+    this.detail = const Value.absent(),
+    this.createdAt = const Value.absent(),
+  });
+  AuditEventsCompanion.insert({
+    this.id = const Value.absent(),
+    required AuditCategory category,
+    required String action,
+    required AuditOutcome outcome,
+    this.actorId = const Value.absent(),
+    this.actorName = const Value.absent(),
+    this.memberId = const Value.absent(),
+    this.memberName = const Value.absent(),
+    this.paymentId = const Value.absent(),
+    this.receiptNumber = const Value.absent(),
+    this.amountMinor = const Value.absent(),
+    this.periodLabel = const Value.absent(),
+    required String summary,
+    this.detail = const Value.absent(),
+    this.createdAt = const Value.absent(),
+  }) : category = Value(category),
+       action = Value(action),
+       outcome = Value(outcome),
+       summary = Value(summary);
+  static Insertable<AuditEvent> custom({
+    Expression<int>? id,
+    Expression<String>? category,
+    Expression<String>? action,
+    Expression<String>? outcome,
+    Expression<int>? actorId,
+    Expression<String>? actorName,
+    Expression<int>? memberId,
+    Expression<String>? memberName,
+    Expression<int>? paymentId,
+    Expression<String>? receiptNumber,
+    Expression<int>? amountMinor,
+    Expression<String>? periodLabel,
+    Expression<String>? summary,
+    Expression<String>? detail,
+    Expression<DateTime>? createdAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (category != null) 'category': category,
+      if (action != null) 'action': action,
+      if (outcome != null) 'outcome': outcome,
+      if (actorId != null) 'actor_id': actorId,
+      if (actorName != null) 'actor_name': actorName,
+      if (memberId != null) 'member_id': memberId,
+      if (memberName != null) 'member_name': memberName,
+      if (paymentId != null) 'payment_id': paymentId,
+      if (receiptNumber != null) 'receipt_number': receiptNumber,
+      if (amountMinor != null) 'amount_minor': amountMinor,
+      if (periodLabel != null) 'period_label': periodLabel,
+      if (summary != null) 'summary': summary,
+      if (detail != null) 'detail': detail,
+      if (createdAt != null) 'created_at': createdAt,
+    });
+  }
+
+  AuditEventsCompanion copyWith({
+    Value<int>? id,
+    Value<AuditCategory>? category,
+    Value<String>? action,
+    Value<AuditOutcome>? outcome,
+    Value<int?>? actorId,
+    Value<String?>? actorName,
+    Value<int?>? memberId,
+    Value<String?>? memberName,
+    Value<int?>? paymentId,
+    Value<String?>? receiptNumber,
+    Value<int?>? amountMinor,
+    Value<String?>? periodLabel,
+    Value<String>? summary,
+    Value<String?>? detail,
+    Value<DateTime>? createdAt,
+  }) {
+    return AuditEventsCompanion(
+      id: id ?? this.id,
+      category: category ?? this.category,
+      action: action ?? this.action,
+      outcome: outcome ?? this.outcome,
+      actorId: actorId ?? this.actorId,
+      actorName: actorName ?? this.actorName,
+      memberId: memberId ?? this.memberId,
+      memberName: memberName ?? this.memberName,
+      paymentId: paymentId ?? this.paymentId,
+      receiptNumber: receiptNumber ?? this.receiptNumber,
+      amountMinor: amountMinor ?? this.amountMinor,
+      periodLabel: periodLabel ?? this.periodLabel,
+      summary: summary ?? this.summary,
+      detail: detail ?? this.detail,
+      createdAt: createdAt ?? this.createdAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (category.present) {
+      map['category'] = Variable<String>(
+        $AuditEventsTable.$convertercategory.toSql(category.value),
+      );
+    }
+    if (action.present) {
+      map['action'] = Variable<String>(action.value);
+    }
+    if (outcome.present) {
+      map['outcome'] = Variable<String>(
+        $AuditEventsTable.$converteroutcome.toSql(outcome.value),
+      );
+    }
+    if (actorId.present) {
+      map['actor_id'] = Variable<int>(actorId.value);
+    }
+    if (actorName.present) {
+      map['actor_name'] = Variable<String>(actorName.value);
+    }
+    if (memberId.present) {
+      map['member_id'] = Variable<int>(memberId.value);
+    }
+    if (memberName.present) {
+      map['member_name'] = Variable<String>(memberName.value);
+    }
+    if (paymentId.present) {
+      map['payment_id'] = Variable<int>(paymentId.value);
+    }
+    if (receiptNumber.present) {
+      map['receipt_number'] = Variable<String>(receiptNumber.value);
+    }
+    if (amountMinor.present) {
+      map['amount_minor'] = Variable<int>(amountMinor.value);
+    }
+    if (periodLabel.present) {
+      map['period_label'] = Variable<String>(periodLabel.value);
+    }
+    if (summary.present) {
+      map['summary'] = Variable<String>(summary.value);
+    }
+    if (detail.present) {
+      map['detail'] = Variable<String>(detail.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('AuditEventsCompanion(')
+          ..write('id: $id, ')
+          ..write('category: $category, ')
+          ..write('action: $action, ')
+          ..write('outcome: $outcome, ')
+          ..write('actorId: $actorId, ')
+          ..write('actorName: $actorName, ')
+          ..write('memberId: $memberId, ')
+          ..write('memberName: $memberName, ')
+          ..write('paymentId: $paymentId, ')
+          ..write('receiptNumber: $receiptNumber, ')
+          ..write('amountMinor: $amountMinor, ')
+          ..write('periodLabel: $periodLabel, ')
+          ..write('summary: $summary, ')
+          ..write('detail: $detail, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -6328,6 +7325,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     this,
   );
   late final $MemberNotesTable memberNotes = $MemberNotesTable(this);
+  late final $AuditEventsTable auditEvents = $AuditEventsTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -6345,6 +7343,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     receiptCounters,
     whatsAppMessages,
     memberNotes,
+    auditEvents,
   ];
   @override
   StreamQueryUpdateRules get streamUpdateRules => const StreamQueryUpdateRules([
@@ -6394,25 +7393,6 @@ final class $$UsersTableReferences
     ).filter((f) => f.userId.id.sqlEquals($_itemColumn<int>('id')!));
 
     final cache = $_typedResult.readTableOrNull(_appSessionsRefsTable($_db));
-    return ProcessedTableManager(
-      manager.$state.copyWith(prefetchedData: cache),
-    );
-  }
-
-  static MultiTypedResultKey<$PaymentsTable, List<Payment>> _paymentsRefsTable(
-    _$AppDatabase db,
-  ) => MultiTypedResultKey.fromTable(
-    db.payments,
-    aliasName: 'users__id__payments__recorded_by_id',
-  );
-
-  $$PaymentsTableProcessedTableManager get paymentsRefs {
-    final manager = $$PaymentsTableTableManager(
-      $_db,
-      $_db.payments,
-    ).filter((f) => f.recordedById.id.sqlEquals($_itemColumn<int>('id')!));
-
-    final cache = $_typedResult.readTableOrNull(_paymentsRefsTable($_db));
     return ProcessedTableManager(
       manager.$state.copyWith(prefetchedData: cache),
     );
@@ -6492,31 +7472,6 @@ class $$UsersTableFilterComposer extends Composer<_$AppDatabase, $UsersTable> {
           }) => $$AppSessionsTableFilterComposer(
             $db: $db,
             $table: $db.appSessions,
-            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
-            joinBuilder: joinBuilder,
-            $removeJoinBuilderFromRootComposer:
-                $removeJoinBuilderFromRootComposer,
-          ),
-    );
-    return f(composer);
-  }
-
-  Expression<bool> paymentsRefs(
-    Expression<bool> Function($$PaymentsTableFilterComposer f) f,
-  ) {
-    final $$PaymentsTableFilterComposer composer = $composerBuilder(
-      composer: this,
-      getCurrentColumn: (t) => t.id,
-      referencedTable: $db.payments,
-      getReferencedColumn: (t) => t.recordedById,
-      builder:
-          (
-            joinBuilder, {
-            $addJoinBuilderToRootComposer,
-            $removeJoinBuilderFromRootComposer,
-          }) => $$PaymentsTableFilterComposer(
-            $db: $db,
-            $table: $db.payments,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -6646,31 +7601,6 @@ class $$UsersTableAnnotationComposer
     return f(composer);
   }
 
-  Expression<T> paymentsRefs<T extends Object>(
-    Expression<T> Function($$PaymentsTableAnnotationComposer a) f,
-  ) {
-    final $$PaymentsTableAnnotationComposer composer = $composerBuilder(
-      composer: this,
-      getCurrentColumn: (t) => t.id,
-      referencedTable: $db.payments,
-      getReferencedColumn: (t) => t.recordedById,
-      builder:
-          (
-            joinBuilder, {
-            $addJoinBuilderToRootComposer,
-            $removeJoinBuilderFromRootComposer,
-          }) => $$PaymentsTableAnnotationComposer(
-            $db: $db,
-            $table: $db.payments,
-            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
-            joinBuilder: joinBuilder,
-            $removeJoinBuilderFromRootComposer:
-                $removeJoinBuilderFromRootComposer,
-          ),
-    );
-    return f(composer);
-  }
-
   Expression<T> memberNotesRefs<T extends Object>(
     Expression<T> Function($$MemberNotesTableAnnotationComposer a) f,
   ) {
@@ -6710,11 +7640,7 @@ class $$UsersTableTableManager
           $$UsersTableUpdateCompanionBuilder,
           (User, $$UsersTableReferences),
           User,
-          PrefetchHooks Function({
-            bool appSessionsRefs,
-            bool paymentsRefs,
-            bool memberNotesRefs,
-          })
+          PrefetchHooks Function({bool appSessionsRefs, bool memberNotesRefs})
         > {
   $$UsersTableTableManager(_$AppDatabase db, $UsersTable table)
     : super(
@@ -6766,16 +7692,11 @@ class $$UsersTableTableManager
               )
               .toList(),
           prefetchHooksCallback:
-              ({
-                appSessionsRefs = false,
-                paymentsRefs = false,
-                memberNotesRefs = false,
-              }) {
+              ({appSessionsRefs = false, memberNotesRefs = false}) {
                 return PrefetchHooks(
                   db: db,
                   explicitlyWatchedTables: [
                     if (appSessionsRefs) db.appSessions,
-                    if (paymentsRefs) db.payments,
                     if (memberNotesRefs) db.memberNotes,
                   ],
                   addJoins: null,
@@ -6799,23 +7720,6 @@ class $$UsersTableTableManager
                           referencedItemsForCurrentItem:
                               (item, referencedItems) => referencedItems.where(
                                 (e) => e.userId == item.id,
-                              ),
-                          typedResults: items,
-                        ),
-                      if (paymentsRefs)
-                        await $_getPrefetchedData<User, $UsersTable, Payment>(
-                          currentTable: table,
-                          referencedTable: $$UsersTableReferences
-                              ._paymentsRefsTable(db),
-                          managerFromTypedResult: (p0) =>
-                              $$UsersTableReferences(
-                                db,
-                                table,
-                                p0,
-                              ).paymentsRefs,
-                          referencedItemsForCurrentItem:
-                              (item, referencedItems) => referencedItems.where(
-                                (e) => e.recordedById == item.id,
                               ),
                           typedResults: items,
                         ),
@@ -6860,11 +7764,7 @@ typedef $$UsersTableProcessedTableManager =
       $$UsersTableUpdateCompanionBuilder,
       (User, $$UsersTableReferences),
       User,
-      PrefetchHooks Function({
-        bool appSessionsRefs,
-        bool paymentsRefs,
-        bool memberNotesRefs,
-      })
+      PrefetchHooks Function({bool appSessionsRefs, bool memberNotesRefs})
     >;
 typedef $$AppSessionsTableCreateCompanionBuilder =
     AppSessionsCompanion Function({
@@ -9654,6 +10554,8 @@ typedef $$PaymentsTableCreateCompanionBuilder =
       Value<String?> notes,
       Value<PaymentSource> source,
       required int recordedById,
+      Value<DateTime?> updatedAt,
+      Value<int?> updatedById,
       required String idempotencyKey,
       Value<DateTime> createdAt,
     });
@@ -9669,6 +10571,8 @@ typedef $$PaymentsTableUpdateCompanionBuilder =
       Value<String?> notes,
       Value<PaymentSource> source,
       Value<int> recordedById,
+      Value<DateTime?> updatedAt,
+      Value<int?> updatedById,
       Value<String> idempotencyKey,
       Value<DateTime> createdAt,
     });
@@ -9724,6 +10628,23 @@ final class $$PaymentsTableReferences
       $_db.users,
     ).filter((f) => f.id.sqlEquals($_column));
     final item = $_typedResult.readTableOrNull(_recordedByIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+
+  static $UsersTable _updatedByIdTable(_$AppDatabase db) =>
+      db.users.createAlias('payments__updated_by_id__users__id');
+
+  $$UsersTableProcessedTableManager? get updatedById {
+    final $_column = $_itemColumn<int>('updated_by_id');
+    if ($_column == null) return null;
+    final manager = $$UsersTableTableManager(
+      $_db,
+      $_db.users,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_updatedByIdTable($_db));
     if (item == null) return manager;
     return ProcessedTableManager(
       manager.$state.copyWith(prefetchedData: [item]),
@@ -9796,6 +10717,11 @@ class $$PaymentsTableFilterComposer
     builder: (column) => ColumnWithTypeConverterFilters(column),
   );
 
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
   ColumnFilters<String> get idempotencyKey => $composableBuilder(
     column: $table.idempotencyKey,
     builder: (column) => ColumnFilters(column),
@@ -9856,6 +10782,29 @@ class $$PaymentsTableFilterComposer
     final $$UsersTableFilterComposer composer = $composerBuilder(
       composer: this,
       getCurrentColumn: (t) => t.recordedById,
+      referencedTable: $db.users,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$UsersTableFilterComposer(
+            $db: $db,
+            $table: $db.users,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$UsersTableFilterComposer get updatedById {
+    final $$UsersTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.updatedById,
       referencedTable: $db.users,
       getReferencedColumn: (t) => t.id,
       builder:
@@ -9945,6 +10894,11 @@ class $$PaymentsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get idempotencyKey => $composableBuilder(
     column: $table.idempotencyKey,
     builder: (column) => ColumnOrderings(column),
@@ -10023,6 +10977,29 @@ class $$PaymentsTableOrderingComposer
     );
     return composer;
   }
+
+  $$UsersTableOrderingComposer get updatedById {
+    final $$UsersTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.updatedById,
+      referencedTable: $db.users,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$UsersTableOrderingComposer(
+            $db: $db,
+            $table: $db.users,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
 }
 
 class $$PaymentsTableAnnotationComposer
@@ -10060,6 +11037,9 @@ class $$PaymentsTableAnnotationComposer
 
   GeneratedColumnWithTypeConverter<PaymentSource, String> get source =>
       $composableBuilder(column: $table.source, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
 
   GeneratedColumn<String> get idempotencyKey => $composableBuilder(
     column: $table.idempotencyKey,
@@ -10139,6 +11119,29 @@ class $$PaymentsTableAnnotationComposer
     return composer;
   }
 
+  $$UsersTableAnnotationComposer get updatedById {
+    final $$UsersTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.updatedById,
+      referencedTable: $db.users,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$UsersTableAnnotationComposer(
+            $db: $db,
+            $table: $db.users,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
   Expression<T> receiptsRefs<T extends Object>(
     Expression<T> Function($$ReceiptsTableAnnotationComposer a) f,
   ) {
@@ -10182,6 +11185,7 @@ class $$PaymentsTableTableManager
             bool memberId,
             bool membershipPeriodId,
             bool recordedById,
+            bool updatedById,
             bool receiptsRefs,
           })
         > {
@@ -10208,6 +11212,8 @@ class $$PaymentsTableTableManager
                 Value<String?> notes = const Value.absent(),
                 Value<PaymentSource> source = const Value.absent(),
                 Value<int> recordedById = const Value.absent(),
+                Value<DateTime?> updatedAt = const Value.absent(),
+                Value<int?> updatedById = const Value.absent(),
                 Value<String> idempotencyKey = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
               }) => PaymentsCompanion(
@@ -10221,6 +11227,8 @@ class $$PaymentsTableTableManager
                 notes: notes,
                 source: source,
                 recordedById: recordedById,
+                updatedAt: updatedAt,
+                updatedById: updatedById,
                 idempotencyKey: idempotencyKey,
                 createdAt: createdAt,
               ),
@@ -10236,6 +11244,8 @@ class $$PaymentsTableTableManager
                 Value<String?> notes = const Value.absent(),
                 Value<PaymentSource> source = const Value.absent(),
                 required int recordedById,
+                Value<DateTime?> updatedAt = const Value.absent(),
+                Value<int?> updatedById = const Value.absent(),
                 required String idempotencyKey,
                 Value<DateTime> createdAt = const Value.absent(),
               }) => PaymentsCompanion.insert(
@@ -10249,6 +11259,8 @@ class $$PaymentsTableTableManager
                 notes: notes,
                 source: source,
                 recordedById: recordedById,
+                updatedAt: updatedAt,
+                updatedById: updatedById,
                 idempotencyKey: idempotencyKey,
                 createdAt: createdAt,
               ),
@@ -10265,6 +11277,7 @@ class $$PaymentsTableTableManager
                 memberId = false,
                 membershipPeriodId = false,
                 recordedById = false,
+                updatedById = false,
                 receiptsRefs = false,
               }) {
                 return PrefetchHooks(
@@ -10325,6 +11338,19 @@ class $$PaymentsTableTableManager
                                   )
                                   as T;
                         }
+                        if (updatedById) {
+                          state =
+                              state.withJoin(
+                                    currentTable: table,
+                                    currentColumn: table.updatedById,
+                                    referencedTable: $$PaymentsTableReferences
+                                        ._updatedByIdTable(db),
+                                    referencedColumn: $$PaymentsTableReferences
+                                        ._updatedByIdTable(db)
+                                        .id,
+                                  )
+                                  as T;
+                        }
 
                         return state;
                       },
@@ -10375,6 +11401,7 @@ typedef $$PaymentsTableProcessedTableManager =
         bool memberId,
         bool membershipPeriodId,
         bool recordedById,
+        bool updatedById,
         bool receiptsRefs,
       })
     >;
@@ -11932,6 +12959,400 @@ typedef $$MemberNotesTableProcessedTableManager =
       MemberNote,
       PrefetchHooks Function({bool memberId, bool createdById})
     >;
+typedef $$AuditEventsTableCreateCompanionBuilder =
+    AuditEventsCompanion Function({
+      Value<int> id,
+      required AuditCategory category,
+      required String action,
+      required AuditOutcome outcome,
+      Value<int?> actorId,
+      Value<String?> actorName,
+      Value<int?> memberId,
+      Value<String?> memberName,
+      Value<int?> paymentId,
+      Value<String?> receiptNumber,
+      Value<int?> amountMinor,
+      Value<String?> periodLabel,
+      required String summary,
+      Value<String?> detail,
+      Value<DateTime> createdAt,
+    });
+typedef $$AuditEventsTableUpdateCompanionBuilder =
+    AuditEventsCompanion Function({
+      Value<int> id,
+      Value<AuditCategory> category,
+      Value<String> action,
+      Value<AuditOutcome> outcome,
+      Value<int?> actorId,
+      Value<String?> actorName,
+      Value<int?> memberId,
+      Value<String?> memberName,
+      Value<int?> paymentId,
+      Value<String?> receiptNumber,
+      Value<int?> amountMinor,
+      Value<String?> periodLabel,
+      Value<String> summary,
+      Value<String?> detail,
+      Value<DateTime> createdAt,
+    });
+
+class $$AuditEventsTableFilterComposer
+    extends Composer<_$AppDatabase, $AuditEventsTable> {
+  $$AuditEventsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnWithTypeConverterFilters<AuditCategory, AuditCategory, String>
+  get category => $composableBuilder(
+    column: $table.category,
+    builder: (column) => ColumnWithTypeConverterFilters(column),
+  );
+
+  ColumnFilters<String> get action => $composableBuilder(
+    column: $table.action,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnWithTypeConverterFilters<AuditOutcome, AuditOutcome, String>
+  get outcome => $composableBuilder(
+    column: $table.outcome,
+    builder: (column) => ColumnWithTypeConverterFilters(column),
+  );
+
+  ColumnFilters<int> get actorId => $composableBuilder(
+    column: $table.actorId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get actorName => $composableBuilder(
+    column: $table.actorName,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get memberId => $composableBuilder(
+    column: $table.memberId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get memberName => $composableBuilder(
+    column: $table.memberName,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get paymentId => $composableBuilder(
+    column: $table.paymentId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get receiptNumber => $composableBuilder(
+    column: $table.receiptNumber,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get amountMinor => $composableBuilder(
+    column: $table.amountMinor,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get periodLabel => $composableBuilder(
+    column: $table.periodLabel,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get summary => $composableBuilder(
+    column: $table.summary,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get detail => $composableBuilder(
+    column: $table.detail,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$AuditEventsTableOrderingComposer
+    extends Composer<_$AppDatabase, $AuditEventsTable> {
+  $$AuditEventsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get category => $composableBuilder(
+    column: $table.category,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get action => $composableBuilder(
+    column: $table.action,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get outcome => $composableBuilder(
+    column: $table.outcome,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get actorId => $composableBuilder(
+    column: $table.actorId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get actorName => $composableBuilder(
+    column: $table.actorName,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get memberId => $composableBuilder(
+    column: $table.memberId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get memberName => $composableBuilder(
+    column: $table.memberName,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get paymentId => $composableBuilder(
+    column: $table.paymentId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get receiptNumber => $composableBuilder(
+    column: $table.receiptNumber,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get amountMinor => $composableBuilder(
+    column: $table.amountMinor,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get periodLabel => $composableBuilder(
+    column: $table.periodLabel,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get summary => $composableBuilder(
+    column: $table.summary,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get detail => $composableBuilder(
+    column: $table.detail,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$AuditEventsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $AuditEventsTable> {
+  $$AuditEventsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumnWithTypeConverter<AuditCategory, String> get category =>
+      $composableBuilder(column: $table.category, builder: (column) => column);
+
+  GeneratedColumn<String> get action =>
+      $composableBuilder(column: $table.action, builder: (column) => column);
+
+  GeneratedColumnWithTypeConverter<AuditOutcome, String> get outcome =>
+      $composableBuilder(column: $table.outcome, builder: (column) => column);
+
+  GeneratedColumn<int> get actorId =>
+      $composableBuilder(column: $table.actorId, builder: (column) => column);
+
+  GeneratedColumn<String> get actorName =>
+      $composableBuilder(column: $table.actorName, builder: (column) => column);
+
+  GeneratedColumn<int> get memberId =>
+      $composableBuilder(column: $table.memberId, builder: (column) => column);
+
+  GeneratedColumn<String> get memberName => $composableBuilder(
+    column: $table.memberName,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get paymentId =>
+      $composableBuilder(column: $table.paymentId, builder: (column) => column);
+
+  GeneratedColumn<String> get receiptNumber => $composableBuilder(
+    column: $table.receiptNumber,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get amountMinor => $composableBuilder(
+    column: $table.amountMinor,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get periodLabel => $composableBuilder(
+    column: $table.periodLabel,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get summary =>
+      $composableBuilder(column: $table.summary, builder: (column) => column);
+
+  GeneratedColumn<String> get detail =>
+      $composableBuilder(column: $table.detail, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+}
+
+class $$AuditEventsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $AuditEventsTable,
+          AuditEvent,
+          $$AuditEventsTableFilterComposer,
+          $$AuditEventsTableOrderingComposer,
+          $$AuditEventsTableAnnotationComposer,
+          $$AuditEventsTableCreateCompanionBuilder,
+          $$AuditEventsTableUpdateCompanionBuilder,
+          (
+            AuditEvent,
+            BaseReferences<_$AppDatabase, $AuditEventsTable, AuditEvent>,
+          ),
+          AuditEvent,
+          PrefetchHooks Function()
+        > {
+  $$AuditEventsTableTableManager(_$AppDatabase db, $AuditEventsTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$AuditEventsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$AuditEventsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$AuditEventsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<AuditCategory> category = const Value.absent(),
+                Value<String> action = const Value.absent(),
+                Value<AuditOutcome> outcome = const Value.absent(),
+                Value<int?> actorId = const Value.absent(),
+                Value<String?> actorName = const Value.absent(),
+                Value<int?> memberId = const Value.absent(),
+                Value<String?> memberName = const Value.absent(),
+                Value<int?> paymentId = const Value.absent(),
+                Value<String?> receiptNumber = const Value.absent(),
+                Value<int?> amountMinor = const Value.absent(),
+                Value<String?> periodLabel = const Value.absent(),
+                Value<String> summary = const Value.absent(),
+                Value<String?> detail = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+              }) => AuditEventsCompanion(
+                id: id,
+                category: category,
+                action: action,
+                outcome: outcome,
+                actorId: actorId,
+                actorName: actorName,
+                memberId: memberId,
+                memberName: memberName,
+                paymentId: paymentId,
+                receiptNumber: receiptNumber,
+                amountMinor: amountMinor,
+                periodLabel: periodLabel,
+                summary: summary,
+                detail: detail,
+                createdAt: createdAt,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required AuditCategory category,
+                required String action,
+                required AuditOutcome outcome,
+                Value<int?> actorId = const Value.absent(),
+                Value<String?> actorName = const Value.absent(),
+                Value<int?> memberId = const Value.absent(),
+                Value<String?> memberName = const Value.absent(),
+                Value<int?> paymentId = const Value.absent(),
+                Value<String?> receiptNumber = const Value.absent(),
+                Value<int?> amountMinor = const Value.absent(),
+                Value<String?> periodLabel = const Value.absent(),
+                required String summary,
+                Value<String?> detail = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+              }) => AuditEventsCompanion.insert(
+                id: id,
+                category: category,
+                action: action,
+                outcome: outcome,
+                actorId: actorId,
+                actorName: actorName,
+                memberId: memberId,
+                memberName: memberName,
+                paymentId: paymentId,
+                receiptNumber: receiptNumber,
+                amountMinor: amountMinor,
+                periodLabel: periodLabel,
+                summary: summary,
+                detail: detail,
+                createdAt: createdAt,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$AuditEventsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $AuditEventsTable,
+      AuditEvent,
+      $$AuditEventsTableFilterComposer,
+      $$AuditEventsTableOrderingComposer,
+      $$AuditEventsTableAnnotationComposer,
+      $$AuditEventsTableCreateCompanionBuilder,
+      $$AuditEventsTableUpdateCompanionBuilder,
+      (
+        AuditEvent,
+        BaseReferences<_$AppDatabase, $AuditEventsTable, AuditEvent>,
+      ),
+      AuditEvent,
+      PrefetchHooks Function()
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -11960,4 +13381,6 @@ class $AppDatabaseManager {
       $$WhatsAppMessagesTableTableManager(_db, _db.whatsAppMessages);
   $$MemberNotesTableTableManager get memberNotes =>
       $$MemberNotesTableTableManager(_db, _db.memberNotes);
+  $$AuditEventsTableTableManager get auditEvents =>
+      $$AuditEventsTableTableManager(_db, _db.auditEvents);
 }
