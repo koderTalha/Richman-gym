@@ -195,6 +195,27 @@ void main() {
       expect(await db.select(db.memberships).get(), isEmpty);
     });
 
+    test('a reminder logged for them does not block the delete', () async {
+      // A "before due" reminder can exist with no cycle behind it at all —
+      // see `PaymentReminders.membershipPeriodId` — so it cannot be reached
+      // by cascading through membershipPeriods and has to be its own case.
+      await db.into(db.paymentReminders).insert(
+            PaymentRemindersCompanion.insert(
+              memberId: memberId,
+              stage: 'beforeDue',
+              offsetDays: 3,
+              status: ReminderSendStatus.sent,
+              dueDate: DateTime.utc(2026, 9, 10),
+              amountMinor: 300000,
+            ),
+          );
+
+      final result = await members.deleteMember(id: memberId, actorId: adminId);
+
+      expect(result, isA<MemberDeleted>());
+      expect(await db.select(db.paymentReminders).get(), isEmpty);
+    });
+
     test('other members are left alone', () async {
       final keeper = await members.create(
         fullName: 'Bilal Ahmed',

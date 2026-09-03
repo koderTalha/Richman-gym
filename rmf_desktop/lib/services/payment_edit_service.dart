@@ -12,6 +12,7 @@ import '../domain/money.dart';
 import '../domain/payment_changes.dart';
 import '../domain/payment_method.dart';
 import '../domain/phone.dart';
+import 'billing_cycle_service.dart';
 import 'billing_month_checker.dart';
 import 'receipt_renderer.dart';
 import 'receipt_storage.dart';
@@ -55,7 +56,19 @@ class EditPaymentInput {
 }
 
 /// Why an edit was declined. Typed so the UI never parses a message.
-enum EditRefusalReason { notFound, noPlan, monthBlocked, cycleTaken }
+enum EditRefusalReason {
+  notFound,
+  noPlan,
+  monthBlocked,
+  cycleTaken,
+
+  /// The payment covers several cycles — an advance payment recorded through
+  /// [RecordPaymentService.recordAdvancePayment]. This form only understands a
+  /// payment as belonging to one cycle, and silently moving or resizing it
+  /// would leave the other cycles it touched holding money nothing accounts
+  /// for. Correcting one means deleting it and recording it again.
+  spansMultipleCycles,
+}
 
 /// What became of the receipt files after a successful edit.
 sealed class ReceiptUpdate {
@@ -161,8 +174,10 @@ class PaymentEditService {
     required this.payments,
     BillingMonthChecker? checker,
     SettingsRepository? settings,
+    BillingCycleService? cycles,
   })  : _checker = checker ?? BillingMonthChecker(db),
-        _settings = settings ?? SettingsRepository(db);
+        _settings = settings ?? SettingsRepository(db),
+        _cycles = cycles ?? BillingCycleService(db, audit: audit);
 
   final AppDatabase db;
   final ReceiptRenderer renderer;
@@ -176,6 +191,10 @@ class PaymentEditService {
 
   final BillingMonthChecker _checker;
   final SettingsRepository _settings;
+
+  /// Keeps a cycle's `settledAt` honest after an edit or a delete changes what
+  /// is allocated against it.
+  final BillingCycleService _cycles;
 
   // --- Editing -------------------------------------------------------------
 
@@ -194,6 +213,17 @@ class PaymentEditService {
         .getSingle();
     final receipt = await _receiptForPayment(payment.id);
     final settings = await _settings.get();
+
+    final existingAllocations = await allocationsForPayment(db, payment.id);
+    if (existingAllocations.length > 1) {
+      return PaymentEditRefused(
+        EditRefusalReason.spansMultipleCycles,
+        '${member.fullName}\'s payment of '
+        '${formatMinorUnits(payment.amountMinor, settings.currency)} covers '
+        '${existingAllocations.length} billing cycles and cannot be corrected '
+        'here. Delete it and record it again instead.',
+      );
+    }
 
     final check = await _checker.check(
       memberId: payment.memberId,
@@ -332,6 +362,9 @@ class PaymentEditService {
     }
 
     // --- One short transaction, then the files ---------------------------
+    final oldPeriodId = payment.membershipPeriodId;
+    int? newPeriodId;
+
     await db.transaction(() async {
       // Resolved again in here: between the check above and now, another
       // window could have opened the cycle this payment is moving to.
@@ -360,6 +393,26 @@ class PaymentEditService {
               ),
             );
       }
+      newPeriodId = period.id;
+
+      // The old allocation is replaced rather than adjusted in place: an edit
+      // can change the amount, the cycle, or both, and a fresh row for
+      // whatever the payment now is is simpler than reasoning about which of
+      // the two changed. `existingAllocations` was read before this
+      // transaction opened, but it is used only to size a delete that is a
+      // no-op if there is nothing to delete.
+      if (existingAllocations.isNotEmpty) {
+        await (db.delete(db.paymentAllocations)
+              ..where((a) => a.paymentId.equals(payment.id)))
+            .go();
+      }
+      await db.into(db.paymentAllocations).insert(
+            PaymentAllocationsCompanion.insert(
+              paymentId: payment.id,
+              membershipPeriodId: period.id,
+              amountMinor: input.amountMinor,
+            ),
+          );
 
       await (db.update(db.payments)..where((p) => p.id.equals(payment.id)))
           .write(PaymentsCompanion(
@@ -373,6 +426,13 @@ class PaymentEditService {
         updatedById: Value(input.editedById),
       ));
     });
+
+    // Outside the transaction — these are follow-up reads and writes of their
+    // own, not part of what has to commit atomically with the correction.
+    await _cycles.refreshSettlement(newPeriodId!);
+    if (oldPeriodId != null && oldPeriodId != newPeriodId) {
+      await _cycles.refreshSettlement(oldPeriodId);
+    }
 
     // Past this line the correction is committed. Nothing below may report it
     // as having failed.
@@ -439,8 +499,17 @@ class PaymentEditService {
     final periodLabel = await _labelForPeriodId(payment.membershipPeriodId);
     final settings = await _settings.get();
 
+    // Read before the delete: a payment settling several cycles at once — see
+    // RecordPaymentService.recordAdvancePayment — leaves every one of them
+    // needing to read as unpaid again, not only the one the payment itself
+    // points at.
+    final affectedPeriodIds = (await allocationsForPayment(db, payment.id))
+        .map((a) => a.membershipPeriodId)
+        .toSet();
+
     // Foreign keys are on, so the order is forced: attempts reference the
-    // receipt, the receipt references the payment.
+    // receipt, the receipt references the payment. The allocations cascade
+    // with the payment itself — see PaymentAllocations.paymentId.
     await db.transaction(() async {
       if (receipt != null) {
         await (db.delete(db.whatsAppMessages)
@@ -451,6 +520,10 @@ class PaymentEditService {
       }
       await (db.delete(db.payments)..where((p) => p.id.equals(payment.id))).go();
     });
+
+    for (final periodId in affectedPeriodIds) {
+      await _cycles.refreshSettlement(periodId);
+    }
 
     // The receipt number is not returned to the counter. A gap in the sequence
     // is harmless; reusing a number that a member already has a copy of is not.

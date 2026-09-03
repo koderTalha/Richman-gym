@@ -176,7 +176,7 @@ Future<void> seedDatabase(
             ),
           );
 
-      await db.into(db.payments).insert(
+      final paymentId = await db.into(db.payments).insert(
             PaymentsCompanion.insert(
               memberId: memberId,
               membershipPeriodId: Value(periodId),
@@ -191,6 +191,18 @@ Future<void> seedDatabase(
                   'seed-$code-${periodStart.toIso8601String().substring(0, 7)}',
             ),
           );
+
+      await db.into(db.paymentAllocations).insert(
+            PaymentAllocationsCompanion.insert(
+              paymentId: paymentId,
+              membershipPeriodId: periodId,
+              amountMinor: plan.priceMinor,
+            ),
+          );
+      await (db.update(db.membershipPeriods)
+            ..where((p) => p.id.equals(periodId)))
+          .write(MembershipPeriodsCompanion(
+              settledAt: Value(periodStart.add(const Duration(days: 4)))));
     }
 
     // An unpaid current cycle so these members show as DUE.

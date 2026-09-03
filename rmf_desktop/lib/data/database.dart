@@ -1,11 +1,14 @@
 import 'package:drift/drift.dart';
 import 'package:drift_flutter/drift_flutter.dart';
+import 'package:logging/logging.dart';
 
 import 'tables.dart';
 
 export 'tables.dart';
 
 part 'database.g.dart';
+
+final _log = Logger('database');
 
 /// The whole dataset is one SQLite file in the user's application-support
 /// directory, so "back up the gym's data" means copying a single file.
@@ -19,6 +22,8 @@ part 'database.g.dart';
     Memberships,
     MembershipPeriods,
     Payments,
+    PaymentAllocations,
+    PaymentReminders,
     Receipts,
     ReceiptCounters,
     WhatsAppMessages,
@@ -33,7 +38,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 9;
+  int get schemaVersion => 11;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -96,6 +101,51 @@ class AppDatabase extends _$AppDatabase {
             await m.addColumn(
                 gymSettings, gymSettings.whatsappReceiptTemplateLanguage);
           }
+          // v10 moves billing off the calendar month and onto a day the member
+          // is anchored to, and adds the reminder machinery.
+          //
+          // Deliberately a no-op for existing data. `billingAnchorDay` is left
+          // null on every membership, and `resolveAnchorDay` reads a null
+          // anchor as the day the member's latest cycle starts — which, for
+          // every cycle this app has ever written, is the 1st. So nobody's due
+          // date moves on upgrade, and the owner re-anchors members one at a
+          // time from the member screen.
+          if (from < 10) {
+            await m.addColumn(memberships, memberships.billingAnchorDay);
+            await m.addColumn(membershipPeriods, membershipPeriods.settledAt);
+            await m.createTable(paymentAllocations);
+            await m.createTable(paymentReminders);
+
+            for (final column in [
+              gymSettings.reminderAutoSend,
+              gymSettings.reminderDaysBefore,
+              gymSettings.reminderDaysAfter,
+              gymSettings.reminderOnDueDate,
+              gymSettings.reminderSendFromHour,
+              gymSettings.reminderSendUntilHour,
+              gymSettings.reminderMaxPerRun,
+              gymSettings.whatsappReminderTemplate,
+              gymSettings.whatsappReminderTemplateLanguage,
+              gymSettings.paymentInstructions,
+            ]) {
+              await m.addColumn(gymSettings, column);
+            }
+
+            await _grandfatherSettledPeriods();
+            await _backfillPaymentAllocations();
+          }
+
+          // v11 lets a welcome message go out as an approved template instead
+          // of always as free text. Left null on upgrade: the free-text path
+          // this app has always used keeps working exactly as it does today
+          // until the gym registers a template and fills this in — see
+          // `MemberWelcomeService`.
+          if (from < 11) {
+            await m.addColumn(
+                gymSettings, gymSettings.whatsappWelcomeTemplate);
+            await m.addColumn(
+                gymSettings, gymSettings.whatsappWelcomeTemplateLanguage);
+          }
         },
         beforeOpen: (details) async {
           // Enforce the foreign keys declared in tables.dart; SQLite ignores
@@ -104,6 +154,62 @@ class AppDatabase extends _$AppDatabase {
           await _createIndexes();
         },
       );
+
+  /// Closes every cycle that already had a payment against it.
+  ///
+  /// Settlement is now a question of money — a cycle is closed once the
+  /// allocations against it reach the fee it expects. Applying that rule
+  /// backwards would reopen any historical month recorded for less than the
+  /// plan price: a discount the owner gave, a short cash payment, a typo in the
+  /// 2024 ledger. The gym would open the app after updating and find months it
+  /// considers long closed showing as owing money.
+  ///
+  /// So history is grandfathered here, in the data. Every pre-existing cycle
+  /// with a payment against it is stamped settled, and from this point the
+  /// balance rule governs. No cutoff date is tested anywhere in the code, and
+  /// no reported amount is altered — `Payments.amountMinor` keeps saying
+  /// exactly what was collected.
+  Future<void> _grandfatherSettledPeriods() async {
+    await customStatement(
+      'UPDATE membership_periods SET settled_at = COALESCE('
+      '  (SELECT MIN(p.payment_date) FROM payments p'
+      '   WHERE p.membership_period_id = membership_periods.id),'
+      // Drift stores a DateTime as unix *seconds*, so no millisecond factor
+      // here. Only reached for a payment with no date at all.
+      "  strftime('%s', 'now')"
+      ') '
+      'WHERE settled_at IS NULL AND EXISTS ('
+      '  SELECT 1 FROM payments p'
+      '  WHERE p.membership_period_id = membership_periods.id'
+      ')',
+    );
+  }
+
+  /// Gives every existing payment an allocation row for the cycle it names.
+  ///
+  /// Without this, a historical payment would read as money allocated nowhere,
+  /// and the first correction to an old payment would recompute its cycle's
+  /// balance from zero. The allocation records what the payment actually was,
+  /// capped at what its cycle expected: a member who overpaid does not get
+  /// credit spilling into a month they never paid for, and the true amount
+  /// stays on the payment row either way.
+  Future<void> _backfillPaymentAllocations() async {
+    await customStatement(
+      'INSERT INTO payment_allocations '
+      '  (payment_id, membership_period_id, amount_minor, created_at) '
+      'SELECT p.id, p.membership_period_id, '
+      '  MIN(p.amount_minor, mp.expected_amount_minor), '
+      "  strftime('%s', 'now') "
+      'FROM payments p '
+      'JOIN membership_periods mp ON mp.id = p.membership_period_id '
+      'WHERE p.membership_period_id IS NOT NULL '
+      '  AND NOT EXISTS ('
+      '    SELECT 1 FROM payment_allocations a'
+      '    WHERE a.payment_id = p.id'
+      '      AND a.membership_period_id = p.membership_period_id'
+      '  )',
+    );
+  }
 
   /// Indexes live here rather than in a numbered migration.
   ///
@@ -121,6 +227,25 @@ class AppDatabase extends _$AppDatabase {
       'CREATE INDEX IF NOT EXISTS idx_payments_member ON payments (member_id)',
       'CREATE INDEX IF NOT EXISTS idx_payments_period ON payments (membership_period_id)',
       'CREATE INDEX IF NOT EXISTS idx_messages_receipt ON whats_app_messages (receipt_id)',
+      // Settlement reads every allocation for a cycle, and deleting a payment
+      // reads every allocation it made.
+      'CREATE INDEX IF NOT EXISTS idx_allocations_period '
+          'ON payment_allocations (membership_period_id)',
+      'CREATE INDEX IF NOT EXISTS idx_allocations_payment '
+          'ON payment_allocations (payment_id)',
+      // The reminder queue asks "what has already been handled for this
+      // cycle?" once per member, every time it is built.
+      'CREATE INDEX IF NOT EXISTS idx_reminders_period '
+          'ON payment_reminders (membership_period_id)',
+      'CREATE INDEX IF NOT EXISTS idx_reminders_member '
+          'ON payment_reminders (member_id)',
+      // Deriving status now reads open cycles by their settled flag.
+      'CREATE INDEX IF NOT EXISTS idx_periods_settled '
+          'ON membership_periods (settled_at)',
+      // The one-cycle-per-member-per-start guard below looks a start date up
+      // on every cycle insert, so it wants an index to look it up in.
+      'CREATE INDEX IF NOT EXISTS idx_periods_start '
+          'ON membership_periods (period_start)',
       // The Logs screen always reads newest-first, and pages with a limit.
       'CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_events (created_at)',
     ];
@@ -143,6 +268,101 @@ class AppDatabase extends _$AppDatabase {
       );
     } catch (_) {
       // Already-duplicated data. MemberRepository copes at read time.
+    }
+
+    await _createCycleUniquenessTriggers();
+  }
+
+  /// One member, one billing cycle starting on any given day.
+  ///
+  /// `MembershipPeriods` already carries a unique key on
+  /// `(membership_id, period_start)`, which is a weaker promise than it looks.
+  /// Changing a member's plan closes their enrolment and opens a new one, so
+  /// one person accumulates several `memberships` rows while keeping a single
+  /// continuous timeline. Two of those enrolments can each hold a cycle
+  /// starting 6 September, and the table takes both — two rows for one month,
+  /// each able to accept its own payment, and a member billed twice for
+  /// September with nothing in the schema objecting.
+  ///
+  /// Every lookup in `membership_queries.dart` already resolves cycles per
+  /// *member*, collecting the member's enrolment ids and searching across all
+  /// of them. The application has therefore always treated
+  /// `(member, period_start)` as the real key; this is SQLite agreeing.
+  ///
+  /// A trigger rather than a unique index, for two reasons. The key spans a
+  /// join — the member is on `memberships`, not on the cycle — and SQLite
+  /// cannot index across one. And unlike a unique index, a trigger cannot
+  /// refuse to be created because the database it is being added to already
+  /// holds a duplicate: existing rows are left exactly as they are, in the
+  /// same spirit as the v10 settled-period grandfathering, and only new writes
+  /// are held to the rule. An owner locked out by their own imported ledger
+  /// would have no way back in.
+  ///
+  /// The message is deliberately readable: it reaches the owner through
+  /// `RecordPaymentService`, which turns it into a sentence about the member
+  /// and the month rather than a constraint name.
+  Future<void> _createCycleUniquenessTriggers() async {
+    // Cycles already recorded for the member this row would belong to,
+    // starting on the same day. Shared by both triggers; the update variant
+    // additionally excludes the row being updated from matching itself.
+    const collides = 'SELECT 1 FROM membership_periods p '
+        'JOIN memberships existing ON existing.id = p.membership_id '
+        'JOIN memberships incoming ON incoming.id = NEW.membership_id '
+        'WHERE existing.member_id = incoming.member_id '
+        'AND p.period_start = NEW.period_start';
+
+    const abort =
+        "BEGIN SELECT RAISE(ABORT, 'duplicate billing cycle for this member'); END";
+
+    await customStatement(
+      'CREATE TRIGGER IF NOT EXISTS trg_periods_one_per_member_insert '
+      'BEFORE INSERT ON membership_periods FOR EACH ROW '
+      'WHEN EXISTS ($collides) $abort',
+    );
+
+    // Scoped to the two columns that can move a cycle onto a date another
+    // enrolment already covers. Settling a cycle writes `settled_at` and must
+    // not pay for this check.
+    await customStatement(
+      'CREATE TRIGGER IF NOT EXISTS trg_periods_one_per_member_update '
+      'BEFORE UPDATE OF period_start, membership_id ON membership_periods '
+      'FOR EACH ROW '
+      'WHEN EXISTS ($collides AND p.id <> NEW.id) $abort',
+    );
+
+    await _reportPreExistingDuplicateCycles();
+  }
+
+  /// Logs any duplicate cycle already in the database.
+  ///
+  /// The triggers above guard new writes and deliberately leave history alone,
+  /// so a database that arrived here with duplicates keeps them. Silently is
+  /// the wrong way to keep them: these are the rows where a member may have
+  /// been charged twice for one month, and the owner cannot fix what nobody
+  /// mentions. Reported once per open, to the log rather than the screen —
+  /// there is nothing to do about it mid-launch, and the Logs screen is where
+  /// this app puts things the owner may want to act on later.
+  Future<void> _reportPreExistingDuplicateCycles() async {
+    try {
+      final rows = await customSelect(
+        'SELECT m.member_id AS member_id, p.period_start AS period_start, '
+        'COUNT(*) AS copies '
+        'FROM membership_periods p '
+        'JOIN memberships m ON m.id = p.membership_id '
+        'GROUP BY m.member_id, p.period_start HAVING COUNT(*) > 1',
+      ).get();
+
+      if (rows.isEmpty) return;
+
+      _log.warning(
+        'Found ${rows.length} billing ${rows.length == 1 ? "cycle" : "cycles"} '
+        'recorded more than once for the same member. These predate the '
+        'one-cycle-per-member rule and were left as they are; check the '
+        'affected members for a month paid twice.',
+      );
+    } catch (error, stack) {
+      // A diagnostic must never be the reason the app will not open.
+      _log.warning('Could not check for duplicate billing cycles', error, stack);
     }
   }
 

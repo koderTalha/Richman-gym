@@ -17,9 +17,11 @@ import 'data/seed.dart';
 import 'data/session_repository.dart';
 import 'data/settings_repository.dart';
 import 'services/backup_service.dart';
+import 'services/billing_cycle_service.dart';
 import 'services/billing_maintenance.dart';
 import 'services/billing_month_checker.dart';
 import 'services/payment_edit_service.dart';
+import 'services/reminder_service.dart';
 import 'services/whatsapp/member_welcome_service.dart';
 import 'services/logging/app_logger.dart';
 import 'domain/app_version.dart';
@@ -144,6 +146,11 @@ class RichManFitnessApp extends StatelessWidget {
     final audit = AuditRepository(db);
     final renderer = ReceiptRenderer();
 
+    // One instance shared by every service that reads or moves a billing
+    // cycle, so a payment recorded through one and a reminder built through
+    // another are always looking at the same timeline.
+    final cycles = BillingCycleService(db, audit: audit);
+
     // Rebuilt per send, so changing the provider in Settings takes effect
     // immediately without restarting the app.
     final recordPayments = RecordPaymentService(
@@ -152,6 +159,7 @@ class RichManFitnessApp extends StatelessWidget {
       storage: storage,
       clientFactory: settings.buildClient,
       audit: audit,
+      cycles: cycles,
     );
 
     // Shared by every Add Member screen rather than built per form: its
@@ -162,6 +170,17 @@ class RichManFitnessApp extends StatelessWidget {
       clientFactory: settings.buildClient,
       audit: audit,
     );
+
+    final reminders = ReminderService(
+      db: db,
+      clientFactory: settings.buildClient,
+      audit: audit,
+      cycles: cycles,
+    );
+
+    // Off by default — see GymSettings.reminderAutoSend. A closed gym reopens
+    // to at most one capped, hours-aware batch, never a silent backlog blast.
+    unawaited(reminders.runAutoSend());
 
     return MultiRepositoryProvider(
       providers: [
@@ -182,6 +201,8 @@ class RichManFitnessApp extends StatelessWidget {
           create: (_) => ReceiptRepository(db),
         ),
         RepositoryProvider<RecordPaymentService>.value(value: recordPayments),
+        RepositoryProvider<BillingCycleService>.value(value: cycles),
+        RepositoryProvider<ReminderService>.value(value: reminders),
         RepositoryProvider<MemberWelcomeService>.value(value: welcome),
         RepositoryProvider<UpdateService>(
           create: (_) => UpdateService(

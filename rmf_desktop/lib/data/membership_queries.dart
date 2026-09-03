@@ -118,3 +118,84 @@ Future<List<MembershipPeriod>> periodsForMember(
         ..orderBy([(p) => OrderingTerm(expression: p.periodStart)]))
       .get();
 }
+
+/// How much has been allocated to each of [periodIds].
+///
+/// One grouped query rather than one per cycle: the members screen and the
+/// reminder queue both ask this about the whole roster at once.
+Future<Map<int, int>> collectedByPeriod(
+  AppDatabase db,
+  List<int> periodIds,
+) async {
+  if (periodIds.isEmpty) return const {};
+
+  final total = db.paymentAllocations.amountMinor.sum();
+  final rows = await (db.selectOnly(db.paymentAllocations)
+        ..addColumns([db.paymentAllocations.membershipPeriodId, total])
+        ..where(db.paymentAllocations.membershipPeriodId.isIn(periodIds))
+        ..groupBy([db.paymentAllocations.membershipPeriodId]))
+      .get();
+
+  return {
+    for (final row in rows)
+      row.read(db.paymentAllocations.membershipPeriodId)!:
+          row.read(total) ?? 0,
+  };
+}
+
+/// Every allocation belonging to [paymentId].
+Future<List<PaymentAllocation>> allocationsForPayment(
+  AppDatabase db,
+  int paymentId,
+) =>
+    (db.select(db.paymentAllocations)
+          ..where((a) => a.paymentId.equals(paymentId))
+          ..orderBy([(a) => OrderingTerm(expression: a.membershipPeriodId)]))
+        .get();
+
+/// The member's latest cycle on any enrolment, or null if they have none.
+///
+/// This is where the next cycle begins, and — for a membership with no anchor
+/// column — the day its anchor resolves to.
+Future<MembershipPeriod?> latestPeriodForMember(
+  AppDatabase db,
+  int memberId,
+) async {
+  final membershipIds =
+      (await allMembershipsFor(db, memberId)).map((m) => m.id).toList();
+  if (membershipIds.isEmpty) return null;
+
+  final rows = await (db.select(db.membershipPeriods)
+        ..where((p) => p.membershipId.isIn(membershipIds))
+        ..orderBy([
+          (p) => OrderingTerm(
+              expression: p.periodEnd, mode: OrderingMode.desc),
+        ])
+        ..limit(1))
+      .get();
+  return rows.isEmpty ? null : rows.first;
+}
+
+/// Which of [periodIds] have at least one allocation recorded against them.
+///
+/// Used to tell a cycle settled under the balance rule apart from one whose
+/// only evidence of payment is a raw historical row with no allocation at
+/// all — the shape a database predating v10, or a test fixture that writes
+/// straight to the payments table, leaves behind. See
+/// `MemberRepository._buildRows`.
+Future<Set<int>> periodsWithAnyAllocation(
+  AppDatabase db,
+  List<int> periodIds,
+) async {
+  if (periodIds.isEmpty) return const {};
+
+  final rows = await (db.selectOnly(db.paymentAllocations, distinct: true)
+        ..addColumns([db.paymentAllocations.membershipPeriodId])
+        ..where(db.paymentAllocations.membershipPeriodId.isIn(periodIds)))
+      .get();
+
+  return rows
+      .map((r) => r.read(db.paymentAllocations.membershipPeriodId))
+      .whereType<int>()
+      .toSet();
+}

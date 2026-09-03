@@ -9,6 +9,8 @@
 /// settings row, so a gym that renames itself renames itself everywhere.
 library;
 
+import '../../domain/dates.dart';
+
 /// The note a member is sent once, when they are added to the gym.
 ///
 /// [memberName] and [memberCode] are optional so the message degrades to the
@@ -33,6 +35,31 @@ String welcomeMessage({
     ],
   ].join('\n');
 }
+
+/// The values that fill the `welcome_member` template's `{{1}}`…`{{4}}`.
+///
+/// Order is the contract with the template registered in Meta's Business
+/// Manager and cannot be rearranged here alone:
+///
+///   1. member name  2. member code  3. plan name  4. valid until
+///
+/// Used instead of [welcomeMessage] when the gym has registered a welcome
+/// template — see [GymSettings.whatsappWelcomeTemplate] and
+/// `MemberWelcomeService`. Unlike the free-text message, every field here is
+/// required: a template parameter cannot be blank, so there is no equivalent
+/// of [welcomeMessage]'s degrade-to-plain-greeting behaviour.
+List<String> welcomeTemplateParams({
+  required String memberName,
+  required int memberCode,
+  required String planName,
+  required DateTime validUntil,
+}) =>
+    [
+      memberName,
+      '$memberCode',
+      planName,
+      formatDayMonthYear(validUntil),
+    ].map(flattenTemplateParam).toList();
 
 /// The caption that travels with a receipt image.
 String receiptCaption({
@@ -73,6 +100,34 @@ List<String> receiptTemplateParams({
     [memberName, amountLabel, periodLabel, receiptNumber]
         .map(flattenTemplateParam)
         .toList();
+
+/// The values that fill a payment-reminder template's `{{1}}`…`{{5}}`.
+///
+/// Order is the contract with whatever template the owner registers in Meta's
+/// Business Manager under [GymSettings.whatsappReminderTemplate] and cannot be
+/// rearranged here alone:
+///
+///   1. member name  2. amount due  3. due date  4. gym name
+///   5. payment instructions
+///
+/// [paymentInstructions] is the owner's own words for how to pay — "Cash at
+/// the counter, or Easypaisa to 0300-1234567" — and is optional: a gym that
+/// has not filled it in still sends a complete, readable reminder, just
+/// without a fifth line.
+List<String> reminderTemplateParams({
+  required String memberName,
+  required String amountLabel,
+  required String dueDateLabel,
+  required String gymName,
+  String? paymentInstructions,
+}) =>
+    [
+      memberName,
+      amountLabel,
+      dueDateLabel,
+      gymName,
+      paymentInstructions ?? '—',
+    ].map(flattenTemplateParam).toList();
 
 /// Collapses every run of whitespace to a single space and trims the result.
 ///

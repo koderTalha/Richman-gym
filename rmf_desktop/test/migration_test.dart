@@ -4,7 +4,9 @@ import 'package:drift/drift.dart' hide isNull, isNotNull;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
+import 'package:sqlite3/sqlite3.dart';
 import 'package:rich_man_fitness/data/database.dart';
+import 'package:rich_man_fitness/domain/billing_cycle.dart';
 
 /// Proves that installing a new version over an old one keeps the gym's data.
 ///
@@ -280,6 +282,35 @@ void main() {
     await executor.executor.close();
   }
 
+  /// Rewrites the seeded payment's amount in the *old* file, before any
+  /// migration has run.
+  ///
+  /// The seed pays a 300,000 fee in full. Both the underpaid and overpaid
+  /// cases are about what the v10 backfill does with a payment that does not
+  /// match its cycle exactly, so they need the row changed while the database
+  /// still looks the way the previous release left it.
+  /// Goes straight at the file with sqlite3 rather than through drift.
+  /// Opening it as a drift executor rewrites `user_version` to whatever the
+  /// executor's user claims, which made the next open replay the v2 migration
+  /// over columns that were already there.
+  void setHistoricalPaymentAmount(int amountMinor) {
+    final raw = sqlite3.open(dbFile.path);
+    try {
+      raw.execute(
+        'UPDATE payments SET amount_minor = ? WHERE id = 1',
+        [amountMinor],
+      );
+    } finally {
+      raw.close();
+    }
+  }
+
+  /// 100,000 against a 300,000 fee — the discount or short cash payment.
+  void underpayTheHistoricalPayment() => setHistoricalPaymentAmount(100000);
+
+  /// 500,000 against a 300,000 fee — a tip, or a ledger typo.
+  void overpayTheHistoricalPayment() => setHistoricalPaymentAmount(500000);
+
   /// Opens the old file with the current code, forcing migrations to run.
   Future<AppDatabase> openWithCurrentCode() async {
     final db = AppDatabase.forTesting(NativeDatabase(dbFile));
@@ -545,7 +576,7 @@ void main() {
           .getSingle();
 
       expect(version, db.schemaVersion);
-      expect(db.schemaVersion, 9);
+      expect(db.schemaVersion, 11);
     });
 
     test('keeps the members, payments and receipts', () async {
@@ -619,6 +650,135 @@ void main() {
       settings = await db.select(db.gymSettings).getSingle();
       expect(settings.whatsappReceiptTemplate, 'gym_receipt_v2');
       expect(settings.whatsappReceiptTemplateLanguage, 'en_US');
+    });
+  });
+
+  /// The v10 upgrade is the one that changes how billing *means* something, so
+  /// it gets the most attention: the whole promise is that a gym updating the
+  /// app finds every member exactly where they left them.
+  group('upgrading to anchored billing cycles', () {
+    test('moves nobody onto a new billing day', () async {
+      await buildOldDatabase(7);
+      final db = await openWithCurrentCode();
+      addTearDown(db.close);
+
+      final membership = await db.select(db.memberships).getSingle();
+      expect(membership.billingAnchorDay, isNull,
+          reason: 'the upgrade writes no anchor, so no due date moves');
+
+      // And a null anchor resolves to the 1st, because that is where every
+      // cycle this app has ever written starts.
+      final period = await db.select(db.membershipPeriods).getSingle();
+      expect(
+        resolveAnchorDay(
+          billingAnchorDay: membership.billingAnchorDay,
+          latestPeriodStart: period.periodStart,
+          joiningDate: (await db.select(db.members).getSingle()).joiningDate,
+        ),
+        1,
+      );
+    });
+
+    test('closes a cycle that already had a payment against it', () async {
+      // Grandfathering. Under the new balance rule this cycle would be
+      // recomputed from its allocations; stamping it settled is what stops the
+      // gym's back catalogue reopening the moment they update.
+      await buildOldDatabase(7);
+      final db = await openWithCurrentCode();
+      addTearDown(db.close);
+
+      final period = await db.select(db.membershipPeriods).getSingle();
+      expect(period.settledAt, isNotNull);
+    });
+
+    test('closes an underpaid historical cycle too, rather than reopening it',
+        () async {
+      // The case that motivated grandfathering: a month recorded for less than
+      // the plan fee — a discount, a short cash payment, a ledger typo. Under
+      // the balance rule alone it would read as owing money.
+      await buildOldDatabase(7);
+      underpayTheHistoricalPayment();
+
+      final db = await openWithCurrentCode();
+      addTearDown(db.close);
+
+      final period = await db.select(db.membershipPeriods).getSingle();
+      expect(period.settledAt, isNotNull,
+          reason: 'history is closed by the migration, not re-judged');
+    });
+
+    test('gives every existing payment an allocation for its cycle', () async {
+      await buildOldDatabase(7);
+      final db = await openWithCurrentCode();
+      addTearDown(db.close);
+
+      final allocation = await db.select(db.paymentAllocations).getSingle();
+      final payment = await db.select(db.payments).getSingle();
+
+      expect(allocation.paymentId, payment.id);
+      expect(allocation.membershipPeriodId, payment.membershipPeriodId);
+      expect(allocation.amountMinor, 300000);
+    });
+
+    test('caps a backfilled allocation at what the cycle expected', () async {
+      // An overpayment must not spill credit into a month the member never
+      // paid for. The payment row keeps saying what was really collected.
+      await buildOldDatabase(7);
+      overpayTheHistoricalPayment();
+
+      final db = await openWithCurrentCode();
+      addTearDown(db.close);
+
+      final period = await db.select(db.membershipPeriods).getSingle();
+      final allocation = await db.select(db.paymentAllocations).getSingle();
+
+      expect(allocation.amountMinor, period.expectedAmountMinor);
+      expect((await db.select(db.payments).getSingle()).amountMinor, 500000,
+          reason: 'the amount actually collected is never rewritten');
+    });
+
+    test('the reminder settings arrive off, with sensible defaults', () async {
+      await buildOldDatabase(7);
+      final db = await openWithCurrentCode();
+      addTearDown(db.close);
+
+      final settings = await db.select(db.gymSettings).getSingle();
+
+      expect(settings.reminderAutoSend, isFalse,
+          reason: 'updating the app must never start messaging members');
+      expect(settings.reminderDaysBefore, '3');
+      expect(settings.reminderDaysAfter, '3,7');
+      expect(settings.reminderOnDueDate, isTrue);
+      expect(settings.reminderSendFromHour, 9);
+      expect(settings.reminderSendUntilHour, 21);
+      expect(settings.reminderMaxPerRun, 25);
+      expect(settings.whatsappReminderTemplate, isNull);
+      expect(settings.paymentInstructions, 'Pay Cash/Online');
+    });
+
+    test('the welcome message keeps sending as free text until a template '
+        'is registered', () async {
+      await buildOldDatabase(7);
+      final db = await openWithCurrentCode();
+      addTearDown(db.close);
+
+      final settings = await db.select(db.gymSettings).getSingle();
+
+      expect(settings.whatsappWelcomeTemplate, isNull,
+          reason: 'an upgrade must not switch delivery mode on its own');
+      expect(settings.whatsappWelcomeTemplateLanguage, 'en');
+    });
+
+    test('running the upgrade twice adds nothing a second time', () async {
+      await buildOldDatabase(7);
+
+      final first = await openWithCurrentCode();
+      await first.close();
+
+      final db = await openWithCurrentCode();
+      addTearDown(db.close);
+
+      expect((await db.select(db.paymentAllocations).get()), hasLength(1));
     });
   });
 

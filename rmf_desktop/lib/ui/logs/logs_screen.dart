@@ -369,6 +369,7 @@ class _CategoryChip extends StatelessWidget {
       AuditCategory.whatsapp => 'WhatsApp',
       AuditCategory.billing => 'Billing',
       AuditCategory.update => 'Update',
+      AuditCategory.reminder => 'Reminder',
     };
 
     return Align(

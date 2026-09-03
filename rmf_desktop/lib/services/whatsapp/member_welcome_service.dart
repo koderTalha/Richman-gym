@@ -2,6 +2,8 @@ import 'package:logging/logging.dart';
 
 import '../../data/audit_repository.dart';
 import '../../data/database.dart';
+import '../../data/membership_queries.dart';
+import '../../domain/billing_cycle.dart';
 import '../../domain/phone.dart';
 import 'message_texts.dart';
 import 'whatsapp_client.dart';
@@ -147,14 +149,27 @@ class MemberWelcomeService {
         await (db.select(db.gymSettings)..where((s) => s.id.equals(1)))
             .getSingle();
 
-    final result = await client.sendText(WhatsAppTextInput(
-      to: to,
-      body: welcomeMessage(
-        gymName: settings.gymName,
-        memberName: member.fullName,
-        memberCode: member.memberCode,
-      ),
-    ));
+    final template = settings.whatsappWelcomeTemplate;
+    final result = (template == null || template.trim().isEmpty)
+        // No template registered yet: the free-text message this app has
+        // always sent. Meta only delivers this inside the 24-hour window a
+        // member's own message opens, which a brand new member has almost
+        // never done — see the template branch below for the fix.
+        ? await client.sendText(WhatsAppTextInput(
+            to: to,
+            body: welcomeMessage(
+              gymName: settings.gymName,
+              memberName: member.fullName,
+              memberCode: member.memberCode,
+            ),
+          ))
+        : await _sendViaTemplate(
+            client: client,
+            to: to,
+            template: template,
+            language: settings.whatsappWelcomeTemplateLanguage,
+            member: member,
+          );
 
     switch (result) {
       case WhatsAppSendSuccess(:final externalMessageId):
@@ -183,6 +198,67 @@ class MemberWelcomeService {
           provider: client.kind,
         );
     }
+  }
+
+  /// Sends the welcome message as the gym's registered template.
+  ///
+  /// Templates are not subject to the 24-hour customer-service window free
+  /// text is, which is the entire reason this branch exists — a member who
+  /// has just been added has essentially never messaged the gym's WhatsApp
+  /// number first, so free text would otherwise be accepted by Meta and then
+  /// silently fail to arrive. See [GymSettings.whatsappWelcomeTemplate].
+  ///
+  /// A member without an active plan cannot be given a "valid until" date, so
+  /// that case comes back as a plain [WhatsAppSendFailure] — the same
+  /// sealed-result contract the caller already switches on — rather than an
+  /// exception.
+  Future<WhatsAppSendResult> _sendViaTemplate({
+    required WhatsAppClient client,
+    required String to,
+    required String template,
+    required String language,
+    required Member member,
+  }) async {
+    final membership = await openMembershipFor(db, member.id);
+    if (membership == null) {
+      return const WhatsAppSendFailure(
+          'This member has no active plan yet, so a welcome template — '
+          'which must say when the membership is valid until — cannot be '
+          'filled in.');
+    }
+
+    final plan = await (db.select(db.membershipPlans)
+          ..where((p) => p.id.equals(membership.planId)))
+        .getSingleOrNull();
+    if (plan == null) {
+      return const WhatsAppSendFailure(
+          'This member\'s plan no longer exists.');
+    }
+
+    // The end of the very first cycle: a brand new member has no
+    // MembershipPeriods yet, so this is computed the same way
+    // `MemberBilling.nextBoundary` computes it for that same "no history yet"
+    // case — see `BillingCycleService.forMember`.
+    final firstCycle = firstCycleFor(
+      joiningDate: member.joiningDate,
+      durationMonths: plan.durationMonths,
+      anchorDay: membership.billingAnchorDay,
+    );
+    // `end` is the exclusive start of the *next* cycle, so the last day this
+    // membership actually covers is the day before it.
+    final validUntil = firstCycle.end.subtract(const Duration(days: 1));
+
+    return client.sendTemplate(WhatsAppTemplateInput(
+      to: to,
+      templateName: template,
+      languageCode: language,
+      bodyParams: welcomeTemplateParams(
+        memberName: member.fullName,
+        memberCode: member.memberCode,
+        planName: plan.name,
+        validUntil: validUntil,
+      ),
+    ));
   }
 
   /// Records the failure and hands it back.

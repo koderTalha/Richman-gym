@@ -9,6 +9,7 @@ import 'logs/logs_screen.dart';
 import 'members/members_screen.dart';
 import 'payments/payments_screen.dart';
 import 'receipts/receipts_screen.dart';
+import 'reminders/reminders_screen.dart';
 import 'settings/settings_screen.dart';
 import 'widgets/update_banner.dart';
 import 'whatsapp/whatsapp_screen.dart';
@@ -33,6 +34,8 @@ final navDestinations = <NavDestination>[
       (_) => const PaymentsScreen()),
   NavDestination('Receipts', Icons.receipt_long_outlined,
       (_) => const ReceiptsScreen()),
+  NavDestination('Reminders', Icons.notifications_active_outlined,
+      (_) => const RemindersScreen()),
   NavDestination('WhatsApp', Icons.chat_outlined,
       (_) => const WhatsAppScreen()),
   NavDestination('Logs', Icons.article_outlined, (_) => const LogsScreen()),
