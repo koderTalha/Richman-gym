@@ -139,6 +139,14 @@ class BillingCycleService {
   /// Called inside the payment transaction. Matching on the start rather than
   /// inserting blind is what makes two payments confirmed at the same instant
   /// settle one cycle instead of opening two.
+  ///
+  /// The match is per *member*, not per enrolment. A cycle recorded before a
+  /// plan change belongs to the enrolment the member has since moved off, and
+  /// searching only the current one would miss it and open a second row for
+  /// the same month — the exact duplicate the one-cycle-per-member trigger in
+  /// [AppDatabase] refuses. Found rows are returned as they are, on whichever
+  /// enrolment recorded them: `periodsForMember` reads across all of them, so
+  /// a cycle does not need to move to stay visible.
   Future<MembershipPeriod> materialise({
     required int membershipId,
     required SettleableCycle cycle,
@@ -149,13 +157,16 @@ class BillingCycleService {
           .getSingle();
     }
 
-    final existing = await (db.select(db.membershipPeriods)
-          ..where((p) =>
-              p.membershipId.equals(membershipId) &
-              p.periodStart.equals(cycle.start))
-          ..limit(1))
-        .get();
-    if (existing.isNotEmpty) return existing.first;
+    final membership = await (db.select(db.memberships)
+          ..where((m) => m.id.equals(membershipId)))
+        .getSingle();
+
+    final existing = await periodForMemberStarting(
+      db,
+      memberId: membership.memberId,
+      periodStart: cycle.start,
+    );
+    if (existing != null) return existing;
 
     return db.into(db.membershipPeriods).insertReturning(
           MembershipPeriodsCompanion.insert(

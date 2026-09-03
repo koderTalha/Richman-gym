@@ -15,6 +15,32 @@ class PaymentRuleException implements Exception {
   String toString() => message;
 }
 
+/// The payment reaches further into the future than the app will record
+/// unasked.
+///
+/// Paying a month ahead is ordinary and goes through silently. A quarter or a
+/// year ahead is legitimate but is also exactly what a mistyped amount looks
+/// like, and nothing in the number itself tells the two apart — so the owner is
+/// asked rather than guessed at, and the payment is re-submitted with
+/// `confirmedAdvance` once they say yes.
+///
+/// A [PaymentRuleException] because it is a refusal the owner can act on, and a
+/// distinct type because the UI must answer it with a question rather than an
+/// error banner.
+class AdvanceConfirmationRequired extends PaymentRuleException {
+  const AdvanceConfirmationRequired({
+    required this.futureCyclesCovered,
+    required this.coveredPeriodLabel,
+    required String message,
+  }) : super(message);
+
+  /// Cycles beyond the member's current one that the money would buy.
+  final int futureCyclesCovered;
+
+  /// The span the payment would cover, for the confirmation prompt.
+  final String coveredPeriodLabel;
+}
+
 /// Anything thrown, reduced to one sentence the owner can read.
 ///
 /// Everything else — a SQLite constraint, a socket timeout, a null in a place

@@ -232,6 +232,10 @@ class _WhatsAppCardState extends State<_WhatsAppCard> {
       TextEditingController(text: widget.settings.whatsappReceiptTemplate);
   late final _templateLanguage = TextEditingController(
       text: widget.settings.whatsappReceiptTemplateLanguage);
+  late final _welcomeTemplate = TextEditingController(
+      text: widget.settings.whatsappWelcomeTemplate ?? '');
+  late final _welcomeTemplateLanguage = TextEditingController(
+      text: widget.settings.whatsappWelcomeTemplateLanguage);
 
   bool _showToken = false;
 
@@ -244,6 +248,8 @@ class _WhatsAppCardState extends State<_WhatsAppCard> {
       _businessNumber,
       _receiptTemplate,
       _templateLanguage,
+      _welcomeTemplate,
+      _welcomeTemplateLanguage,
     ]) {
       c.dispose();
     }
@@ -265,6 +271,12 @@ class _WhatsAppCardState extends State<_WhatsAppCard> {
           // gym actually registered.
           receiptTemplate: _blank(_receiptTemplate.text) ?? 'payment_receipt',
           receiptTemplateLanguage: _blank(_templateLanguage.text) ?? 'en',
+          // Blank here is a real, valid choice, unlike the receipt template:
+          // it means "keep sending the free-text welcome message" rather than
+          // "fall back to a default name that may not exist in Meta."
+          welcomeTemplate: _blank(_welcomeTemplate.text),
+          welcomeTemplateLanguage:
+              _blank(_welcomeTemplateLanguage.text) ?? 'en',
         ),
       );
 
@@ -374,6 +386,35 @@ class _WhatsAppCardState extends State<_WhatsAppCard> {
               Expanded(
                 child: TextField(
                   controller: _templateLanguage,
+                  decoration: const InputDecoration(
+                    labelText: 'Template language',
+                    helperText: 'en for English, en_US for English (US)',
+                    isDense: true,
+                  ),
+                ),
+              ),
+            ]),
+            const SizedBox(height: 14),
+            // Optional, unlike the receipt template: left blank, the welcome
+            // message still goes out as free text exactly as it always has.
+            // Filled in, a brand new member — who has essentially never
+            // messaged the gym first — actually receives it, since a template
+            // is not held to the 24-hour customer-service window.
+            Row(children: [
+              Expanded(
+                child: TextField(
+                  controller: _welcomeTemplate,
+                  decoration: const InputDecoration(
+                    labelText: 'Welcome template name',
+                    helperText: 'Optional — blank keeps sending free text',
+                    isDense: true,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: TextField(
+                  controller: _welcomeTemplateLanguage,
                   decoration: const InputDecoration(
                     labelText: 'Template language',
                     helperText: 'en for English, en_US for English (US)',

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../data/database.dart';
 import '../../domain/member_status.dart';
+import '../../domain/payment_timing.dart';
 import '../../theme/app_theme.dart';
 
 class StatusBadge extends StatelessWidget {
@@ -72,5 +73,33 @@ class WhatsAppStatusBadge extends StatelessWidget {
       WhatsAppStatus.failed => ('Failed', context.palette.expired, context.palette.expiredBg),
     };
     return StatusBadge(label: label, fg: fg, bg: bg);
+  }
+}
+
+/// Why a payment's date and the period it bought do not match.
+///
+/// Rendered only for a payment that is genuinely early or late. An on-time
+/// payment gets nothing at all: a badge on every row is a badge nobody reads,
+/// and the two cases worth noticing would be lost among the rest.
+class PaymentTimingBadge extends StatelessWidget {
+  const PaymentTimingBadge({super.key, required this.timing});
+
+  final PaymentTiming timing;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!timing.isNoteworthy) return const SizedBox.shrink();
+
+    // Advance borrows the paid colours — money in early is good news. Late
+    // borrows the due colours rather than the expired ones: the fee did
+    // arrive, so this is the same amber as a member who owes, not the red of
+    // a lapsed membership.
+    final (fg, bg) = switch (timing) {
+      PaymentTiming.advance => (context.palette.paid, context.palette.paidBg),
+      PaymentTiming.late => (context.palette.due, context.palette.dueBg),
+      PaymentTiming.onTime =>
+        (context.palette.inactive, context.palette.inactiveBg),
+    };
+    return StatusBadge(label: timing.label, fg: fg, bg: bg);
   }
 }

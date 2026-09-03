@@ -570,6 +570,14 @@ class MemberRepository {
       await (db.delete(db.memberNotes)..where((n) => n.memberId.equals(id)))
           .go();
 
+      // A reminder can exist for a member with no billed cycle at all — the
+      // "before due" nudge deliberately does not wait for one, see
+      // `PaymentReminders.membershipPeriodId` — so this cannot be reached by
+      // cascading through membershipPeriods below and has to go explicitly.
+      await (db.delete(db.paymentReminders)
+            ..where((r) => r.memberId.equals(id)))
+          .go();
+
       if (membershipIds.isNotEmpty) {
         await (db.delete(db.membershipPeriods)
               ..where((p) => p.membershipId.isIn(membershipIds)))

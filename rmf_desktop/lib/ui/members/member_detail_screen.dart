@@ -10,7 +10,6 @@ import '../../services/billing_cycle_service.dart';
 import '../../theme/app_theme.dart';
 import '../payments/advance_payment_dialog.dart';
 import '../payments/payment_history_table.dart';
-import '../payments/record_payment_dialog.dart';
 import '../widgets/status_badge.dart';
 import 'billing_day_action.dart';
 import 'member_form_screen.dart';
@@ -284,21 +283,6 @@ class _Body extends StatelessWidget {
                   },
                   icon: const Icon(Icons.edit_outlined, size: 16),
                   label: const Text('Edit'),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Builder(
-                builder: (context) => OutlinedButton.icon(
-                  onPressed: () async {
-                    final bloc = context.read<MemberDetailBloc>();
-                    final recorded =
-                        await showRecordPaymentDialog(context, member: row);
-                    if (recorded == true) {
-                      bloc.add(const MemberDetailRequested());
-                    }
-                  },
-                  icon: const Icon(Icons.calendar_month_outlined, size: 16),
-                  label: const Text('Bill a Month'),
                 ),
               ),
               const SizedBox(width: 10),

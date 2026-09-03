@@ -112,6 +112,21 @@ class GymSettings extends Table {
   TextColumn get whatsappReceiptTemplateLanguage =>
       text().withDefault(const Constant('en'))();
 
+  /// The approved template a new member's welcome message is sent as, if the
+  /// gym has registered one.
+  ///
+  /// Null rather than defaulted like [whatsappReceiptTemplate]: a gym mid
+  /// upgrade has not necessarily registered this template yet, and the
+  /// welcome message still has a free-text fallback the receipt never had (see
+  /// `MemberWelcomeService`). A gym that fills this in gets a message that
+  /// reaches a brand new member even though they have never messaged the
+  /// business first — free text cannot, since Meta only allows it inside the
+  /// 24-hour window a member's own message opens, and a member has almost
+  /// never messaged before they have even been welcomed.
+  TextColumn get whatsappWelcomeTemplate => text().nullable()();
+  TextColumn get whatsappWelcomeTemplateLanguage =>
+      text().withDefault(const Constant('en'))();
+
   /// Makes the mock provider fail on demand, so the "WhatsApp failed / Retry"
   /// path can be exercised without breaking anything real.
   BoolColumn get whatsappMockFails =>
@@ -179,7 +194,12 @@ class GymSettings extends Table {
   /// How a member is meant to pay, in the owner's own words — "Pay at the
   /// counter, or Easypaisa to 0300-1234567". Goes into the reminder so the
   /// message tells the member what to actually do.
-  TextColumn get paymentInstructions => text().nullable()();
+  ///
+  /// Defaulted rather than left blank: an empty reminder line reads as
+  /// unfinished, and cash-or-online is a true answer for every gym this app
+  /// has shipped to so far.
+  TextColumn get paymentInstructions =>
+      text().nullable().withDefault(const Constant('Pay Cash/Online'))();
 
   @override
   Set<Column> get primaryKey => {id};
@@ -369,7 +389,12 @@ class PaymentReminders extends Table {
 
   /// Copied alongside the cycle so the Reminders screen can list by member
   /// without joining through memberships.
-  IntColumn get memberId => integer().references(Members, #id)();
+  ///
+  /// Cascades for the same reason [membershipPeriodId] does: a "before due"
+  /// reminder can exist for a member with no billed cycle at all, so deleting
+  /// a member cannot rely on cascading through membershipPeriods to reach it.
+  IntColumn get memberId =>
+      integer().references(Members, #id, onDelete: KeyAction.cascade)();
 
   /// `ReminderStage.name`, stored as text rather than as a `textEnum`.
   ///

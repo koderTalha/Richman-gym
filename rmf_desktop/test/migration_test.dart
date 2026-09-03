@@ -576,7 +576,7 @@ void main() {
           .getSingle();
 
       expect(version, db.schemaVersion);
-      expect(db.schemaVersion, 10);
+      expect(db.schemaVersion, 11);
     });
 
     test('keeps the members, payments and receipts', () async {
@@ -753,7 +753,20 @@ void main() {
       expect(settings.reminderSendUntilHour, 21);
       expect(settings.reminderMaxPerRun, 25);
       expect(settings.whatsappReminderTemplate, isNull);
-      expect(settings.paymentInstructions, isNull);
+      expect(settings.paymentInstructions, 'Pay Cash/Online');
+    });
+
+    test('the welcome message keeps sending as free text until a template '
+        'is registered', () async {
+      await buildOldDatabase(7);
+      final db = await openWithCurrentCode();
+      addTearDown(db.close);
+
+      final settings = await db.select(db.gymSettings).getSingle();
+
+      expect(settings.whatsappWelcomeTemplate, isNull,
+          reason: 'an upgrade must not switch delivery mode on its own');
+      expect(settings.whatsappWelcomeTemplateLanguage, 'en');
     });
 
     test('running the upgrade twice adds nothing a second time', () async {

@@ -1,6 +1,8 @@
 import 'package:drift/drift.dart';
 
 import '../domain/billing_period.dart';
+import '../domain/payment_timing.dart';
+import '../domain/reminder_schedule.dart';
 import 'database.dart';
 
 /// A payment joined with the context needed to display it.
@@ -14,6 +16,7 @@ class PaymentRow {
     required this.receipt,
     required this.whatsAppStatus,
     required this.recordedByName,
+    this.timing = PaymentTiming.onTime,
   });
 
   final Payment payment;
@@ -30,6 +33,13 @@ class PaymentRow {
   final Receipt? receipt;
   final WhatsAppStatus? whatsAppStatus;
   final String recordedByName;
+
+  /// Where this payment's date fell relative to the cycle it bought.
+  ///
+  /// Computed here rather than stored, from two dates the row already holds.
+  /// A column would be a second answer to the same question, and would go
+  /// stale the moment a payment was edited onto a different cycle.
+  final PaymentTiming timing;
 }
 
 class PaymentRepository {
@@ -120,6 +130,16 @@ class PaymentRepository {
       for (final p in await db.select(db.membershipPlans).get()) p.id: p
     };
 
+    // One read for the whole page: the on-time window is a property of the
+    // gym's reminder schedule, not of any individual payment.
+    final settings = await (db.select(db.gymSettings)
+          ..where((s) => s.id.equals(1)))
+        .getSingleOrNull();
+    final window = TimingWindow.fromReminderOffsets(
+      daysBefore: parseOffsetDays(settings?.reminderDaysBefore),
+      daysAfter: parseOffsetDays(settings?.reminderDaysAfter),
+    );
+
     return payments.map((payment) {
       final period = payment.membershipPeriodId == null
           ? null
@@ -134,6 +154,17 @@ class PaymentRepository {
         member: members[payment.memberId]!,
         planDurationMonths: duration,
         periodStart: period?.periodStart.toUtc(),
+        // Classified against the payment date exactly as the table prints it,
+        // so the badge and the date beside it can never tell different
+        // stories. A payment with no cycle has nothing to be early or late
+        // for.
+        timing: period == null
+            ? PaymentTiming.onTime
+            : classifyTiming(
+                paidAt: payment.paymentDate,
+                periodStart: period.periodStart,
+                window: window,
+              ),
         periodLabel: period == null
             ? '—'
             : formatBillingPeriod(period.periodStart, duration),

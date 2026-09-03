@@ -4,6 +4,7 @@ import '../../data/payment_repository.dart';
 import '../../domain/dates.dart';
 import '../../domain/money.dart';
 import '../../domain/payment_method.dart';
+import '../../domain/payment_timing.dart';
 import '../../theme/app_theme.dart';
 import '../widgets/status_badge.dart';
 import 'delete_payment_action.dart';
@@ -125,9 +126,25 @@ class PaymentHistoryTable extends StatelessWidget {
                       ),
                     Expanded(
                       flex: 2,
-                      child: Text(row.periodLabel,
-                          style: TextStyle(
-                              fontSize: 13, color: context.palette.textSecondary)),
+                      child: Row(
+                        children: [
+                          Flexible(
+                            child: Text(row.periodLabel,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                    fontSize: 13,
+                                    color: context.palette.textSecondary)),
+                          ),
+                          // Beside the period rather than beside the date, so
+                          // the answer sits next to the question: this is the
+                          // cycle the money bought, and this is why its date
+                          // looks wrong.
+                          if (row.timing.isNoteworthy) ...[
+                            const SizedBox(width: 6),
+                            PaymentTimingBadge(timing: row.timing),
+                          ],
+                        ],
+                      ),
                     ),
                     Expanded(
                       flex: 2,

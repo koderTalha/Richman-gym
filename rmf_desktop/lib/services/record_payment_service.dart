@@ -11,8 +11,10 @@ import '../domain/money.dart';
 import '../domain/payment_errors.dart';
 import '../domain/payment_method.dart';
 import '../domain/payment_settlement.dart';
+import '../domain/payment_timing.dart';
 import '../domain/phone.dart';
 import '../domain/receipt_number.dart';
+import '../domain/reminder_schedule.dart';
 import 'billing_cycle_service.dart';
 import 'billing_month_checker.dart';
 import 'receipt_renderer.dart';
@@ -78,6 +80,7 @@ class AdvancePaymentInput {
     required this.idempotencyKey,
     this.referenceNumber,
     this.notes,
+    this.confirmedAdvance = false,
   });
 
   final int memberId;
@@ -86,6 +89,14 @@ class AdvancePaymentInput {
   final DateTime paymentDate;
   final bool sendWhatsApp;
   final int recordedById;
+
+  /// The owner has seen how many cycles this payment would buy and said yes.
+  ///
+  /// Only consulted when the money reaches further ahead than
+  /// [freeAdvanceCycles]; below that the question is never asked. Defaults to
+  /// false so a caller that has not been through the prompt cannot skip it by
+  /// omission.
+  final bool confirmedAdvance;
 
   /// Generated once when the form opens — see [RecordPaymentInput] for why.
   final String idempotencyKey;
@@ -117,12 +128,20 @@ class RecordPaymentResult {
     required this.receiptId,
     required this.receiptNumber,
     required this.whatsApp,
+    this.timing = PaymentTiming.onTime,
   });
 
   final int paymentId;
   final int receiptId;
   final String receiptNumber;
   final WhatsAppOutcome whatsApp;
+
+  /// Where the payment date fell relative to the cycle the money bought.
+  ///
+  /// Derived, never stored: it is a reading of two dates the database already
+  /// holds, and a column would be a second answer to the same question that
+  /// could go stale the moment a payment is edited. See `payment_timing.dart`.
+  final PaymentTiming timing;
 }
 
 /// The core workflow of the whole application.
@@ -250,8 +269,17 @@ class RecordPaymentService {
     final cycleStart =
         existingCycle?.periodStart.toUtc() ?? bounds.periodStart;
 
-    final periodLabel =
-        formatBillingPeriod(cycleStart, plan.durationMonths);
+    // The calendar-month path reads its timing the same way the flexible one
+    // does, against the start of the cycle the month belongs to — so a payment
+    // recorded through either route is described identically on the receipt.
+    final timing = classifyTiming(
+      paidAt: input.paymentDate,
+      periodStart: cycleStart,
+      window: _timingWindowFrom(settings),
+    );
+
+    final periodLabel = _labelWithTiming(
+        formatBillingPeriod(cycleStart, plan.durationMonths), timing);
     final amountLabel =
         formatMinorUnits(input.amountMinor, settings.currency);
 
@@ -370,6 +398,16 @@ class RecordPaymentService {
         return winner;
       }
 
+      if (_isDuplicateCycle(error)) {
+        _log.warning(
+            'Duplicate cycle refused for member ${member.id}', error, stack);
+        throw PaymentRuleException(
+          '${member.fullName} already has a billing cycle recorded for '
+          'that month. Check their payment history before recording this '
+          'again — it may already have been paid.',
+        );
+      }
+
       _log.severe('Recording the payment failed', error, stack);
       rethrow;
     }
@@ -381,6 +419,7 @@ class RecordPaymentService {
         receiptId: committed.receiptId,
         receiptNumber: receiptNumber,
         whatsApp: const WhatsAppNotRequested(),
+        timing: timing,
       );
     }
 
@@ -400,6 +439,7 @@ class RecordPaymentService {
       receiptId: committed.receiptId,
       receiptNumber: receiptNumber,
       whatsApp: sendResult,
+      timing: timing,
     );
   }
 
@@ -467,7 +507,53 @@ class RecordPaymentService {
     final span = settlement.coveredSpan!;
     final spanMonths = (span.end.year - span.start.year) * 12 +
         (span.end.month - span.start.month);
-    final periodLabel = formatBillingPeriod(span.start, spanMonths);
+
+    // Judged against the first cycle the money reaches, which under
+    // arrears-first allocation is the oldest one still owing. A member
+    // settling July's fee in September has paid July late — not September on
+    // time, which is what comparing against the calendar would have said.
+    final timing = classifyTiming(
+      paidAt: input.paymentDate,
+      periodStart: span.start,
+      window: _timingWindowFrom(settings),
+    );
+
+    // How far beyond the member's current cycle this money reaches. Cycles
+    // that had already begun by the payment date are arrears, and clearing a
+    // backlog is never something to interrogate the owner about.
+    final paidOn = DateTime.utc(input.paymentDate.year,
+        input.paymentDate.month, input.paymentDate.day);
+    final futureCycles = settlement.allocations
+        .where((a) => a.cycle.start.isAfter(paidOn))
+        .length;
+
+    final plainPeriodLabel = formatBillingPeriod(span.start, spanMonths);
+    final periodLabel = _labelWithTiming(plainPeriodLabel, timing);
+
+    // Checked before a receipt number is drawn or a single row is written, so
+    // a payment awaiting confirmation leaves nothing behind to clean up.
+    switch (classifyAdvanceReach(futureCycles)) {
+      case AdvanceAllowance.allowed:
+        break;
+      case AdvanceAllowance.needsConfirmation:
+        if (!input.confirmedAdvance) {
+          throw AdvanceConfirmationRequired(
+            futureCyclesCovered: futureCycles,
+            coveredPeriodLabel: periodLabel,
+            message: '${formatMinorUnits(input.amountMinor, settings.currency)} '
+                'covers ${settlement.allocations.length} billing cycles for '
+                '${member.fullName}, through '
+                '${formatDayMonthYear(span.end.subtract(const Duration(days: 1)))}. '
+                'Confirm to record it.',
+          );
+        }
+      case AdvanceAllowance.refused:
+        throw PaymentRuleException(
+          'This payment would cover $futureCycles cycles beyond '
+          "${member.fullName}'s current one, past the $maxAdvanceCycles-cycle "
+          'limit. Check the amount, or record it as separate payments.',
+        );
+    }
     final amountLabel = formatMinorUnits(input.amountMinor, settings.currency);
     final receiptYear = input.paymentDate.year;
 
@@ -515,14 +601,32 @@ class RecordPaymentService {
     final ({int paymentId, int receiptId}) committed;
     try {
       committed = await db.transaction(() async {
+        // Every cycle the money reaches is opened first, because a cycle
+        // that has only been computed has no id yet — and the payment row
+        // needs one. Writing the payment first meant
+        // `allocations.first.cycle.periodId` was null for any cycle this
+        // payment was itself opening, which is every first payment for a
+        // cycle. The row then showed "—" for its period on the dashboard,
+        // the payments screen and the member's profile, and the timing badge
+        // vanished with it, since both are read through this link.
+        //
+        // Still only the cycles the money actually reaches: the set is
+        // unchanged, only the order is.
+        final opened = <MembershipPeriod>[
+          for (final allocation in settlement.allocations)
+            await _cycles.materialise(
+              membershipId: billing.membership.id,
+              cycle: allocation.cycle,
+            ),
+        ];
+
         final paymentId = await db.into(db.payments).insert(
               PaymentsCompanion.insert(
                 memberId: member.id,
                 // The first cycle the money touches, for every caller that
                 // still reads a payment's period as a single value — the
                 // importer, the editor, the payment history table.
-                membershipPeriodId:
-                    Value(settlement.allocations.first.cycle.periodId),
+                membershipPeriodId: Value(opened.first.id),
                 amountMinor: input.amountMinor,
                 method: input.method,
                 referenceNumber: Value(_blankToNull(input.referenceNumber)),
@@ -533,17 +637,14 @@ class RecordPaymentService {
               ),
             );
 
-        for (final allocation in settlement.allocations) {
-          final period = await _cycles.materialise(
-            membershipId: billing.membership.id,
-            cycle: allocation.cycle,
-          );
+        for (var i = 0; i < settlement.allocations.length; i++) {
+          final period = opened[i];
 
           await db.into(db.paymentAllocations).insert(
                 PaymentAllocationsCompanion.insert(
                   paymentId: paymentId,
                   membershipPeriodId: period.id,
-                  amountMinor: allocation.amountMinor,
+                  amountMinor: settlement.allocations[i].amountMinor,
                 ),
               );
           await _cycles.refreshSettlement(period.id);
@@ -570,6 +671,21 @@ class RecordPaymentService {
         return winner;
       }
 
+      if (_isDuplicateCycle(error)) {
+        // The one-cycle-per-member guard fired. Reached when two tills record
+        // for the same member at once, or when a cycle already exists on an
+        // enrolment the member has since moved off — the case the trigger was
+        // added for. Either way the owner needs the member and the month, not
+        // a SQLite constraint name.
+        _log.warning(
+            'Duplicate cycle refused for member ${member.id}', error, stack);
+        throw PaymentRuleException(
+          '${member.fullName} already has a billing cycle recorded for '
+          '$plainPeriodLabel. Check their payment history before recording '
+          'this again — that cycle may already have been paid.',
+        );
+      }
+
       _log.severe('Recording the advance payment failed', error, stack);
       rethrow;
     }
@@ -580,6 +696,7 @@ class RecordPaymentService {
         receiptId: committed.receiptId,
         receiptNumber: receiptNumber,
         whatsApp: const WhatsAppNotRequested(),
+        timing: timing,
       );
     }
 
@@ -599,6 +716,7 @@ class RecordPaymentService {
       receiptId: committed.receiptId,
       receiptNumber: receiptNumber,
       whatsApp: sendResult,
+      timing: timing,
     );
   }
 
@@ -870,7 +988,44 @@ class RecordPaymentService {
     return WhatsAppSent(messageId);
   }
 
-  String? _blankToNull(String? value) =>
+  /// The window inside which a payment counts as on time, read from the
+/// reminder schedule the owner has already configured.
+///
+/// Deriving it rather than adding a second setting means the badge on a
+/// payment and the message the member received cannot disagree: a payment is
+/// early once it beats the gym's own nudge, and late once the gym would have
+/// chased it.
+TimingWindow _timingWindowFrom(GymSetting settings) =>
+    TimingWindow.fromReminderOffsets(
+      daysBefore: parseOffsetDays(settings.reminderDaysBefore),
+      daysAfter: parseOffsetDays(settings.reminderDaysAfter),
+    );
+
+/// The billing period with the payment's timing appended, when there is
+/// anything worth saying about it.
+///
+/// This rides along inside the period label rather than as its own field
+/// because the label is the one piece of free text that already reaches
+/// everywhere the answer is needed: the rendered receipt, the WhatsApp
+/// caption, and parameter 3 of the `payment_receipt` template. Meta approves
+/// each template's parameter list individually, so adding a fifth parameter
+/// would take the gym's receipts off the air until it was re-approved.
+String _labelWithTiming(String periodLabel, PaymentTiming timing) =>
+    switch (timing) {
+      PaymentTiming.advance => '$periodLabel (paid in advance)',
+      PaymentTiming.late => '$periodLabel (paid late)',
+      PaymentTiming.onTime => periodLabel,
+    };
+
+/// Whether [error] is the one-cycle-per-member trigger firing.
+///
+/// Matched on the message the trigger raises, which is fixed in
+/// `AppDatabase._createCycleUniquenessTriggers` — there is no error code to
+/// match on, SQLite reports a RAISE(ABORT) as a generic constraint failure.
+bool _isDuplicateCycle(Object error) =>
+    error.toString().contains('duplicate billing cycle');
+
+String? _blankToNull(String? value) =>
       (value == null || value.trim().isEmpty) ? null : value.trim();
 
 }

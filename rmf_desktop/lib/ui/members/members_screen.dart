@@ -6,7 +6,7 @@ import '../../data/member_repository.dart';
 import '../../domain/money.dart';
 import '../../theme/app_theme.dart';
 import '../payments/payment_history_table.dart' show formatCalendarDate;
-import '../payments/record_payment_dialog.dart';
+import '../payments/advance_payment_dialog.dart';
 import '../widgets/status_badge.dart';
 import 'import_members_screen.dart';
 import 'member_detail_screen.dart';
@@ -47,7 +47,7 @@ class _MembersViewState extends State<_MembersView> {
 
   Future<void> _recordPayment(MemberRow member) async {
     final bloc = context.read<MembersBloc>();
-    final recorded = await showRecordPaymentDialog(context, member: member);
+    final recorded = await showAdvancePaymentDialog(context, member: member);
     if (recorded == true) bloc.add(const MembersRequested());
   }
 

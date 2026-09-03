@@ -9,6 +9,8 @@
 /// settings row, so a gym that renames itself renames itself everywhere.
 library;
 
+import '../../domain/dates.dart';
+
 /// The note a member is sent once, when they are added to the gym.
 ///
 /// [memberName] and [memberCode] are optional so the message degrades to the
@@ -33,6 +35,31 @@ String welcomeMessage({
     ],
   ].join('\n');
 }
+
+/// The values that fill the `welcome_member` template's `{{1}}`…`{{4}}`.
+///
+/// Order is the contract with the template registered in Meta's Business
+/// Manager and cannot be rearranged here alone:
+///
+///   1. member name  2. member code  3. plan name  4. valid until
+///
+/// Used instead of [welcomeMessage] when the gym has registered a welcome
+/// template — see [GymSettings.whatsappWelcomeTemplate] and
+/// `MemberWelcomeService`. Unlike the free-text message, every field here is
+/// required: a template parameter cannot be blank, so there is no equivalent
+/// of [welcomeMessage]'s degrade-to-plain-greeting behaviour.
+List<String> welcomeTemplateParams({
+  required String memberName,
+  required int memberCode,
+  required String planName,
+  required DateTime validUntil,
+}) =>
+    [
+      memberName,
+      '$memberCode',
+      planName,
+      formatDayMonthYear(validUntil),
+    ].map(flattenTemplateParam).toList();
 
 /// The caption that travels with a receipt image.
 String receiptCaption({

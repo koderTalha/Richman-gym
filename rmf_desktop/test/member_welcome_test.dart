@@ -8,6 +8,7 @@ import 'package:rich_man_fitness/data/audit_repository.dart';
 import 'package:rich_man_fitness/data/database.dart';
 import 'package:rich_man_fitness/data/member_repository.dart';
 import 'package:rich_man_fitness/data/seed.dart';
+import 'package:rich_man_fitness/domain/billing_cycle.dart';
 import 'package:rich_man_fitness/services/whatsapp/member_welcome_service.dart';
 import 'package:rich_man_fitness/services/whatsapp/message_texts.dart';
 import 'package:rich_man_fitness/services/whatsapp/whatsapp_client.dart';
@@ -24,6 +25,7 @@ class _RecordingClient implements WhatsAppClient {
   final Completer<void>? gate;
 
   final texts = <WhatsAppTextInput>[];
+  final templates = <WhatsAppTemplateInput>[];
 
   @override
   WhatsAppProviderKind get kind => WhatsAppProviderKind.mock;
@@ -44,8 +46,14 @@ class _RecordingClient implements WhatsAppClient {
   }
 
   @override
-  Future<WhatsAppSendResult> sendTemplate(WhatsAppTemplateInput input) async =>
-      const WhatsAppSendSuccess('stub.template');
+  Future<WhatsAppSendResult> sendTemplate(WhatsAppTemplateInput input) async {
+    templates.add(input);
+    if (throwOnSend) throw StateError('the provider exploded');
+    final failure = failWith;
+    return failure == null
+        ? WhatsAppSendSuccess('stub.template.${templates.length}')
+        : WhatsAppSendFailure(failure);
+  }
 }
 
 /// A new member is greeted once, after they are saved, and never at the cost of
@@ -380,6 +388,103 @@ void main() {
       expect(state.welcome, isNull);
       expect(await db.select(db.members).get(), hasLength(1));
       await bloc.close();
+    });
+  });
+
+  group('the welcome template', () {
+    Future<void> registerTemplate({String name = 'welcome_member'}) =>
+        (db.update(db.gymSettings)..where((s) => s.id.equals(1))).write(
+          GymSettingsCompanion(whatsappWelcomeTemplate: Value(name)),
+        );
+
+    test('free text is still sent when no template is registered', () async {
+      final client = _RecordingClient();
+
+      await serviceWith(client).sendWelcome(memberId: await addMember());
+
+      expect(client.texts, hasLength(1));
+      expect(client.templates, isEmpty);
+    });
+
+    test('sends the registered template instead of free text, with the '
+        'right placeholders', () async {
+      await registerTemplate();
+      final client = _RecordingClient();
+      final memberId =
+          await addMember(name: 'Ali Raza', phone: '+923001234567');
+
+      final outcome = await serviceWith(client).sendWelcome(memberId: memberId);
+
+      expect(outcome, isA<WelcomeSent>());
+      expect(client.texts, isEmpty,
+          reason: 'a registered template replaces free text, not adds to it');
+      final sent = client.templates.single;
+      expect(sent.to, '+923001234567');
+      expect(sent.templateName, 'welcome_member');
+      expect(sent.languageCode, 'en');
+
+      // "Valid until" is the last day covered by the member's first cycle —
+      // one month on from a 1 Aug joining date, on the Monthly plan.
+      final firstCycle = firstCycleFor(
+        joiningDate: DateTime.utc(2026, 8, 1),
+        durationMonths: 1,
+      );
+      expect(
+        sent.bodyParams,
+        welcomeTemplateParams(
+          memberName: 'Ali Raza',
+          memberCode: 1,
+          planName: 'Monthly',
+          validUntil: firstCycle.end.subtract(const Duration(days: 1)),
+        ),
+      );
+    });
+
+    test('follows a non-default template language', () async {
+      await (db.update(db.gymSettings)..where((s) => s.id.equals(1))).write(
+        const GymSettingsCompanion(
+          whatsappWelcomeTemplate: Value('welcome_member'),
+          whatsappWelcomeTemplateLanguage: Value('en_US'),
+        ),
+      );
+      final client = _RecordingClient();
+
+      await serviceWith(client).sendWelcome(memberId: await addMember());
+
+      expect(client.templates.single.languageCode, 'en_US');
+    });
+
+    test('a member with no active plan fails cleanly rather than guessing '
+        'a date', () async {
+      await registerTemplate();
+      final client = _RecordingClient();
+      final memberId = await addMember();
+      // Simulates a membership closed before the welcome message ever went
+      // out — the one way a member created through the normal form (which
+      // always assigns a plan) can end up without an open one.
+      await (db.update(db.memberships)..where((m) => m.memberId.equals(memberId)))
+          .write(MembershipsCompanion(endDate: Value(DateTime.utc(2026, 8, 2))));
+
+      final outcome = await serviceWith(client).sendWelcome(memberId: memberId);
+
+      expect(outcome, isA<WelcomeFailed>());
+      expect(client.templates, isEmpty);
+      expect(await db.select(db.members).get(), hasLength(1),
+          reason: 'the member is not the thing that went wrong');
+    });
+
+    test('a failed template send is recorded like any other failure',
+        () async {
+      await registerTemplate();
+      final client = _RecordingClient(failWith: 'template does not exist');
+
+      final outcome =
+          await serviceWith(client).sendWelcome(memberId: await addMember());
+
+      expect(outcome, isA<WelcomeFailed>());
+      final event = (await welcomeEvents()).single;
+      expect(event.action, AuditAction.whatsAppWelcomeFailed);
+      expect(event.detail, contains('template does not exist'));
     });
   });
 
