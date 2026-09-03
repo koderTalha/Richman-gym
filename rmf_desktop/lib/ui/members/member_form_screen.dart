@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import '../../bloc/auth_bloc.dart';
 import '../../bloc/member_form_bloc.dart';
 import '../../data/database.dart';
 import '../../data/member_repository.dart';
 import '../../domain/money.dart';
 import '../../domain/phone.dart';
+import '../../services/whatsapp/member_welcome_service.dart';
 import '../../theme/app_theme.dart';
 
 class MemberFormScreen extends StatelessWidget {
@@ -20,6 +22,9 @@ class MemberFormScreen extends StatelessWidget {
       create: (context) => MemberFormBloc(
         repository: context.read<MemberRepository>(),
         memberId: memberId,
+        // Only new members are welcomed, so the service is simply unused on the
+        // edit path rather than conditionally provided.
+        welcome: context.read<MemberWelcomeService>(),
       )..add(const MemberFormLoaded()),
       child: _MemberFormView(isEditing: memberId != null),
     );
@@ -112,6 +117,7 @@ class _MemberFormViewState extends State<_MemberFormView> {
             feeOverrideMinor:
                 feeText.isEmpty ? null : toMinorUnits(double.parse(feeText)),
             confirmSharedPhone: confirmSharedPhone,
+            actorId: context.read<AuthBloc>().state.user?.id,
           ),
         );
   }
@@ -168,12 +174,35 @@ class _MemberFormViewState extends State<_MemberFormView> {
   String? _blankToNull(String value) =>
       value.trim().isEmpty ? null : value.trim();
 
+  /// What to say once the member is saved.
+  ///
+  /// The member is saved in every one of these branches — the only thing that
+  /// varies is whether their welcome message went with them. A failure is worth
+  /// saying out loud, because the owner may want to greet them by hand.
+  String? _savedMessage(WelcomeOutcome? welcome) => switch (welcome) {
+        null => null,
+        WelcomeSent() => 'Member added. Welcome message sent on WhatsApp.',
+        WelcomeSkipped() => 'Member added.',
+        WelcomeFailed(:final error) =>
+          'Member added, but the WhatsApp welcome message could not be sent: '
+              '$error',
+      };
+
   @override
   Widget build(BuildContext context) {
     return BlocConsumer<MemberFormBloc, MemberFormState>(
       listener: (context, state) {
         if (state.status == MemberFormStatus.saved) {
+          // Read before popping: this screen's context is about to go away,
+          // and the messenger that shows the bar belongs to the shell behind
+          // it, which is not.
+          final messenger = ScaffoldMessenger.of(context);
           Navigator.of(context).pop(true);
+
+          final message = _savedMessage(state.welcome);
+          if (message != null) {
+            messenger.showSnackBar(SnackBar(content: Text(message)));
+          }
         } else if (state.status == MemberFormStatus.confirmSharedPhone) {
           _confirmSharedPhone(state.sharingPhone);
         }

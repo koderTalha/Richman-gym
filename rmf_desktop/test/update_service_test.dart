@@ -391,6 +391,210 @@ void main() {
     });
   });
 
+  group('when GitHub cannot answer', () {
+    /// A response with headers, which is what tells a rate limit apart from an
+    /// ordinary refusal.
+    MockClient answering(int status, {Map<String, String> headers = const {}, String body = '{}'}) =>
+        MockClient((request) async => http.Response(body, status,
+            headers: {'content-type': 'application/json', ...headers}));
+
+    test('names the rate limit instead of calling it a server error', () async {
+      final service = serviceWith(answering(403, headers: {
+        'x-ratelimit-remaining': '0',
+        'x-ratelimit-reset':
+            '${DateTime.utc(2026, 8, 20, 10).millisecondsSinceEpoch ~/ 1000}',
+      }));
+
+      final result = await service.check(now: DateTime(2026, 8, 20, 9));
+
+      expect(result, isA<UpdateCheckFailed>());
+      final failed = result as UpdateCheckFailed;
+      expect(failed.kind, UpdateFailureKind.rateLimited);
+      expect(failed.reason, contains('rate limit'));
+    });
+
+    test('says so when the repository has no releases', () async {
+      final result = await serviceWith(answering(404)).check();
+
+      expect(result, isA<UpdateCheckFailed>());
+      expect((result as UpdateCheckFailed).kind,
+          UpdateFailureKind.noReleases);
+    });
+
+    test('an answer that is not a release is not a crash', () async {
+      final result = await serviceWith(
+        answering(200, body: '<html>504 Gateway Timeout</html>'),
+      ).check();
+
+      expect(result, isA<UpdateCheckFailed>());
+      expect((result as UpdateCheckFailed).kind,
+          UpdateFailureKind.malformedResponse);
+    });
+
+    test('a JSON array where an object belongs is not a crash', () async {
+      final result = await serviceWith(answering(200, body: '[]')).check();
+
+      expect(result, isA<UpdateCheckFailed>());
+      expect((result as UpdateCheckFailed).kind,
+          UpdateFailureKind.malformedResponse);
+    });
+
+    /// The bug this group exists for: a minute of GitHub being unavailable used
+    /// to count as the day's check, so the gym was told nothing until tomorrow.
+    test('an error does not count as today\'s check', () async {
+      final morning = DateTime(2026, 8, 20, 9);
+      final service = serviceWith(answering(503));
+
+      await service.check(now: morning);
+
+      expect(
+        await service.isDueForCheck(now: morning.add(const Duration(hours: 1))),
+        isTrue,
+        reason: 'nothing was learned, so there is still a question to ask',
+      );
+    });
+
+    test('an offline machine does not count as today\'s check', () async {
+      final morning = DateTime(2026, 8, 20, 9);
+      final service = serviceWith(
+        MockClient((_) async => throw const SocketException('no route')),
+      );
+
+      await service.check(now: morning);
+
+      expect(
+        await service.isDueForCheck(now: morning.add(const Duration(hours: 1))),
+        isTrue,
+      );
+    });
+
+    test('a failure is not retried on a loop within the same session',
+        () async {
+      final morning = DateTime(2026, 8, 20, 9);
+      final service = serviceWith(answering(503));
+
+      await service.check(now: morning);
+
+      expect(
+        await service
+            .isDueForCheck(now: morning.add(const Duration(minutes: 1))),
+        isFalse,
+        reason: 'a rebuilt screen must not ask GitHub again immediately',
+      );
+    });
+  });
+
+  group('a release that must not be installed', () {
+    MockClient serveRelease(Map<String, Object?> body) => MockClient(
+        (_) async => http.Response(jsonEncode(body), 200,
+            headers: {'content-type': 'application/json'}));
+
+    test('a draft is never offered', () async {
+      final result = await serviceWith(serveRelease({
+        'tag_name': 'v1.2.0',
+        'draft': true,
+        'assets': const [],
+      })).check();
+
+      expect(result, isA<UpdateCheckFailed>());
+      expect((result as UpdateCheckFailed).reason, contains('draft'));
+    });
+
+    test('a pre-release is never offered', () async {
+      final result = await serviceWith(serveRelease({
+        'tag_name': 'v1.2.0',
+        'prerelease': true,
+        'assets': const [],
+      })).check();
+
+      expect(result, isA<UpdateCheckFailed>());
+      expect((result as UpdateCheckFailed).reason, contains('pre-release'));
+    });
+
+    test('nothing is offered when the installed version is unknown', () async {
+      final service = UpdateService(
+        db: db,
+        currentVersion: AppVersion.unknown,
+        audit: audit,
+        httpClient: serving(),
+        windows: true,
+        settings: SettingsRepository(db),
+        backups: BackupService(db, supportDirectory: () async => workspace),
+        supportDirectory: () async => workspace,
+        startProcess: (exe, args) async => throw UnimplementedError(),
+      );
+
+      expect(service.isSupported, isFalse);
+      final result = await service.check();
+
+      expect(result, isA<UpdateCheckFailed>());
+      expect((result as UpdateCheckFailed).kind,
+          UpdateFailureKind.unknownCurrentVersion,
+          reason: 'every release looks newer than an unknown version');
+    });
+  });
+
+  group('remembering the answer', () {
+    /// Reopening the app the same day used to lose a waiting update entirely:
+    /// the check was skipped as "already done today" and there was nothing left
+    /// to show.
+    test('a waiting update survives a restart without asking again', () async {
+      await serviceWith(serving()).check(now: DateTime(2026, 8, 20, 9));
+
+      final afterRestart = serviceWith(
+        MockClient((_) async => fail('the network must not be touched')),
+      );
+
+      final remembered = await afterRestart.lastKnownResult();
+
+      expect(remembered, isA<UpdateAvailable>());
+      expect((remembered! as UpdateAvailable).version,
+          const AppVersion(1, 2, 0));
+    });
+
+    test('nothing is remembered before the first check', () async {
+      expect(await serviceWith(serving()).lastKnownResult(), isNull);
+    });
+
+    test('asks conditionally, and reuses the answer to a 304', () async {
+      final sent = <http.BaseRequest>[];
+      MockClient tagging({int status = 200}) => MockClient((request) async {
+            sent.add(request);
+            if (status == 304) return http.Response('', 304);
+            return http.Response(release(), 200, headers: {
+              'content-type': 'application/json',
+              'etag': 'W/"abc123"',
+            });
+          });
+
+      await serviceWith(tagging()).check(now: DateTime(2026, 8, 20, 9));
+      expect(sent.single.headers.containsKey('If-None-Match'), isFalse,
+          reason: 'nothing was cached yet');
+
+      final result =
+          await serviceWith(tagging(status: 304)).check(now: DateTime(2026, 8, 21, 9));
+
+      expect(sent.last.headers['If-None-Match'], 'W/"abc123"',
+          reason: 'a conditional request costs no rate limit when it is a 304');
+      expect(result, isA<UpdateAvailable>(),
+          reason: '304 means the cached release is still the latest one');
+    });
+
+    test('a stored answer that is only an older release reads as current',
+        () async {
+      await serviceWith(serving(), current: '1.1.0')
+          .check(now: DateTime(2026, 8, 20, 9));
+
+      // The same cache, read by a copy that has since been updated.
+      final upgraded = serviceWith(
+        MockClient((_) async => fail('the network must not be touched')),
+        current: '1.2.0',
+      );
+
+      expect(await upgraded.lastKnownResult(), isA<AlreadyCurrent>());
+    });
+  });
+
   group('the audit trail', () {
     test('records an available update and the install that follows', () async {
       final service = serviceWith(serving());

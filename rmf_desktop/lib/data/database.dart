@@ -33,7 +33,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 8;
+  int get schemaVersion => 9;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -84,6 +84,17 @@ class AppDatabase extends _$AppDatabase {
           if (from < 8) {
             await m.addColumn(gymSettings, gymSettings.lastUpdateCheckAt);
             await m.addColumn(gymSettings, gymSettings.dismissedUpdateVersion);
+          }
+          // v9 sends receipts as an approved template instead of a free-form
+          // image. Meta only accepts free-form messages inside the 24-hour
+          // window a member's own message opens, and a receipt is sent when the
+          // payment is recorded — almost never inside one. The template's name
+          // and language are settings because both are chosen in Meta's
+          // Business Manager and a mismatch is invisible from in here.
+          if (from < 9) {
+            await m.addColumn(gymSettings, gymSettings.whatsappReceiptTemplate);
+            await m.addColumn(
+                gymSettings, gymSettings.whatsappReceiptTemplateLanguage);
           }
         },
         beforeOpen: (details) async {

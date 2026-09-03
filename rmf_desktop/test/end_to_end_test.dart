@@ -45,6 +45,11 @@ class _CountingClient implements WhatsAppClient {
   final bool failing;
   int sends = 0;
 
+  /// Every welcome message this client was asked to send, so a member added
+  /// twice can be proven not to be greeted twice.
+  final texts = <WhatsAppTextInput>[];
+  final templates = <WhatsAppTemplateInput>[];
+
   @override
   WhatsAppProviderKind get kind => WhatsAppProviderKind.mock;
 
@@ -54,6 +59,23 @@ class _CountingClient implements WhatsAppClient {
     return failing
         ? const WhatsAppSendFailure('simulated outage')
         : MockWhatsAppClient().send(input);
+  }
+
+  @override
+  Future<WhatsAppSendResult> sendText(WhatsAppTextInput input) async {
+    texts.add(input);
+    return failing
+        ? const WhatsAppSendFailure('simulated outage')
+        : MockWhatsAppClient().sendText(input);
+  }
+
+  @override
+  Future<WhatsAppSendResult> sendTemplate(WhatsAppTemplateInput input) async {
+    sends++;
+    templates.add(input);
+    return failing
+        ? const WhatsAppSendFailure('simulated outage')
+        : MockWhatsAppClient().sendTemplate(input);
   }
 }
 
@@ -363,7 +385,9 @@ void main() {
       final memberId = await addMember('Member One', '+923000000022');
       await payments.call(input(memberId, 'k'));
 
-      final rows = await memberRepo.list();
+      // Pinned to the fixture's own month: status is derived against the
+      // clock, so an unpinned read starts failing once that month is over.
+      final rows = await memberRepo.list(now: DateTime.utc(2026, 8, 13));
       expect(rows.single.status, MemberStatus.paid);
 
       final total = await paymentRepo.totalMinorBetween(
@@ -377,7 +401,9 @@ void main() {
       await BillingMaintenance(db)
           .ensureCurrentPeriods(now: DateTime.utc(2026, 8, 13));
 
-      final rows = await memberRepo.list();
+      // Pinned to the fixture's own month: status is derived against the
+      // clock, so an unpinned read starts failing once that month is over.
+      final rows = await memberRepo.list(now: DateTime.utc(2026, 8, 13));
       expect(rows.single.status, MemberStatus.due);
     });
 

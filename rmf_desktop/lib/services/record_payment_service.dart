@@ -15,6 +15,7 @@ import '../domain/receipt_number.dart';
 import 'billing_month_checker.dart';
 import 'receipt_renderer.dart';
 import 'receipt_storage.dart';
+import 'whatsapp/message_texts.dart';
 import 'whatsapp/whatsapp_client.dart';
 
 final _log = Logger('payments');
@@ -334,7 +335,6 @@ class RecordPaymentService {
       memberId: member.id,
       memberName: member.fullName,
       phone: member.phone,
-      gymName: settings.gymName,
       amountLabel: amountLabel,
       periodLabel: periodLabel,
       pngBytes: rendered.png,
@@ -423,7 +423,6 @@ class RecordPaymentService {
     required int memberId,
     required String memberName,
     required String phone,
-    required String gymName,
     required String amountLabel,
     required String periodLabel,
     Uint8List? pngBytes,
@@ -476,17 +475,27 @@ class RecordPaymentService {
       }
     }
 
-    final result = await client.send(WhatsAppSendInput(
+    // Sent as a template, not as a free-form image with a caption. Meta only
+    // accepts free-form messages inside the 24-hour window that opens when the
+    // member last messaged the gym, and a receipt goes out the moment the
+    // payment is recorded — which is almost never inside one. A template is
+    // delivered either way, and costs nothing when a window happens to be open.
+    final settings =
+        await (db.select(db.gymSettings)..where((row) => row.id.equals(1)))
+            .getSingle();
+
+    final result = await client.sendTemplate(WhatsAppTemplateInput(
       to: phone,
-      caption: _caption(
-        gymName: gymName,
-        receiptNumber: receiptNumber,
+      templateName: settings.whatsappReceiptTemplate,
+      languageCode: settings.whatsappReceiptTemplateLanguage,
+      bodyParams: receiptTemplateParams(
         memberName: memberName,
-        periodLabel: periodLabel,
         amountLabel: amountLabel,
+        periodLabel: periodLabel,
+        receiptNumber: receiptNumber,
       ),
-      imageBytes: bytes,
-      fileName: '$receiptNumber.png',
+      headerImageBytes: bytes,
+      headerImageFileName: '$receiptNumber.png',
     ));
 
     return switch (result) {
@@ -556,7 +565,6 @@ class RecordPaymentService {
       memberId: member.id,
       memberName: member.fullName,
       phone: member.phone,
-      gymName: settings.gymName,
       amountLabel: formatMinorUnits(payment.amountMinor, settings.currency),
       periodLabel: periodLabel,
     );
@@ -607,24 +615,6 @@ class RecordPaymentService {
         );
     return WhatsAppSent(messageId);
   }
-
-  String _caption({
-    required String gymName,
-    required String receiptNumber,
-    required String memberName,
-    required String periodLabel,
-    required String amountLabel,
-  }) =>
-      [
-        '*$gymName* — Payment Receipt',
-        '',
-        'Receipt: $receiptNumber',
-        'Member: $memberName',
-        'Period: $periodLabel',
-        'Amount: $amountLabel',
-        '',
-        'Thank you for your payment.',
-      ].join('\n');
 
   String? _blankToNull(String? value) =>
       (value == null || value.trim().isEmpty) ? null : value.trim();

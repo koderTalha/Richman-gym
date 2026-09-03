@@ -225,6 +225,10 @@ class _WhatsAppCardState extends State<_WhatsAppCard> {
       text: widget.settings.whatsappBusinessAccountId ?? '');
   late final _businessNumber = TextEditingController(
       text: widget.settings.whatsappBusinessNumber ?? '');
+  late final _receiptTemplate =
+      TextEditingController(text: widget.settings.whatsappReceiptTemplate);
+  late final _templateLanguage = TextEditingController(
+      text: widget.settings.whatsappReceiptTemplateLanguage);
 
   bool _showToken = false;
 
@@ -235,6 +239,8 @@ class _WhatsAppCardState extends State<_WhatsAppCard> {
       _token,
       _businessAccountId,
       _businessNumber,
+      _receiptTemplate,
+      _templateLanguage,
     ]) {
       c.dispose();
     }
@@ -251,6 +257,11 @@ class _WhatsAppCardState extends State<_WhatsAppCard> {
           accessToken: _blank(_token.text),
           businessAccountId: _blank(_businessAccountId.text),
           businessNumber: _blank(_businessNumber.text),
+          // Blank would mean no template at all, which is not a thing a
+          // receipt can be sent as. An emptied field falls back to what the
+          // gym actually registered.
+          receiptTemplate: _blank(_receiptTemplate.text) ?? 'payment_receipt',
+          receiptTemplateLanguage: _blank(_templateLanguage.text) ?? 'en',
         ),
       );
 
@@ -339,6 +350,35 @@ class _WhatsAppCardState extends State<_WhatsAppCard> {
                 isDense: true,
               ),
             ),
+            const SizedBox(height: 14),
+            // A receipt is sent as an approved template, because Meta only
+            // accepts free-form messages inside the 24-hour window a member's
+            // own message opens. Both values are chosen in WhatsApp Manager,
+            // and a mismatch reads as "template does not exist" — so they are
+            // editable here rather than compiled in.
+            Row(children: [
+              Expanded(
+                child: TextField(
+                  controller: _receiptTemplate,
+                  decoration: const InputDecoration(
+                    labelText: 'Receipt template name',
+                    helperText: 'Exactly as approved in WhatsApp Manager',
+                    isDense: true,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: TextField(
+                  controller: _templateLanguage,
+                  decoration: const InputDecoration(
+                    labelText: 'Template language',
+                    helperText: 'en for English, en_US for English (US)',
+                    isDense: true,
+                  ),
+                ),
+              ),
+            ]),
             const SizedBox(height: 16),
             Row(
               children: [

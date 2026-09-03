@@ -62,6 +62,7 @@ class _StubClient implements WhatsAppClient {
 
   final String? failWith;
   final sent = <WhatsAppSendInput>[];
+  final templates = <WhatsAppTemplateInput>[];
 
   @override
   WhatsAppProviderKind get kind => WhatsAppProviderKind.mock;
@@ -72,6 +73,23 @@ class _StubClient implements WhatsAppClient {
     final failure = failWith;
     return failure == null
         ? const WhatsAppSendSuccess('stub.1')
+        : WhatsAppSendFailure(failure);
+  }
+
+  @override
+  Future<WhatsAppSendResult> sendText(WhatsAppTextInput input) async {
+    final failure = failWith;
+    return failure == null
+        ? const WhatsAppSendSuccess('stub.text.1')
+        : WhatsAppSendFailure(failure);
+  }
+
+  @override
+  Future<WhatsAppSendResult> sendTemplate(WhatsAppTemplateInput input) async {
+    templates.add(input);
+    final failure = failWith;
+    return failure == null
+        ? const WhatsAppSendSuccess('stub.template.1')
         : WhatsAppSendFailure(failure);
   }
 }
@@ -347,7 +365,7 @@ void main() {
 
       await editor.edit(edit(recorded.paymentId, amountMinor: 450000));
 
-      expect(client.sent, isEmpty);
+      expect(client.templates, isEmpty);
       expect(await db.select(db.whatsAppMessages).get(), isEmpty);
     });
 
@@ -369,7 +387,7 @@ void main() {
           reason: 'the earlier attempt is history and must not be mutated');
 
       // The corrected image is what goes out, not the one on disk from before.
-      expect(String.fromCharCodes(client.sent.last.imageBytes),
+      expect(String.fromCharCodes(client.templates.last.headerImageBytes!),
           contains('Rs. 4,500'));
     });
 
@@ -526,7 +544,7 @@ void main() {
       expect(result.whatsApp, isA<WhatsAppFailed>());
       expect((result.whatsApp as WhatsAppFailed).error,
           contains('no receipt to send'));
-      expect(client.sent, isEmpty);
+      expect(client.templates, isEmpty);
     });
   });
 

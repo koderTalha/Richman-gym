@@ -58,6 +58,19 @@ void main() {
     });
   });
 
+  group('an unknown version', () {
+    test('is what an unreadable version reads as', () {
+      expect(AppVersion.unknown, const AppVersion(0, 0, 0));
+      expect(AppVersion.unknown.isKnown, isFalse);
+    });
+
+    test('every real version is known', () {
+      for (final raw in ['0.0.1', '0.1.0', '1.0.0', '1.10.0']) {
+        expect(v(raw).isKnown, isTrue, reason: raw);
+      }
+    });
+  });
+
   group('ordering', () {
     test('the tenth patch beats the ninth', () {
       // The bug this class exists to prevent: as text, "1.0.10" < "1.0.9".
@@ -84,6 +97,24 @@ void main() {
 
     test('this release is newer than what the gym is running', () {
       expect(v('1.1.0').isNewerThan(v('1.0.3')), isTrue);
+    });
+
+    test('the tenth minor beats the ninth', () {
+      // Compared as text "1.10.0" sorts below "1.9.0", which would hide every
+      // release from 1.10 onwards from a gym still on 1.9.
+      expect(v('1.10.0').isNewerThan(v('1.9.0')), isTrue);
+      expect(v('1.9.0').isNewerThan(v('1.10.0')), isFalse);
+    });
+
+    test('the v prefix makes no difference to the comparison', () {
+      expect(v('1.2.1').isNewerThan(v('v1.2.0')), isTrue);
+      expect(v('v1.2.0').isNewerThan(v('1.2.1')), isFalse);
+      expect(v('v1.2.0'), v('1.2.0'));
+    });
+
+    test('a patch bump is an update', () {
+      expect(v('1.0.1').isNewerThan(v('1.0.0')), isTrue);
+      expect(v('1.0.0').isNewerThan(v('1.0.1')), isFalse);
     });
 
     test('sorts a list of releases', () {

@@ -533,7 +533,7 @@ void main() {
     });
   });
 
-  group('upgrading a v7 database to v8', () {
+  group('upgrading a v7 database to the current schema', () {
     test('reaches the current schema version', () async {
       await buildOldDatabase(7);
       final db = await openWithCurrentCode();
@@ -545,7 +545,7 @@ void main() {
           .getSingle();
 
       expect(version, db.schemaVersion);
-      expect(db.schemaVersion, 8);
+      expect(db.schemaVersion, 9);
     });
 
     test('keeps the members, payments and receipts', () async {
@@ -592,6 +592,33 @@ void main() {
       settings = await db.select(db.gymSettings).getSingle();
       expect(settings.lastUpdateCheckAt!.isAtSameMomentAs(checkedAt), isTrue);
       expect(settings.dismissedUpdateVersion, '1.2.0');
+    });
+
+    test('the receipt template columns arrive already pointing at the '
+        'approved template', () async {
+      await buildOldDatabase(7);
+      final db = await openWithCurrentCode();
+      addTearDown(db.close);
+
+      var settings = await db.select(db.gymSettings).getSingle();
+      // An upgraded install must be able to send without visiting Settings
+      // first, so these default to the template the gym had approved rather
+      // than to nothing.
+      expect(settings.whatsappReceiptTemplate, 'payment_receipt');
+      expect(settings.whatsappReceiptTemplateLanguage, 'en');
+
+      // Both are editable, because a gym that registers its template under a
+      // different name or under en_US must be able to say so.
+      await (db.update(db.gymSettings)..where((s) => s.id.equals(1))).write(
+        const GymSettingsCompanion(
+          whatsappReceiptTemplate: Value('gym_receipt_v2'),
+          whatsappReceiptTemplateLanguage: Value('en_US'),
+        ),
+      );
+
+      settings = await db.select(db.gymSettings).getSingle();
+      expect(settings.whatsappReceiptTemplate, 'gym_receipt_v2');
+      expect(settings.whatsappReceiptTemplateLanguage, 'en_US');
     });
   });
 

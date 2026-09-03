@@ -43,7 +43,58 @@ class MockWhatsAppClient implements WhatsAppClient {
     _log.info('[mock] would send ${input.fileName} '
         '(${input.imageBytes.length} bytes) to ${input.to}');
 
-    final suffix = Random().nextInt(1 << 32).toRadixString(16);
-    return WhatsAppSendSuccess('mock.$suffix');
+    return WhatsAppSendSuccess(_messageId());
   }
+
+  @override
+  Future<WhatsAppSendResult> sendText(WhatsAppTextInput input) async {
+    await Future<void>.delayed(const Duration(milliseconds: 400));
+
+    if (forceFailure) {
+      return const WhatsAppSendFailure(
+          'Simulated failure (mock provider set to always fail)');
+    }
+
+    if (!isValidPhone(input.to)) {
+      return WhatsAppSendFailure('Invalid recipient number: ${input.to}');
+    }
+    if (input.body.trim().isEmpty) {
+      return const WhatsAppSendFailure('Message body was empty');
+    }
+
+    _log.info('[mock] would send a ${input.body.length}-character message '
+        'to ${input.to}');
+
+    return WhatsAppSendSuccess(_messageId());
+  }
+
+  @override
+  Future<WhatsAppSendResult> sendTemplate(WhatsAppTemplateInput input) async {
+    await Future<void>.delayed(const Duration(milliseconds: 400));
+
+    if (forceFailure) {
+      return const WhatsAppSendFailure(
+          'Simulated failure (mock provider set to always fail)');
+    }
+
+    if (!isValidPhone(input.to)) {
+      return WhatsAppSendFailure('Invalid recipient number: ${input.to}');
+    }
+    if (input.templateName.trim().isEmpty) {
+      return const WhatsAppSendFailure('No template name was configured');
+    }
+    // Mirrors Meta: a template with an image header is rejected without one.
+    if (input.hasHeaderImage && input.headerImageBytes!.isEmpty) {
+      return const WhatsAppSendFailure('Receipt image was empty');
+    }
+
+    _log.info('[mock] would send template ${input.templateName} '
+        '(${input.languageCode}) with ${input.bodyParams.length} '
+        'parameters to ${input.to}');
+
+    return WhatsAppSendSuccess(_messageId());
+  }
+
+  static String _messageId() =>
+      'mock.${Random().nextInt(1 << 32).toRadixString(16)}';
 }

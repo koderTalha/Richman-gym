@@ -36,6 +36,13 @@ class _StubClient implements WhatsAppClient {
   @override
   Future<WhatsAppSendResult> send(WhatsAppSendInput input) async =>
       const WhatsAppSendSuccess('stub.1');
+
+  @override
+  Future<WhatsAppSendResult> sendText(WhatsAppTextInput input) async =>
+      const WhatsAppSendSuccess('stub.text.1');
+  @override
+  Future<WhatsAppSendResult> sendTemplate(WhatsAppTemplateInput input) async =>
+      const WhatsAppSendSuccess('stub.template.1');
 }
 
 /// Deleting a member is offered for the mistake — the duplicate import, the
