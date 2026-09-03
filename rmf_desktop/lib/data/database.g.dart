@@ -849,6 +849,30 @@ class $GymSettingsTable extends GymSettings
         type: DriftSqlType.string,
         requiredDuringInsert: false,
       );
+  static const VerificationMeta _whatsappReceiptTemplateMeta =
+      const VerificationMeta('whatsappReceiptTemplate');
+  @override
+  late final GeneratedColumn<String> whatsappReceiptTemplate =
+      GeneratedColumn<String>(
+        'whatsapp_receipt_template',
+        aliasedName,
+        false,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+        defaultValue: const Constant('payment_receipt'),
+      );
+  static const VerificationMeta _whatsappReceiptTemplateLanguageMeta =
+      const VerificationMeta('whatsappReceiptTemplateLanguage');
+  @override
+  late final GeneratedColumn<String> whatsappReceiptTemplateLanguage =
+      GeneratedColumn<String>(
+        'whatsapp_receipt_template_language',
+        aliasedName,
+        false,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+        defaultValue: const Constant('en'),
+      );
   static const VerificationMeta _whatsappMockFailsMeta = const VerificationMeta(
     'whatsappMockFails',
   );
@@ -917,6 +941,8 @@ class $GymSettingsTable extends GymSettings
     whatsappAccessToken,
     whatsappBusinessAccountId,
     whatsappBusinessNumber,
+    whatsappReceiptTemplate,
+    whatsappReceiptTemplateLanguage,
     whatsappMockFails,
     themeMode,
     lastUpdateCheckAt,
@@ -1045,6 +1071,24 @@ class $GymSettingsTable extends GymSettings
         ),
       );
     }
+    if (data.containsKey('whatsapp_receipt_template')) {
+      context.handle(
+        _whatsappReceiptTemplateMeta,
+        whatsappReceiptTemplate.isAcceptableOrUnknown(
+          data['whatsapp_receipt_template']!,
+          _whatsappReceiptTemplateMeta,
+        ),
+      );
+    }
+    if (data.containsKey('whatsapp_receipt_template_language')) {
+      context.handle(
+        _whatsappReceiptTemplateLanguageMeta,
+        whatsappReceiptTemplateLanguage.isAcceptableOrUnknown(
+          data['whatsapp_receipt_template_language']!,
+          _whatsappReceiptTemplateLanguageMeta,
+        ),
+      );
+    }
     if (data.containsKey('whatsapp_mock_fails')) {
       context.handle(
         _whatsappMockFailsMeta,
@@ -1153,6 +1197,14 @@ class $GymSettingsTable extends GymSettings
         DriftSqlType.string,
         data['${effectivePrefix}whatsapp_business_number'],
       ),
+      whatsappReceiptTemplate: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}whatsapp_receipt_template'],
+      )!,
+      whatsappReceiptTemplateLanguage: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}whatsapp_receipt_template_language'],
+      )!,
       whatsappMockFails: attachedDatabase.typeMapping.read(
         DriftSqlType.bool,
         data['${effectivePrefix}whatsapp_mock_fails'],
@@ -1209,6 +1261,17 @@ class GymSetting extends DataClass implements Insertable<GymSetting> {
   /// The number members see messages arrive from. Display only.
   final String? whatsappBusinessNumber;
 
+  /// The approved template a receipt is sent as, and the language it was
+  /// registered under.
+  ///
+  /// Editable rather than hard coded because both live in Meta's Business
+  /// Manager, not here: the owner can register a differently named template, or
+  /// register one under `en_US` instead of `en`, and a mismatch reads as
+  /// "template does not exist" with nothing in the app to point at. Correcting
+  /// a typo must not need a new release.
+  final String whatsappReceiptTemplate;
+  final String whatsappReceiptTemplateLanguage;
+
   /// Makes the mock provider fail on demand, so the "WhatsApp failed / Retry"
   /// path can be exercised without breaking anything real.
   final bool whatsappMockFails;
@@ -1241,6 +1304,8 @@ class GymSetting extends DataClass implements Insertable<GymSetting> {
     this.whatsappAccessToken,
     this.whatsappBusinessAccountId,
     this.whatsappBusinessNumber,
+    required this.whatsappReceiptTemplate,
+    required this.whatsappReceiptTemplateLanguage,
     required this.whatsappMockFails,
     required this.themeMode,
     this.lastUpdateCheckAt,
@@ -1293,6 +1358,12 @@ class GymSetting extends DataClass implements Insertable<GymSetting> {
         whatsappBusinessNumber,
       );
     }
+    map['whatsapp_receipt_template'] = Variable<String>(
+      whatsappReceiptTemplate,
+    );
+    map['whatsapp_receipt_template_language'] = Variable<String>(
+      whatsappReceiptTemplateLanguage,
+    );
     map['whatsapp_mock_fails'] = Variable<bool>(whatsappMockFails);
     map['theme_mode'] = Variable<String>(themeMode);
     if (!nullToAbsent || lastUpdateCheckAt != null) {
@@ -1345,6 +1416,8 @@ class GymSetting extends DataClass implements Insertable<GymSetting> {
       whatsappBusinessNumber: whatsappBusinessNumber == null && nullToAbsent
           ? const Value.absent()
           : Value(whatsappBusinessNumber),
+      whatsappReceiptTemplate: Value(whatsappReceiptTemplate),
+      whatsappReceiptTemplateLanguage: Value(whatsappReceiptTemplateLanguage),
       whatsappMockFails: Value(whatsappMockFails),
       themeMode: Value(themeMode),
       lastUpdateCheckAt: lastUpdateCheckAt == null && nullToAbsent
@@ -1390,6 +1463,12 @@ class GymSetting extends DataClass implements Insertable<GymSetting> {
       whatsappBusinessNumber: serializer.fromJson<String?>(
         json['whatsappBusinessNumber'],
       ),
+      whatsappReceiptTemplate: serializer.fromJson<String>(
+        json['whatsappReceiptTemplate'],
+      ),
+      whatsappReceiptTemplateLanguage: serializer.fromJson<String>(
+        json['whatsappReceiptTemplateLanguage'],
+      ),
       whatsappMockFails: serializer.fromJson<bool>(json['whatsappMockFails']),
       themeMode: serializer.fromJson<String>(json['themeMode']),
       lastUpdateCheckAt: serializer.fromJson<DateTime?>(
@@ -1428,6 +1507,12 @@ class GymSetting extends DataClass implements Insertable<GymSetting> {
       'whatsappBusinessNumber': serializer.toJson<String?>(
         whatsappBusinessNumber,
       ),
+      'whatsappReceiptTemplate': serializer.toJson<String>(
+        whatsappReceiptTemplate,
+      ),
+      'whatsappReceiptTemplateLanguage': serializer.toJson<String>(
+        whatsappReceiptTemplateLanguage,
+      ),
       'whatsappMockFails': serializer.toJson<bool>(whatsappMockFails),
       'themeMode': serializer.toJson<String>(themeMode),
       'lastUpdateCheckAt': serializer.toJson<DateTime?>(lastUpdateCheckAt),
@@ -1454,6 +1539,8 @@ class GymSetting extends DataClass implements Insertable<GymSetting> {
     Value<String?> whatsappAccessToken = const Value.absent(),
     Value<String?> whatsappBusinessAccountId = const Value.absent(),
     Value<String?> whatsappBusinessNumber = const Value.absent(),
+    String? whatsappReceiptTemplate,
+    String? whatsappReceiptTemplateLanguage,
     bool? whatsappMockFails,
     String? themeMode,
     Value<DateTime?> lastUpdateCheckAt = const Value.absent(),
@@ -1485,6 +1572,10 @@ class GymSetting extends DataClass implements Insertable<GymSetting> {
     whatsappBusinessNumber: whatsappBusinessNumber.present
         ? whatsappBusinessNumber.value
         : this.whatsappBusinessNumber,
+    whatsappReceiptTemplate:
+        whatsappReceiptTemplate ?? this.whatsappReceiptTemplate,
+    whatsappReceiptTemplateLanguage:
+        whatsappReceiptTemplateLanguage ?? this.whatsappReceiptTemplateLanguage,
     whatsappMockFails: whatsappMockFails ?? this.whatsappMockFails,
     themeMode: themeMode ?? this.themeMode,
     lastUpdateCheckAt: lastUpdateCheckAt.present
@@ -1530,6 +1621,13 @@ class GymSetting extends DataClass implements Insertable<GymSetting> {
       whatsappBusinessNumber: data.whatsappBusinessNumber.present
           ? data.whatsappBusinessNumber.value
           : this.whatsappBusinessNumber,
+      whatsappReceiptTemplate: data.whatsappReceiptTemplate.present
+          ? data.whatsappReceiptTemplate.value
+          : this.whatsappReceiptTemplate,
+      whatsappReceiptTemplateLanguage:
+          data.whatsappReceiptTemplateLanguage.present
+          ? data.whatsappReceiptTemplateLanguage.value
+          : this.whatsappReceiptTemplateLanguage,
       whatsappMockFails: data.whatsappMockFails.present
           ? data.whatsappMockFails.value
           : this.whatsappMockFails,
@@ -1562,6 +1660,10 @@ class GymSetting extends DataClass implements Insertable<GymSetting> {
           ..write('whatsappAccessToken: $whatsappAccessToken, ')
           ..write('whatsappBusinessAccountId: $whatsappBusinessAccountId, ')
           ..write('whatsappBusinessNumber: $whatsappBusinessNumber, ')
+          ..write('whatsappReceiptTemplate: $whatsappReceiptTemplate, ')
+          ..write(
+            'whatsappReceiptTemplateLanguage: $whatsappReceiptTemplateLanguage, ',
+          )
           ..write('whatsappMockFails: $whatsappMockFails, ')
           ..write('themeMode: $themeMode, ')
           ..write('lastUpdateCheckAt: $lastUpdateCheckAt, ')
@@ -1571,7 +1673,7 @@ class GymSetting extends DataClass implements Insertable<GymSetting> {
   }
 
   @override
-  int get hashCode => Object.hash(
+  int get hashCode => Object.hashAll([
     id,
     gymName,
     logoPath,
@@ -1588,11 +1690,13 @@ class GymSetting extends DataClass implements Insertable<GymSetting> {
     whatsappAccessToken,
     whatsappBusinessAccountId,
     whatsappBusinessNumber,
+    whatsappReceiptTemplate,
+    whatsappReceiptTemplateLanguage,
     whatsappMockFails,
     themeMode,
     lastUpdateCheckAt,
     dismissedUpdateVersion,
-  );
+  ]);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -1613,6 +1717,9 @@ class GymSetting extends DataClass implements Insertable<GymSetting> {
           other.whatsappAccessToken == this.whatsappAccessToken &&
           other.whatsappBusinessAccountId == this.whatsappBusinessAccountId &&
           other.whatsappBusinessNumber == this.whatsappBusinessNumber &&
+          other.whatsappReceiptTemplate == this.whatsappReceiptTemplate &&
+          other.whatsappReceiptTemplateLanguage ==
+              this.whatsappReceiptTemplateLanguage &&
           other.whatsappMockFails == this.whatsappMockFails &&
           other.themeMode == this.themeMode &&
           other.lastUpdateCheckAt == this.lastUpdateCheckAt &&
@@ -1636,6 +1743,8 @@ class GymSettingsCompanion extends UpdateCompanion<GymSetting> {
   final Value<String?> whatsappAccessToken;
   final Value<String?> whatsappBusinessAccountId;
   final Value<String?> whatsappBusinessNumber;
+  final Value<String> whatsappReceiptTemplate;
+  final Value<String> whatsappReceiptTemplateLanguage;
   final Value<bool> whatsappMockFails;
   final Value<String> themeMode;
   final Value<DateTime?> lastUpdateCheckAt;
@@ -1657,6 +1766,8 @@ class GymSettingsCompanion extends UpdateCompanion<GymSetting> {
     this.whatsappAccessToken = const Value.absent(),
     this.whatsappBusinessAccountId = const Value.absent(),
     this.whatsappBusinessNumber = const Value.absent(),
+    this.whatsappReceiptTemplate = const Value.absent(),
+    this.whatsappReceiptTemplateLanguage = const Value.absent(),
     this.whatsappMockFails = const Value.absent(),
     this.themeMode = const Value.absent(),
     this.lastUpdateCheckAt = const Value.absent(),
@@ -1679,6 +1790,8 @@ class GymSettingsCompanion extends UpdateCompanion<GymSetting> {
     this.whatsappAccessToken = const Value.absent(),
     this.whatsappBusinessAccountId = const Value.absent(),
     this.whatsappBusinessNumber = const Value.absent(),
+    this.whatsappReceiptTemplate = const Value.absent(),
+    this.whatsappReceiptTemplateLanguage = const Value.absent(),
     this.whatsappMockFails = const Value.absent(),
     this.themeMode = const Value.absent(),
     this.lastUpdateCheckAt = const Value.absent(),
@@ -1701,6 +1814,8 @@ class GymSettingsCompanion extends UpdateCompanion<GymSetting> {
     Expression<String>? whatsappAccessToken,
     Expression<String>? whatsappBusinessAccountId,
     Expression<String>? whatsappBusinessNumber,
+    Expression<String>? whatsappReceiptTemplate,
+    Expression<String>? whatsappReceiptTemplateLanguage,
     Expression<bool>? whatsappMockFails,
     Expression<String>? themeMode,
     Expression<DateTime>? lastUpdateCheckAt,
@@ -1728,6 +1843,10 @@ class GymSettingsCompanion extends UpdateCompanion<GymSetting> {
         'whatsapp_business_account_id': whatsappBusinessAccountId,
       if (whatsappBusinessNumber != null)
         'whatsapp_business_number': whatsappBusinessNumber,
+      if (whatsappReceiptTemplate != null)
+        'whatsapp_receipt_template': whatsappReceiptTemplate,
+      if (whatsappReceiptTemplateLanguage != null)
+        'whatsapp_receipt_template_language': whatsappReceiptTemplateLanguage,
       if (whatsappMockFails != null) 'whatsapp_mock_fails': whatsappMockFails,
       if (themeMode != null) 'theme_mode': themeMode,
       if (lastUpdateCheckAt != null) 'last_update_check_at': lastUpdateCheckAt,
@@ -1753,6 +1872,8 @@ class GymSettingsCompanion extends UpdateCompanion<GymSetting> {
     Value<String?>? whatsappAccessToken,
     Value<String?>? whatsappBusinessAccountId,
     Value<String?>? whatsappBusinessNumber,
+    Value<String>? whatsappReceiptTemplate,
+    Value<String>? whatsappReceiptTemplateLanguage,
     Value<bool>? whatsappMockFails,
     Value<String>? themeMode,
     Value<DateTime?>? lastUpdateCheckAt,
@@ -1778,6 +1899,11 @@ class GymSettingsCompanion extends UpdateCompanion<GymSetting> {
           whatsappBusinessAccountId ?? this.whatsappBusinessAccountId,
       whatsappBusinessNumber:
           whatsappBusinessNumber ?? this.whatsappBusinessNumber,
+      whatsappReceiptTemplate:
+          whatsappReceiptTemplate ?? this.whatsappReceiptTemplate,
+      whatsappReceiptTemplateLanguage:
+          whatsappReceiptTemplateLanguage ??
+          this.whatsappReceiptTemplateLanguage,
       whatsappMockFails: whatsappMockFails ?? this.whatsappMockFails,
       themeMode: themeMode ?? this.themeMode,
       lastUpdateCheckAt: lastUpdateCheckAt ?? this.lastUpdateCheckAt,
@@ -1851,6 +1977,16 @@ class GymSettingsCompanion extends UpdateCompanion<GymSetting> {
         whatsappBusinessNumber.value,
       );
     }
+    if (whatsappReceiptTemplate.present) {
+      map['whatsapp_receipt_template'] = Variable<String>(
+        whatsappReceiptTemplate.value,
+      );
+    }
+    if (whatsappReceiptTemplateLanguage.present) {
+      map['whatsapp_receipt_template_language'] = Variable<String>(
+        whatsappReceiptTemplateLanguage.value,
+      );
+    }
     if (whatsappMockFails.present) {
       map['whatsapp_mock_fails'] = Variable<bool>(whatsappMockFails.value);
     }
@@ -1887,6 +2023,10 @@ class GymSettingsCompanion extends UpdateCompanion<GymSetting> {
           ..write('whatsappAccessToken: $whatsappAccessToken, ')
           ..write('whatsappBusinessAccountId: $whatsappBusinessAccountId, ')
           ..write('whatsappBusinessNumber: $whatsappBusinessNumber, ')
+          ..write('whatsappReceiptTemplate: $whatsappReceiptTemplate, ')
+          ..write(
+            'whatsappReceiptTemplateLanguage: $whatsappReceiptTemplateLanguage, ',
+          )
           ..write('whatsappMockFails: $whatsappMockFails, ')
           ..write('themeMode: $themeMode, ')
           ..write('lastUpdateCheckAt: $lastUpdateCheckAt, ')
@@ -8190,6 +8330,8 @@ typedef $$GymSettingsTableCreateCompanionBuilder =
       Value<String?> whatsappAccessToken,
       Value<String?> whatsappBusinessAccountId,
       Value<String?> whatsappBusinessNumber,
+      Value<String> whatsappReceiptTemplate,
+      Value<String> whatsappReceiptTemplateLanguage,
       Value<bool> whatsappMockFails,
       Value<String> themeMode,
       Value<DateTime?> lastUpdateCheckAt,
@@ -8213,6 +8355,8 @@ typedef $$GymSettingsTableUpdateCompanionBuilder =
       Value<String?> whatsappAccessToken,
       Value<String?> whatsappBusinessAccountId,
       Value<String?> whatsappBusinessNumber,
+      Value<String> whatsappReceiptTemplate,
+      Value<String> whatsappReceiptTemplateLanguage,
       Value<bool> whatsappMockFails,
       Value<String> themeMode,
       Value<DateTime?> lastUpdateCheckAt,
@@ -8312,6 +8456,17 @@ class $$GymSettingsTableFilterComposer
     column: $table.whatsappBusinessNumber,
     builder: (column) => ColumnFilters(column),
   );
+
+  ColumnFilters<String> get whatsappReceiptTemplate => $composableBuilder(
+    column: $table.whatsappReceiptTemplate,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get whatsappReceiptTemplateLanguage =>
+      $composableBuilder(
+        column: $table.whatsappReceiptTemplateLanguage,
+        builder: (column) => ColumnFilters(column),
+      );
 
   ColumnFilters<bool> get whatsappMockFails => $composableBuilder(
     column: $table.whatsappMockFails,
@@ -8423,6 +8578,17 @@ class $$GymSettingsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get whatsappReceiptTemplate => $composableBuilder(
+    column: $table.whatsappReceiptTemplate,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get whatsappReceiptTemplateLanguage =>
+      $composableBuilder(
+        column: $table.whatsappReceiptTemplateLanguage,
+        builder: (column) => ColumnOrderings(column),
+      );
+
   ColumnOrderings<bool> get whatsappMockFails => $composableBuilder(
     column: $table.whatsappMockFails,
     builder: (column) => ColumnOrderings(column),
@@ -8520,6 +8686,17 @@ class $$GymSettingsTableAnnotationComposer
     builder: (column) => column,
   );
 
+  GeneratedColumn<String> get whatsappReceiptTemplate => $composableBuilder(
+    column: $table.whatsappReceiptTemplate,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get whatsappReceiptTemplateLanguage =>
+      $composableBuilder(
+        column: $table.whatsappReceiptTemplateLanguage,
+        builder: (column) => column,
+      );
+
   GeneratedColumn<bool> get whatsappMockFails => $composableBuilder(
     column: $table.whatsappMockFails,
     builder: (column) => column,
@@ -8587,6 +8764,9 @@ class $$GymSettingsTableTableManager
                 Value<String?> whatsappAccessToken = const Value.absent(),
                 Value<String?> whatsappBusinessAccountId = const Value.absent(),
                 Value<String?> whatsappBusinessNumber = const Value.absent(),
+                Value<String> whatsappReceiptTemplate = const Value.absent(),
+                Value<String> whatsappReceiptTemplateLanguage =
+                    const Value.absent(),
                 Value<bool> whatsappMockFails = const Value.absent(),
                 Value<String> themeMode = const Value.absent(),
                 Value<DateTime?> lastUpdateCheckAt = const Value.absent(),
@@ -8608,6 +8788,9 @@ class $$GymSettingsTableTableManager
                 whatsappAccessToken: whatsappAccessToken,
                 whatsappBusinessAccountId: whatsappBusinessAccountId,
                 whatsappBusinessNumber: whatsappBusinessNumber,
+                whatsappReceiptTemplate: whatsappReceiptTemplate,
+                whatsappReceiptTemplateLanguage:
+                    whatsappReceiptTemplateLanguage,
                 whatsappMockFails: whatsappMockFails,
                 themeMode: themeMode,
                 lastUpdateCheckAt: lastUpdateCheckAt,
@@ -8632,6 +8815,9 @@ class $$GymSettingsTableTableManager
                 Value<String?> whatsappAccessToken = const Value.absent(),
                 Value<String?> whatsappBusinessAccountId = const Value.absent(),
                 Value<String?> whatsappBusinessNumber = const Value.absent(),
+                Value<String> whatsappReceiptTemplate = const Value.absent(),
+                Value<String> whatsappReceiptTemplateLanguage =
+                    const Value.absent(),
                 Value<bool> whatsappMockFails = const Value.absent(),
                 Value<String> themeMode = const Value.absent(),
                 Value<DateTime?> lastUpdateCheckAt = const Value.absent(),
@@ -8653,6 +8839,9 @@ class $$GymSettingsTableTableManager
                 whatsappAccessToken: whatsappAccessToken,
                 whatsappBusinessAccountId: whatsappBusinessAccountId,
                 whatsappBusinessNumber: whatsappBusinessNumber,
+                whatsappReceiptTemplate: whatsappReceiptTemplate,
+                whatsappReceiptTemplateLanguage:
+                    whatsappReceiptTemplateLanguage,
                 whatsappMockFails: whatsappMockFails,
                 themeMode: themeMode,
                 lastUpdateCheckAt: lastUpdateCheckAt,

@@ -36,6 +36,12 @@ abstract final class AuditAction {
   static const whatsAppResendRequested = 'whatsapp.resend_requested';
   static const whatsAppSent = 'whatsapp.sent';
   static const whatsAppFailed = 'whatsapp.failed';
+
+  /// The one-off note a member is sent when they are added. Recorded against
+  /// the member rather than a receipt, because there is no receipt: this is
+  /// also the record that stops a second copy ever being sent.
+  static const whatsAppWelcomeSent = 'whatsapp.welcome_sent';
+  static const whatsAppWelcomeFailed = 'whatsapp.welcome_failed';
 }
 
 /// Reads and writes the audit log the Logs screen shows.
@@ -175,6 +181,26 @@ class AuditRepository {
     }
 
     return (await query.getSingle()).read(count) ?? 0;
+  }
+
+  /// Whether [action] has already been recorded successfully for [memberId].
+  ///
+  /// The audit log is the only place a one-per-member message can be remembered
+  /// without a new column: it already survives restarts, is already written on
+  /// every send, and — unlike `WhatsAppMessages` — holds no foreign key to a
+  /// receipt that a welcome message does not have.
+  Future<bool> hasSucceededFor({
+    required String action,
+    required int memberId,
+  }) async {
+    final rows = await (db.select(db.auditEvents)
+          ..where((e) =>
+              e.action.equals(action) &
+              e.memberId.equals(memberId) &
+              e.outcome.equalsValue(AuditOutcome.success))
+          ..limit(1))
+        .get();
+    return rows.isNotEmpty;
   }
 
   Future<String?> _userName(int id) async {

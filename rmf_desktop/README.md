@@ -46,9 +46,17 @@ lib/
                  receipt_number.dart   RMF-2026-000184 formatting
                  money.dart            PKR formatting, integer minor units
                  phone.dart            E.164 normalization
+                 app_version.dart      numeric version comparison
   data/        Drift database
                  tables.dart           schema (hand written)
                  database.g.dart       generated — do not edit
+  services/
+    whatsapp/  message_texts.dart          every message a member is sent
+               whatsapp_client.dart        the provider interface
+               meta_client.dart            Meta WhatsApp Cloud API
+               member_welcome_service.dart the one-off welcome message
+    update/    update_service.dart         check, verify, install
+               update_cache.dart           the last answer GitHub gave
 test/
   domain_test.dart   39 tests covering every rule in domain/
 ```
@@ -69,6 +77,47 @@ There is deliberately no editable "status" column to fall out of sync.
 receipt are written in one transaction; the WhatsApp send happens after that
 transaction commits, and each attempt is recorded as its own row so failures
 stay visible and retryable.
+
+**A new member is welcomed once, after they are saved.** Adding a member by
+hand sends them the welcome message in
+`services/whatsapp/member_welcome_service.dart` — after the member row is
+committed, never inside it, and never at the cost of the member if the send
+fails. It happens exactly once per member: the audit log is the durable record
+that it already went out, and an in-process guard covers the seconds before that
+row exists. **Importing from Excel deliberately sends nothing** — nobody wants
+five hundred messages fired at once, so the importer writes members directly
+rather than through the form's path.
+
+**Every message a member receives is written in one file**,
+`services/whatsapp/message_texts.dart`. The gym's name comes from the settings
+row, so renaming the gym renames it in every message.
+
+**WhatsApp credentials are configuration, not code.** They live in the settings
+row and are edited in Settings → WhatsApp; no token, phone number id or business
+account id is compiled into the app or written to a log. There is no `.env` file
+because the owner installs a packaged app and has no terminal to edit one in.
+
+## Updating itself
+
+The app asks GitHub once a day for `releases/latest`, and only offers a release
+that is newer, correctly tagged, has both an installer and a published SHA-256,
+and points at GitHub's own hosts. Two rules keep that from going quiet:
+
+- **A check counts as done only when GitHub answered the question.** A timeout,
+  a rate limit or an HTTP error leaves the once-a-day marker alone, so the next
+  launch tries again instead of the gym hearing nothing until tomorrow. Within a
+  session a failure is not retried for 30 minutes, so a rebuilding screen cannot
+  hammer the API.
+- **The answer is cached, not just the fact that it was asked.** The raw payload
+  and its ETag are kept in `update_check.json` beside the database. Reopening the
+  app the same day shows the waiting update again without a request, and the
+  request that is made is conditional — a 304 costs no rate limit at all. The
+  raw payload is re-read against the installed version each time, so the banner
+  disappears by itself once the update has been applied.
+
+Updates are Windows-only and are disabled outright if the installed version
+cannot be read from the executable: every release looks newer than an unknown
+version, and this code downloads and runs what it decides is newer.
 
 ## Adding a feature without losing the gym's data
 

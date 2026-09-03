@@ -103,15 +103,34 @@ class UpdateBloc extends Bloc<UpdateEvent, UpdateState> {
     if (state.busy) return;
     if (!_service.isSupported) return;
 
-    // The automatic check at startup is skipped if it already ran today; a
-    // deliberate press is never skipped.
-    if (!event.force && !await _service.isDueForCheck()) return;
+    // The automatic check at startup only goes to the network once a day. What
+    // it found, though, is still the answer: reopening the app an hour later
+    // used to leave this bloc idle and a waiting update invisible until
+    // tomorrow. A deliberate press always asks GitHub again.
+    if (!event.force && !await _service.isDueForCheck()) {
+      await _emitResult(await _service.lastKnownResult(), emit,
+          quietFailures: true);
+      return;
+    }
 
     emit(const UpdateState(status: UpdateStatus.checking));
 
-    final result = await _service.check();
+    await _emitResult(await _service.check(), emit);
+  }
 
+  /// Turns a check result into state.
+  ///
+  /// [quietFailures] is set when the result came from the cache rather than
+  /// from a check the owner is waiting on: there is nothing new to report, and
+  /// showing yesterday's error would be worse than showing nothing.
+  Future<void> _emitResult(
+    UpdateCheckResult? result,
+    Emitter<UpdateState> emit, {
+    bool quietFailures = false,
+  }) async {
     switch (result) {
+      case null:
+        return;
       case UpdateAvailable():
         final dismissed = await _service.dismissedVersion();
         emit(UpdateState(
@@ -123,6 +142,7 @@ class UpdateBloc extends Bloc<UpdateEvent, UpdateState> {
       case AlreadyCurrent():
         emit(const UpdateState(status: UpdateStatus.upToDate));
       case UpdateCheckFailed(:final reason):
+        if (quietFailures) return;
         // Only surfaced where the owner went looking for it. An offline gym is
         // not a problem the dashboard needs to announce.
         emit(UpdateState(status: UpdateStatus.failed, error: reason));

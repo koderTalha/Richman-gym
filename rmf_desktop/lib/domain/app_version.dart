@@ -7,9 +7,22 @@
 class AppVersion implements Comparable<AppVersion> {
   const AppVersion(this.major, this.minor, [this.patch = 0]);
 
+  /// What the app reports when the platform will not say which version is
+  /// installed.
+  ///
+  /// Deliberately its own named value rather than a bare 0.0.0 sprinkled
+  /// through the code: it means "unknown", not "very old", and the update check
+  /// refuses to run against it. Comparing an unknown installed version with a
+  /// release would make every release on GitHub look newer, and this app
+  /// downloads and executes what it decides is newer.
+  static const unknown = AppVersion(0, 0, 0);
+
   final int major;
   final int minor;
   final int patch;
+
+  /// False only for [unknown].
+  bool get isKnown => this != unknown;
 
   /// Parses "1.2.3", the "v1.2.3" form the release tags use, and the "1.2.3+4"
   /// form pubspec uses. Returns null for anything else.

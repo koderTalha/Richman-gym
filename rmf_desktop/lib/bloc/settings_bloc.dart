@@ -44,6 +44,8 @@ class WhatsAppSettingsSaved extends SettingsEvent {
     this.accessToken,
     this.businessAccountId,
     this.businessNumber,
+    required this.receiptTemplate,
+    required this.receiptTemplateLanguage,
   });
 
   final WhatsAppProviderKind provider;
@@ -53,9 +55,21 @@ class WhatsAppSettingsSaved extends SettingsEvent {
   final String? businessAccountId;
   final String? businessNumber;
 
+  /// The approved template a receipt is sent as, and the language it was
+  /// registered under. Never blank — the form substitutes the defaults.
+  final String receiptTemplate;
+  final String receiptTemplateLanguage;
+
   @override
-  List<Object?> get props =>
-      [provider, mockFails, phoneNumberId, accessToken, businessAccountId];
+  List<Object?> get props => [
+        provider,
+        mockFails,
+        phoneNumberId,
+        accessToken,
+        businessAccountId,
+        receiptTemplate,
+        receiptTemplateLanguage,
+      ];
 }
 
 /// Verifies Meta credentials without sending anything.
@@ -221,6 +235,8 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
       whatsappAccessToken: Value(event.accessToken),
       whatsappBusinessAccountId: Value(event.businessAccountId),
       whatsappBusinessNumber: Value(event.businessNumber),
+      whatsappReceiptTemplate: Value(event.receiptTemplate),
+      whatsappReceiptTemplateLanguage: Value(event.receiptTemplateLanguage),
     ));
     await _load(emit, message: 'WhatsApp settings saved.');
   }

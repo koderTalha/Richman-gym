@@ -49,6 +49,13 @@ class _StubClient implements WhatsAppClient {
   @override
   Future<WhatsAppSendResult> send(WhatsAppSendInput input) async =>
       const WhatsAppSendSuccess('stub.1');
+
+  @override
+  Future<WhatsAppSendResult> sendText(WhatsAppTextInput input) async =>
+      const WhatsAppSendSuccess('stub.text.1');
+  @override
+  Future<WhatsAppSendResult> sendTemplate(WhatsAppTemplateInput input) async =>
+      const WhatsAppSendSuccess('stub.template.1');
 }
 
 /// Deleting a payment is the one operation here that destroys a financial

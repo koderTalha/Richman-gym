@@ -5,6 +5,7 @@ import 'package:logging/logging.dart';
 import '../data/database.dart';
 import '../data/member_repository.dart';
 import '../domain/phone.dart';
+import '../services/whatsapp/member_welcome_service.dart';
 
 final _log = Logger('members');
 
@@ -30,6 +31,7 @@ class MemberFormSubmitted extends MemberFormEvent {
     this.emergencyContact,
     this.feeOverrideMinor,
     this.confirmSharedPhone = false,
+    this.actorId,
   });
 
   final String fullName;
@@ -45,6 +47,9 @@ class MemberFormSubmitted extends MemberFormEvent {
   /// Set once the operator has been shown who else is on this number and has
   /// said to go ahead anyway.
   final bool confirmSharedPhone;
+
+  /// Who is signed in, so the welcome message is attributable in the log.
+  final int? actorId;
 
   @override
   List<Object?> get props =>
@@ -71,6 +76,7 @@ class MemberFormState extends Equatable {
     this.existing,
     this.sharingPhone = const [],
     this.error,
+    this.welcome,
   });
 
   final MemberFormStatus status;
@@ -82,12 +88,17 @@ class MemberFormState extends Equatable {
 
   final String? error;
 
+  /// What happened to the new member's welcome message. Null when nothing was
+  /// attempted — every edit, and any save that has not finished.
+  final WelcomeOutcome? welcome;
+
   MemberFormState copyWith({
     MemberFormStatus? status,
     List<MembershipPlan>? plans,
     MemberRow? existing,
     List<Member>? sharingPhone,
     String? error,
+    WelcomeOutcome? welcome,
   }) =>
       MemberFormState(
         status: status ?? this.status,
@@ -95,16 +106,27 @@ class MemberFormState extends Equatable {
         existing: existing ?? this.existing,
         sharingPhone: sharingPhone ?? const [],
         error: error,
+        welcome: welcome,
       );
 
   @override
-  List<Object?> get props =>
-      [status, plans.length, existing?.id, sharingPhone.length, error];
+  List<Object?> get props => [
+        status,
+        plans.length,
+        existing?.id,
+        sharingPhone.length,
+        error,
+        welcome,
+      ];
 }
 
 class MemberFormBloc extends Bloc<MemberFormEvent, MemberFormState> {
-  MemberFormBloc({required MemberRepository repository, this.memberId})
-      : _repository = repository,
+  MemberFormBloc({
+    required MemberRepository repository,
+    this.memberId,
+    MemberWelcomeService? welcome,
+  })  : _repository = repository,
+        _welcome = welcome,
         super(const MemberFormState()) {
     on<MemberFormLoaded>((_, emit) => _load(emit));
     on<MemberFormSubmitted>(_onSubmit);
@@ -112,6 +134,19 @@ class MemberFormBloc extends Bloc<MemberFormEvent, MemberFormState> {
 
   final MemberRepository _repository;
   final int? memberId;
+
+  /// Null in the screens and tests that have no messaging wired up; a new
+  /// member is then simply saved without a welcome message.
+  final MemberWelcomeService? _welcome;
+
+  /// True from the moment a submit is accepted until it has finished.
+  ///
+  /// A field rather than a look at [state]: bloc handles events concurrently,
+  /// so the load that populates the plan list can — and does — emit `ready`
+  /// over the `submitting` a submit already set, and the next submit would read
+  /// that and go straight through. This is set before the first await and is
+  /// nobody else's to change.
+  bool _submitting = false;
 
   bool get isEditing => memberId != null;
 
@@ -130,6 +165,27 @@ class MemberFormBloc extends Bloc<MemberFormEvent, MemberFormState> {
   }
 
   Future<void> _onSubmit(
+    MemberFormSubmitted event,
+    Emitter<MemberFormState> emit,
+  ) async {
+    // Two taps on Save half a second apart would otherwise both get this far
+    // and create the member twice — and send two welcome messages with them.
+    // The button is disabled while this runs, but a keyboard repeat, a rebuilt
+    // widget or a re-dispatched event is not the button.
+    if (_submitting) {
+      _log.info('Ignoring a repeat submit; the first one is still running');
+      return;
+    }
+    _submitting = true;
+
+    try {
+      await _submit(event, emit);
+    } finally {
+      _submitting = false;
+    }
+  }
+
+  Future<void> _submit(
     MemberFormSubmitted event,
     Emitter<MemberFormState> emit,
   ) async {
@@ -192,27 +248,57 @@ class MemberFormBloc extends Bloc<MemberFormEvent, MemberFormState> {
           feeOverrideMinor: event.feeOverrideMinor,
           joiningDate: joining,
         );
-      } else {
-        await _repository.create(
-          fullName: event.fullName,
-          phone: normalized,
-          phoneRaw: event.rawPhone,
-          email: event.email,
-          gender: event.gender,
-          address: event.address,
-          emergencyContact: event.emergencyContact,
-          planId: event.planId,
-          feeOverrideMinor: event.feeOverrideMinor,
-          joiningDate: joining,
-        );
+        emit(state.copyWith(status: MemberFormStatus.saved));
+        return;
       }
-      emit(state.copyWith(status: MemberFormStatus.saved));
+
+      final newMemberId = await _repository.create(
+        fullName: event.fullName,
+        phone: normalized,
+        phoneRaw: event.rawPhone,
+        email: event.email,
+        gender: event.gender,
+        address: event.address,
+        emergencyContact: event.emergencyContact,
+        planId: event.planId,
+        feeOverrideMinor: event.feeOverrideMinor,
+        joiningDate: joining,
+      );
+
+      // --- Past this line the member is saved -----------------------------
+      // Whatever happens to the message, the member stays. The send is awaited
+      // rather than left running so the screen can say which of the two
+      // happened, but its result never turns a saved member into a failure.
+      final welcome = await _sendWelcome(newMemberId, actorId: event.actorId);
+
+      // The form can be closed while a send is in flight. The member is saved
+      // either way; there is just no longer a screen to tell.
+      if (isClosed) return;
+
+      emit(state.copyWith(
+        status: MemberFormStatus.saved,
+        welcome: welcome,
+      ));
     } catch (e, s) {
       _log.severe('Saving member failed', e, s);
+      if (isClosed) return;
       emit(state.copyWith(
         status: MemberFormStatus.failed,
         error: 'Could not save: $e',
       ));
+    }
+  }
+
+  /// Never throws and never rethrows: this runs after the member is committed.
+  Future<WelcomeOutcome?> _sendWelcome(int memberId, {int? actorId}) async {
+    final welcome = _welcome;
+    if (welcome == null) return null;
+
+    try {
+      return await welcome.sendWelcome(memberId: memberId, actorId: actorId);
+    } catch (e, s) {
+      _log.severe('The welcome message could not be sent', e, s);
+      return WelcomeFailed('$e');
     }
   }
 }

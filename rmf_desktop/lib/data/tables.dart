@@ -88,6 +88,19 @@ class GymSettings extends Table {
   /// The number members see messages arrive from. Display only.
   TextColumn get whatsappBusinessNumber => text().nullable()();
 
+  /// The approved template a receipt is sent as, and the language it was
+  /// registered under.
+  ///
+  /// Editable rather than hard coded because both live in Meta's Business
+  /// Manager, not here: the owner can register a differently named template, or
+  /// register one under `en_US` instead of `en`, and a mismatch reads as
+  /// "template does not exist" with nothing in the app to point at. Correcting
+  /// a typo must not need a new release.
+  TextColumn get whatsappReceiptTemplate =>
+      text().withDefault(const Constant('payment_receipt'))();
+  TextColumn get whatsappReceiptTemplateLanguage =>
+      text().withDefault(const Constant('en'))();
+
   /// Makes the mock provider fail on demand, so the "WhatsApp failed / Retry"
   /// path can be exercised without breaking anything real.
   BoolColumn get whatsappMockFails =>

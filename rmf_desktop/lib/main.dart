@@ -20,6 +20,7 @@ import 'services/backup_service.dart';
 import 'services/billing_maintenance.dart';
 import 'services/billing_month_checker.dart';
 import 'services/payment_edit_service.dart';
+import 'services/whatsapp/member_welcome_service.dart';
 import 'services/logging/app_logger.dart';
 import 'domain/app_version.dart';
 import 'services/receipt_renderer.dart';
@@ -81,11 +82,19 @@ Future<Widget> _boot() async {
   final restored = await SessionRepository(db).restore();
 
   // Read from the executable rather than a constant, so the update check
-  // compares against what is genuinely installed. Falls back to the version
-  // this source was built from if the platform cannot say.
+  // compares against what is genuinely installed.
+  //
+  // 0.0.0 means "the platform would not say". It is deliberately not treated
+  // as a very old version: UpdateService refuses to offer anything against it,
+  // because a comparison whose left-hand side is unknown would make every
+  // release on GitHub look newer and hand the gym an installer on a guess.
   final packageInfo = await PackageInfo.fromPlatform();
-  final version = AppVersion.tryParse(packageInfo.version) ??
-      const AppVersion(0, 0, 0);
+  final version = AppVersion.tryParse(packageInfo.version) ?? () {
+    _log.severe('The installed version could not be read from the executable '
+        '(package_info reported "${packageInfo.version}"). '
+        'Update checking is disabled until it can.');
+    return AppVersion.unknown;
+  }();
 
   // Cheap insurance: one snapshot a day, seven kept. Deliberately not awaited —
   // it snapshots the database and builds a workbook out of the gym's whole
@@ -115,13 +124,14 @@ class RichManFitnessApp extends StatelessWidget {
     required this.db,
     this.initialTheme = ThemeMode.dark,
     this.restoredUser,
-    this.version = const AppVersion(0, 0, 0),
+    this.version = AppVersion.unknown,
   });
 
   final AppDatabase db;
   final ThemeMode initialTheme;
 
   /// The version this copy was built as, for the update check.
+  /// [AppVersion.unknown] disables checking rather than guessing.
   final AppVersion version;
 
   /// Signed in on a previous run; null means show the login screen.
@@ -140,6 +150,15 @@ class RichManFitnessApp extends StatelessWidget {
       db: db,
       renderer: renderer,
       storage: storage,
+      clientFactory: settings.buildClient,
+      audit: audit,
+    );
+
+    // Shared by every Add Member screen rather than built per form: its
+    // in-flight guard is what stops two forms open at once sending the same
+    // member two welcome messages.
+    final welcome = MemberWelcomeService(
+      db: db,
       clientFactory: settings.buildClient,
       audit: audit,
     );
@@ -163,6 +182,7 @@ class RichManFitnessApp extends StatelessWidget {
           create: (_) => ReceiptRepository(db),
         ),
         RepositoryProvider<RecordPaymentService>.value(value: recordPayments),
+        RepositoryProvider<MemberWelcomeService>.value(value: welcome),
         RepositoryProvider<UpdateService>(
           create: (_) => UpdateService(
             db: db,

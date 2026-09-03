@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -13,11 +14,18 @@ import '../../data/database.dart';
 import '../../data/settings_repository.dart';
 import '../../domain/app_version.dart';
 import '../backup_service.dart';
+import 'update_cache.dart';
 
 final _log = Logger('update');
 
 /// Where releases are published. Public, so no token is involved and there is
 /// no credential to leak in a desktop app the owner has on their own machine.
+///
+/// `releases/latest` rather than the tag list on purpose: GitHub defines it as
+/// the newest release that is neither a draft nor a pre-release, so a tag
+/// pushed by mistake or a release still being written is never what the gym's
+/// computer is offered. The payload is checked again below in case that ever
+/// stops being true.
 const _releasesEndpoint =
     'https://api.github.com/repos/koderTalha/Richman-gym/releases/latest';
 
@@ -29,6 +37,50 @@ const _allowedHosts = {
   'objects.githubusercontent.com',
   'release-assets.githubusercontent.com',
 };
+
+/// Long enough for a slow gym connection, short enough that the app is not
+/// waiting on GitHub while somebody wants to take a payment.
+const _requestTimeout = Duration(seconds: 20);
+
+/// How long a stalled download is tolerated before it is abandoned. This is an
+/// idle timeout between chunks, not a limit on the whole 14MB.
+const _downloadStallTimeout = Duration(minutes: 2);
+
+/// After a check that could not be completed, how long before trying again
+/// within the same session. Held in memory rather than in the database: the
+/// interesting retry is the next time the app opens, which is exactly when the
+/// connection that failed is most likely to be back.
+const _retryInterval = Duration(minutes: 30);
+
+/// Why a check could not answer the question. The message is for the owner;
+/// this is for the code and the log.
+enum UpdateFailureKind {
+  /// Not Windows: there is no installer this app could apply.
+  unsupported,
+
+  /// The installed version could not be read, so there is nothing to compare
+  /// a release against.
+  unknownCurrentVersion,
+
+  /// The request never got an answer — no connection, DNS, or a timeout.
+  offline,
+
+  /// GitHub's unauthenticated hourly limit is used up.
+  rateLimited,
+
+  /// The repository has no published release.
+  noReleases,
+
+  /// GitHub answered, but with an error.
+  serverError,
+
+  /// GitHub answered with something that is not the JSON this expects.
+  malformedResponse,
+
+  /// A release was found but cannot be used: a draft, a pre-release, a tag
+  /// that is not a version, or missing its installer or checksum.
+  unusableRelease,
+}
 
 sealed class UpdateCheckResult {
   const UpdateCheckResult();
@@ -59,11 +111,17 @@ class UpdateAvailable extends UpdateCheckResult {
 
 /// The check could not be completed — usually the gym's connection.
 ///
-/// Deliberately not an error the owner is shown: a till that cannot reach
-/// GitHub is a till that works perfectly well.
+/// Deliberately not an error the owner is shown on the dashboard: a till that
+/// cannot reach GitHub is a till that works perfectly well. It is surfaced in
+/// Settings, where somebody went looking for it, and in the log file always.
 class UpdateCheckFailed extends UpdateCheckResult {
-  const UpdateCheckFailed(this.reason);
+  const UpdateCheckFailed(
+    this.reason, {
+    this.kind = UpdateFailureKind.serverError,
+  });
+
   final String reason;
+  final UpdateFailureKind kind;
 }
 
 sealed class UpdateInstallResult {
@@ -100,6 +158,11 @@ class UpdateInstallFailed extends UpdateInstallResult {
 ///  3. Start the installer detached and let the app exit. The installer is
 ///     per-user, so no administrator prompt appears on a machine where nobody
 ///     knows the administrator password.
+///
+/// Checking has one rule worth stating separately: **a check counts as done
+/// only when GitHub actually answered the question.** An error, a rate limit or
+/// a dropped connection leaves the once-a-day marker alone, so a bad minute
+/// cannot silence the updater for the rest of the day.
 class UpdateService {
   UpdateService({
     required this.db,
@@ -117,12 +180,16 @@ class UpdateService {
         _settings = settings ?? SettingsRepository(db),
         _backups = backups ?? BackupService(db),
         _supportDirectory = supportDirectory ?? getApplicationSupportDirectory,
-        _startProcess = startProcess ?? _detachedStart;
+        _startProcess = startProcess ?? _detachedStart,
+        _cache = UpdateCache(
+          supportDirectory: supportDirectory ?? getApplicationSupportDirectory,
+        );
 
   final AppDatabase db;
 
   /// What is actually installed, read from the executable rather than a
-  /// constant somebody has to remember to edit.
+  /// constant somebody has to remember to edit. [AppVersion.unknown] when the
+  /// platform would not say, which disables checking outright.
   final AppVersion currentVersion;
 
   final AuditRepository audit;
@@ -131,6 +198,11 @@ class UpdateService {
   final BackupService _backups;
   final Future<Directory> Function() _supportDirectory;
   final Future<Process> Function(String, List<String>) _startProcess;
+  final UpdateCache _cache;
+
+  /// When a check was last attempted in this process, successful or not. Only
+  /// used to keep [isDueForCheck] from retrying a failure in a tight loop.
+  DateTime? _lastAttemptAt;
 
   static Future<Process> _detachedStart(String exe, List<String> args) =>
       Process.start(exe, args, mode: ProcessStartMode.detached);
@@ -143,21 +215,33 @@ class UpdateService {
   /// Only updates on Windows. The gym runs Windows; the installer is an Inno
   /// Setup .exe, and offering an update it cannot apply would be worse than
   /// offering none.
-  bool get isSupported => _windows;
+  ///
+  /// Also off when the installed version is unknown: there is no safe answer to
+  /// "is this release newer" without a left-hand side.
+  bool get isSupported => _windows && currentVersion.isKnown;
 
   /// Whether enough time has passed to look again.
   ///
   /// Once a day, because the gym's computer is opened each morning: an update
   /// lands within a day of release without a working session ever being
-  /// interrupted by a network call.
+  /// interrupted by a network call. A check that failed does not count as a
+  /// check — see [_recordChecked] — so the next launch tries again.
   Future<bool> isDueForCheck({DateTime? now}) async {
     if (!isSupported) return false;
+
+    final at = now ?? DateTime.now();
+
+    // A failure inside this session is not retried immediately. Without this, a
+    // screen that rebuilds while GitHub is down would ask again on every build.
+    final attempt = _lastAttemptAt;
+    if (attempt != null && at.difference(attempt) < _retryInterval) {
+      return false;
+    }
 
     final settings = await _settings.get();
     final last = settings.lastUpdateCheckAt;
     if (last == null) return true;
 
-    final at = now ?? DateTime.now();
     final lastLocal = last.toLocal();
     return !(lastLocal.year == at.year &&
         lastLocal.month == at.month &&
@@ -172,70 +256,189 @@ class UpdateService {
         GymSettingsCompanion(dismissedUpdateVersion: Value(version.toString())),
       );
 
+  /// What the last completed check found, read from disk without touching the
+  /// network. Null when nothing has ever been cached.
+  ///
+  /// This is what keeps a waiting update on screen across a restart: the daily
+  /// interval stops the request, not the answer.
+  Future<UpdateCheckResult?> lastKnownResult() async {
+    if (!isSupported) return null;
+
+    final cached = await _cache.read();
+    if (cached == null) return null;
+
+    final decoded = _decode(cached.body);
+    if (decoded == null) return null;
+
+    return _interpret(decoded, recordAudit: false);
+  }
+
   /// Asks GitHub for the latest release. Never throws.
   Future<UpdateCheckResult> check({DateTime? now}) async {
-    if (!isSupported) {
-      return UpdateCheckFailed('Updates are only available on Windows.');
+    if (!_windows) {
+      return const UpdateCheckFailed(
+        'Updates are only available on Windows.',
+        kind: UpdateFailureKind.unsupported,
+      );
+    }
+    if (!currentVersion.isKnown) {
+      _log.severe('Update check skipped: the installed version is unknown, so '
+          'there is nothing to compare a release against.');
+      return const UpdateCheckFailed(
+        'The installed version could not be read, so updates cannot be '
+        'checked.',
+        kind: UpdateFailureKind.unknownCurrentVersion,
+      );
     }
 
+    final at = now ?? DateTime.now();
+    _lastAttemptAt = at;
+
+    // The ETag is only sent when the payload it belongs to can still be read.
+    // Otherwise a cache file that went bad would answer 304 forever and there
+    // would be nothing to interpret; asking unconditionally replaces it.
+    final cached = await _cache.read();
+    final cachedRelease = cached == null ? null : _decode(cached.body);
+    final etag = cachedRelease == null ? null : cached!.etag;
+
+    final http.Response response;
     try {
-      final response = await _http.get(
+      response = await _http.get(
         Uri.parse(_releasesEndpoint),
-        headers: const {
+        headers: {
           'Accept': 'application/vnd.github+json',
           'X-GitHub-Api-Version': '2022-11-28',
+          // Costs nothing and, when it answers 304, costs no rate limit
+          // either — GitHub does not charge a conditional request that found
+          // nothing new. Omitted entirely when there is no ETag to send.
+          'If-None-Match': ?etag,
         },
-      ).timeout(const Duration(seconds: 20));
+      ).timeout(_requestTimeout);
+    } catch (error, stack) {
+      // An offline till is not a broken till.
+      _log.info('Update check could not be completed: $error');
+      _log.finer('Update check stack', error, stack);
+      return const UpdateCheckFailed(
+        'Could not reach GitHub to check for updates.',
+        kind: UpdateFailureKind.offline,
+      );
+    }
 
-      // Recorded even when nothing new is found, so the daily check does not
-      // hammer GitHub after a failure loop.
-      await _settings.update(GymSettingsCompanion(
-        lastUpdateCheckAt: Value((now ?? DateTime.now()).toUtc()),
-      ));
+    // Nothing has been released since the copy already on disk.
+    if (response.statusCode == 304 && cachedRelease != null) {
+      _log.fine('GitHub reports no new release since the cached one.');
+      await _recordChecked(at);
+      return _interpret(cachedRelease, recordAudit: true);
+    }
 
-      if (response.statusCode != 200) {
-        return UpdateCheckFailed(
-            'GitHub answered HTTP ${response.statusCode}.');
-      }
+    if (response.statusCode != 200) {
+      return _failureFor(response);
+    }
 
-      final body = jsonDecode(response.body) as Map<String, dynamic>;
-      final version = AppVersion.tryParse(body['tag_name'] as String?);
-      if (version == null) {
-        return UpdateCheckFailed(
-            'The latest release is not tagged with a version this app '
-            'recognises.');
-      }
+    final decoded = _decode(response.body);
+    if (decoded == null) {
+      _log.warning('GitHub answered with something that is not a release: '
+          '${_snippet(response.body)}');
+      return const UpdateCheckFailed(
+        'GitHub answered with something this app could not read.',
+        kind: UpdateFailureKind.malformedResponse,
+      );
+    }
 
-      if (!version.isNewerThan(currentVersion)) {
-        return AlreadyCurrent(currentVersion);
-      }
+    // Only a genuine answer is cached and only a genuine answer counts as
+    // today's check.
+    await _cache.write(
+      body: response.body,
+      etag: response.headers['etag'],
+      at: at,
+    );
+    await _recordChecked(at);
 
-      final assets = (body['assets'] as List<dynamic>? ?? [])
-          .whereType<Map<String, dynamic>>()
-          .toList();
+    return _interpret(decoded, recordAudit: true);
+  }
 
-      final installer = _asset(assets, 'RichManFitness-Setup-$version.exe');
-      final checksum = _asset(assets, 'RichManFitness-Setup-$version.exe.sha256');
+  /// Turns a `releases/latest` payload into an answer.
+  ///
+  /// Every refusal here is a release that exists but must not be installed, and
+  /// each one says which so the log can be read afterwards.
+  Future<UpdateCheckResult> _interpret(
+    Map<String, dynamic> body, {
+    required bool recordAudit,
+  }) async {
+    // The endpoint already excludes these; checked anyway because the cost of
+    // being wrong is running a half-finished build on the gym's computer.
+    if (body['draft'] == true) {
+      _log.info('The latest release on GitHub is still a draft; ignoring it.');
+      return const UpdateCheckFailed(
+        'The newest release on GitHub is still a draft.',
+        kind: UpdateFailureKind.unusableRelease,
+      );
+    }
+    if (body['prerelease'] == true) {
+      _log.info('The latest release on GitHub is a pre-release; ignoring it.');
+      return const UpdateCheckFailed(
+        'The newest release on GitHub is a pre-release, so it was not '
+        'offered.',
+        kind: UpdateFailureKind.unusableRelease,
+      );
+    }
 
-      if (installer == null) {
-        return UpdateCheckFailed(
-            'Release $version has no installer attached yet.');
-      }
-      // No checksum, no update. Without one there is nothing to verify a
-      // downloaded executable against, and this app will not run one blind.
-      if (checksum == null) {
-        return UpdateCheckFailed(
-            'Release $version has no checksum published, so it cannot be '
-            'verified.');
-      }
+    final tag = body['tag_name'];
+    final version = AppVersion.tryParse(tag is String ? tag : null);
+    if (version == null) {
+      _log.warning('Release tag "$tag" is not a version this app recognises.');
+      return const UpdateCheckFailed(
+        'The latest release is not tagged with a version this app recognises.',
+        kind: UpdateFailureKind.unusableRelease,
+      );
+    }
 
-      final installerUrl = _safeUri(installer['browser_download_url']);
-      final checksumUrl = _safeUri(checksum['browser_download_url']);
-      if (installerUrl == null || checksumUrl == null) {
-        return UpdateCheckFailed(
-            'Release $version points somewhere unexpected and was ignored.');
-      }
+    if (!version.isNewerThan(currentVersion)) {
+      _log.fine('Up to date: installed $currentVersion, latest $version.');
+      return AlreadyCurrent(currentVersion);
+    }
 
+    final assets = (body['assets'] as List<dynamic>? ?? const [])
+        .whereType<Map<String, dynamic>>()
+        .toList();
+
+    final installer = _asset(assets, 'RichManFitness-Setup-$version.exe');
+    final checksum = _asset(assets, 'RichManFitness-Setup-$version.exe.sha256');
+
+    if (installer == null) {
+      _log.warning('Release $version has no installer attached; '
+          'assets are ${assets.map((a) => a['name']).toList()}');
+      return UpdateCheckFailed(
+        'Release $version has no installer attached yet.',
+        kind: UpdateFailureKind.unusableRelease,
+      );
+    }
+    // No checksum, no update. Without one there is nothing to verify a
+    // downloaded executable against, and this app will not run one blind.
+    if (checksum == null) {
+      _log.warning('Release $version has no checksum published; '
+          'it will not be offered.');
+      return UpdateCheckFailed(
+        'Release $version has no checksum published, so it cannot be '
+        'verified.',
+        kind: UpdateFailureKind.unusableRelease,
+      );
+    }
+
+    final installerUrl = _safeUri(installer['browser_download_url']);
+    final checksumUrl = _safeUri(checksum['browser_download_url']);
+    if (installerUrl == null || checksumUrl == null) {
+      _log.severe('Release $version points somewhere this app will not follow; '
+          'nothing was downloaded.');
+      return UpdateCheckFailed(
+        'Release $version points somewhere unexpected and was ignored.',
+        kind: UpdateFailureKind.unusableRelease,
+      );
+    }
+
+    _log.info('Version $version is available (this copy is $currentVersion).');
+
+    if (recordAudit) {
       await audit.record(
         category: AuditCategory.update,
         action: AuditAction.updateAvailable,
@@ -243,22 +446,87 @@ class UpdateService {
         summary: 'Version $version is available '
             '(this copy is $currentVersion)',
       );
-
-      return UpdateAvailable(
-        current: currentVersion,
-        version: version,
-        installerUrl: installerUrl,
-        checksumUrl: checksumUrl,
-        sizeBytes: (installer['size'] as num?)?.toInt() ?? 0,
-        notes: (body['body'] as String?)?.trim(),
-      );
-    } catch (error, stack) {
-      // An offline till is not a broken till.
-      _log.info('Update check could not be completed: $error');
-      _log.finer('Update check stack', error, stack);
-      return const UpdateCheckFailed(
-          'Could not reach GitHub to check for updates.');
     }
+
+    return UpdateAvailable(
+      current: currentVersion,
+      version: version,
+      installerUrl: installerUrl,
+      checksumUrl: checksumUrl,
+      sizeBytes: (installer['size'] as num?)?.toInt() ?? 0,
+      notes: (body['body'] as String?)?.trim(),
+    );
+  }
+
+  /// Reads a non-200 answer, separating the cases that mean different things.
+  ///
+  /// None of these record today's check: the question was never answered, and
+  /// marking it as asked would mean waiting until tomorrow to find out.
+  UpdateCheckFailed _failureFor(http.Response response) {
+    final code = response.statusCode;
+    final remaining = response.headers['x-ratelimit-remaining'];
+
+    if ((code == 403 || code == 429) && remaining == '0') {
+      final resets = _rateLimitReset(response);
+      _log.warning('GitHub rate limit reached (HTTP $code)'
+          '${resets == null ? '' : ', resets at ${resets.toLocal()}'}. '
+          'No token is used, so the limit is per network address.');
+      return UpdateCheckFailed(
+        'GitHub is rate limiting update checks from this network'
+        '${resets == null ? '' : ' until ${_clock(resets.toLocal())}'}. '
+        'The app will try again later.',
+        kind: UpdateFailureKind.rateLimited,
+      );
+    }
+
+    if (code == 404) {
+      _log.warning('GitHub has no published release to compare against '
+          '(HTTP 404 from $_releasesEndpoint).');
+      return const UpdateCheckFailed(
+        'GitHub has no published release for this app yet (HTTP 404).',
+        kind: UpdateFailureKind.noReleases,
+      );
+    }
+
+    _log.warning('GitHub answered HTTP $code when asked for the latest '
+        'release: ${_snippet(response.body)}');
+    return UpdateCheckFailed(
+      'GitHub answered HTTP $code.',
+      kind: UpdateFailureKind.serverError,
+    );
+  }
+
+  /// Marks today as checked. Only ever called when GitHub answered.
+  Future<void> _recordChecked(DateTime at) =>
+      _settings.update(GymSettingsCompanion(
+        lastUpdateCheckAt: Value(at.toUtc()),
+      ));
+
+  static Map<String, dynamic>? _decode(String body) {
+    try {
+      final decoded = jsonDecode(body);
+      return decoded is Map<String, dynamic> ? decoded : null;
+    } on FormatException {
+      return null;
+    }
+  }
+
+  static DateTime? _rateLimitReset(http.Response response) {
+    final seconds = int.tryParse(response.headers['x-ratelimit-reset'] ?? '');
+    if (seconds == null) return null;
+    return DateTime.fromMillisecondsSinceEpoch(seconds * 1000, isUtc: true);
+  }
+
+  static String _clock(DateTime at) =>
+      '${at.hour.toString().padLeft(2, '0')}:'
+      '${at.minute.toString().padLeft(2, '0')}';
+
+  /// A short, safe excerpt of a response body for the log. GitHub's error
+  /// bodies are public JSON, but truncating keeps a stray HTML error page from
+  /// filling the owner's log file.
+  static String _snippet(String body) {
+    final flat = body.replaceAll(RegExp(r'\s+'), ' ').trim();
+    return flat.length <= 200 ? flat : '${flat.substring(0, 200)}…';
   }
 
   /// Backs up, downloads, verifies, then starts the installer.
@@ -376,7 +644,7 @@ class UpdateService {
     if (await file.exists()) await file.delete();
 
     final request = http.Request('GET', update.installerUrl);
-    final response = await _http.send(request);
+    final response = await _http.send(request).timeout(_requestTimeout);
     if (response.statusCode != 200) {
       throw HttpException('HTTP ${response.statusCode}', uri: update.installerUrl);
     }
@@ -385,7 +653,9 @@ class UpdateService {
     final sink = file.openWrite();
     var received = 0;
     try {
-      await response.stream.forEach((chunk) {
+      // An idle timeout, not a deadline: a 14MB installer on a slow line is
+      // fine, a connection that stops sending is not.
+      await response.stream.timeout(_downloadStallTimeout).forEach((chunk) {
         sink.add(chunk);
         received += chunk.length;
         onProgress?.call(received, total);
@@ -398,7 +668,7 @@ class UpdateService {
   }
 
   Future<String> _expectedChecksum(Uri url) async {
-    final response = await _http.get(url).timeout(const Duration(seconds: 20));
+    final response = await _http.get(url).timeout(_requestTimeout);
     if (response.statusCode != 200) {
       throw HttpException('HTTP ${response.statusCode}', uri: url);
     }

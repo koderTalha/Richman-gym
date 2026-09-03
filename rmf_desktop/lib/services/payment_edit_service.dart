@@ -407,7 +407,6 @@ class PaymentEditService {
       receiptOutcome: receiptOutcome,
       amountLabel: formatMinorUnits(input.amountMinor, settings.currency),
       periodLabel: afterLabel,
-      gymName: settings.gymName,
       rendered: rendered,
     );
 
@@ -567,7 +566,6 @@ class PaymentEditService {
     required ReceiptUpdate receiptOutcome,
     required String amountLabel,
     required String periodLabel,
-    required String gymName,
     required RenderedReceipt? rendered,
   }) async {
     if (!input.sendWhatsApp) return const WhatsAppNotRequested();
@@ -608,7 +606,6 @@ class PaymentEditService {
       memberId: member.id,
       memberName: member.fullName,
       phone: member.phone,
-      gymName: gymName,
       amountLabel: amountLabel,
       periodLabel: periodLabel,
       pngBytes: rendered?.png,
