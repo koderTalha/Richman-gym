@@ -15,9 +15,20 @@ enum WhatsAppStatus { queued, sent, delivered, read, failed }
 
 enum WhatsAppProviderKind { manual, mock, meta }
 
+/// What became of one scheduled payment reminder.
+///
+/// `skipped` is not a failure. It is a reminder whose moment passed while the
+/// app was closed and which a later one has already superseded — recorded so
+/// it can never arrive out of order days after the fact. See
+/// `domain/reminder_schedule.dart`.
+enum ReminderSendStatus { sent, failed, skipped }
+
 /// What an audit event is about, so the Logs screen can group and filter
 /// without parsing [AuditEvents.action] apart.
-enum AuditCategory { member, payment, receipt, whatsapp, billing, update }
+///
+/// Appended to rather than reordered: drift stores the name, so a new value is
+/// readable by older rows and vice versa.
+enum AuditCategory { member, payment, receipt, whatsapp, billing, update, reminder }
 
 /// Whether the operation an audit event describes actually happened.
 ///
@@ -118,6 +129,58 @@ class GymSettings extends Table {
   /// that one and starts again at the next release.
   TextColumn get dismissedUpdateVersion => text().nullable()();
 
+  // --- Payment reminders ---------------------------------------------------
+
+  /// Whether reminders may leave the app without the owner pressing Send.
+  ///
+  /// Off by default, on every install and every upgrade. The Reminders screen
+  /// works either way; this only decides whether an app being opened is also
+  /// an app that starts messaging people.
+  BoolColumn get reminderAutoSend =>
+      boolean().withDefault(const Constant(false))();
+
+  /// Days before the due date to nudge, and days after it to chase, as
+  /// comma-separated lists ("3", "3,7").
+  ///
+  /// Text rather than a column per offset so the owner can have two overdue
+  /// reminders, or none, without a migration each time — the same reason
+  /// [themeMode] is text. Parsed by `parseOffsetDays`, which drops anything
+  /// unreadable rather than throwing on a settings row.
+  TextColumn get reminderDaysBefore =>
+      text().withDefault(const Constant('3'))();
+  TextColumn get reminderDaysAfter =>
+      text().withDefault(const Constant('3,7'))();
+
+  BoolColumn get reminderOnDueDate =>
+      boolean().withDefault(const Constant(true))();
+
+  /// The gym's own hours on the wall clock, 0-23. Nothing is sent outside
+  /// them, so opening the app at half past six does not wake the membership.
+  IntColumn get reminderSendFromHour =>
+      integer().withDefault(const Constant(9))();
+  IntColumn get reminderSendUntilHour =>
+      integer().withDefault(const Constant(21))();
+
+  /// A ceiling on one automatic run, so reopening the app after a fortnight
+  /// shut does not fire off the whole roster at once.
+  IntColumn get reminderMaxPerRun =>
+      integer().withDefault(const Constant(25))();
+
+  /// The approved template a reminder travels as, and its language.
+  ///
+  /// Separate from the receipt template because Meta approves each template
+  /// individually and the two say different things. Null means reminders
+  /// cannot be sent through Meta yet — reported on the Reminders screen rather
+  /// than failing per member.
+  TextColumn get whatsappReminderTemplate => text().nullable()();
+  TextColumn get whatsappReminderTemplateLanguage =>
+      text().withDefault(const Constant('en'))();
+
+  /// How a member is meant to pay, in the owner's own words — "Pay at the
+  /// counter, or Easypaisa to 0300-1234567". Goes into the reminder so the
+  /// message tells the member what to actually do.
+  TextColumn get paymentInstructions => text().nullable()();
+
   @override
   Set<Column> get primaryKey => {id};
 }
@@ -169,12 +232,27 @@ class Memberships extends Table {
   IntColumn get feeOverrideMinor => integer().nullable()();
   DateTimeColumn get startDate => dateTime()();
 
+  /// The day of the month this member is billed on, 1-31.
+  ///
+  /// Nullable, and that is deliberate rather than lazy: every billing cycle
+  /// recorded before this column existed starts on the 1st of a month, so a
+  /// membership with no anchor resolves to the 1st and its cycles keep landing
+  /// exactly where they always have. The upgrade therefore writes no rows and
+  /// moves nobody's due date. See `resolveAnchorDay` in domain/billing_cycle.
+  ///
+  /// A month too short to hold the day clamps to its last — 31 becomes 28 in
+  /// February — without losing the anchor for the month after.
+  IntColumn get billingAnchorDay => integer().nullable()();
+
   /// Null means this is the member's currently active enrolment.
   DateTimeColumn get endDate => dateTime().nullable()();
 }
 
-/// One billing cycle — the equivalent of a single month column in the ledger.
-/// Paid-vs-due is never stored here; it is derived from whether a Payment exists.
+/// One billing cycle: `[periodStart, periodEnd)`.
+///
+/// Boundaries are UTC midnights. A cycle's fee falls due on its **start** — the
+/// gym is paid in advance — so a member's next due date is the start of their
+/// first unsettled cycle.
 class MembershipPeriods extends Table {
   IntColumn get id => integer().autoIncrement()();
   IntColumn get membershipId => integer().references(Memberships, #id)();
@@ -185,6 +263,20 @@ class MembershipPeriods extends Table {
 
   /// Fee snapshot at creation time, so later price changes don't rewrite history.
   IntColumn get expectedAmountMinor => integer()();
+
+  /// When the cycle was closed, or null while it still owes money.
+  ///
+  /// Set once [PaymentAllocations] against the cycle reach
+  /// [expectedAmountMinor]; a cycle holding less than that is part-paid, not
+  /// paid. Settlement used to be inferred from the mere existence of a
+  /// payment, which marked a 500-rupee instalment against a 3,000-rupee fee as
+  /// a month fully settled.
+  ///
+  /// It is also how history is grandfathered. The v10 migration stamps every
+  /// cycle that already had a payment against it, so the imported ledger stays
+  /// closed under the new rule without a cutoff date being tested anywhere in
+  /// the code.
+  DateTimeColumn get settledAt => dateTime().nullable()();
 
   @override
   List<Set<Column>> get uniqueKeys => [
@@ -216,6 +308,106 @@ class Payments extends Table {
   /// Unique per submission — the accidental double-click guard.
   TextColumn get idempotencyKey => text().unique()();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
+}
+
+/// How much of one payment went to which billing cycle.
+///
+/// A payment used to point at a single cycle, which could not describe either
+/// of the two things the gym actually does: paying part of a month now and the
+/// rest later, and handing over three months' fees at once for one receipt.
+/// Both are the same shape — money spread across cycles — so both go through
+/// here.
+///
+/// [Payments.membershipPeriodId] is kept alongside this, pointing at the first
+/// cycle the money touched. It is what the ledger importer, the payment editor
+/// and every existing query still read, so this table adds a capability
+/// without taking one away.
+class PaymentAllocations extends Table {
+  IntColumn get id => integer().autoIncrement()();
+
+  /// Cascades: deleting a payment must release the cycles it was settling, or
+  /// they would stay closed with no money behind them.
+  IntColumn get paymentId =>
+      integer().references(Payments, #id, onDelete: KeyAction.cascade)();
+
+  IntColumn get membershipPeriodId =>
+      integer().references(MembershipPeriods, #id, onDelete: KeyAction.cascade)();
+
+  /// Minor units, matching [Payments.amountMinor]. The allocations for one
+  /// payment always sum to no more than the payment itself.
+  IntColumn get amountMinor => integer()();
+
+  DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
+
+  /// One payment touches a given cycle at most once — a second contribution to
+  /// the same cycle is a second payment, with its own receipt.
+  @override
+  List<Set<Column>> get uniqueKeys => [
+        {paymentId, membershipPeriodId},
+      ];
+}
+
+/// One row per scheduled payment reminder, sent or otherwise.
+///
+/// The unique key is the duplicate guard, and it is enforced by SQLite rather
+/// than by reading before writing. That matters because reminders are computed
+/// on app open: two windows opening at once, or an automatic run overlapping a
+/// manual one, would both read "not sent yet" and both send. The same bargain
+/// [Payments.idempotencyKey] makes about a double-clicked Save.
+class PaymentReminders extends Table {
+  IntColumn get id => integer().autoIncrement()();
+
+  /// Null for a reminder about a cycle that has not been billed yet — a
+  /// "before due" nudge fires days ahead of the cycle even existing as a row,
+  /// deliberately: materialising one just to hang a reminder off it would mean
+  /// a cycle nobody has been charged for reading as debt. See
+  /// `BillingCycleService`'s note on not creating cycles speculatively. Set
+  /// once a matching cycle exists, for the on-the-day and overdue stages.
+  IntColumn get membershipPeriodId => integer()
+      .nullable()
+      .references(MembershipPeriods, #id, onDelete: KeyAction.cascade)();
+
+  /// Copied alongside the cycle so the Reminders screen can list by member
+  /// without joining through memberships.
+  IntColumn get memberId => integer().references(Members, #id)();
+
+  /// `ReminderStage.name`, stored as text rather than as a `textEnum`.
+  ///
+  /// The stage lives in `domain/reminder_schedule.dart`, and a reminder log is
+  /// exactly the place a later release wants to start recording a new kind of
+  /// nudge without a migration — the same reasoning as [AuditEvents.action].
+  TextColumn get stage => text()();
+
+  /// Days from the due date. Zero for the reminder on the day itself. Paired
+  /// with [stage] because "three days overdue" and "seven days overdue" are two
+  /// different messages against one cycle.
+  IntColumn get offsetDays => integer()();
+
+  TextColumn get status => textEnum<ReminderSendStatus>()();
+
+  /// The cycle's due date at the time the reminder was resolved, copied so the
+  /// history stays readable if the cycle is later re-anchored. Part of the
+  /// duplicate guard together with [memberId], [stage] and [offsetDays] —
+  /// [membershipPeriodId] cannot serve that role since it is not always set.
+  DateTimeColumn get dueDate => dateTime()();
+
+  /// What was owed when the reminder went out. Minor units.
+  IntColumn get amountMinor => integer()();
+
+  TextColumn get externalMessageId => text().nullable()();
+  TextColumn get errorMessage => text().nullable()();
+
+  /// Retries update this row rather than inserting another, so the unique key
+  /// can stay the duplicate guard. The count is kept for the owner to see.
+  IntColumn get attempts => integer().withDefault(const Constant(1))();
+
+  DateTimeColumn get sentAt => dateTime().nullable()();
+  DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
+
+  @override
+  List<Set<Column>> get uniqueKeys => [
+        {memberId, stage, offsetDays, dueDate},
+      ];
 }
 
 class Receipts extends Table {

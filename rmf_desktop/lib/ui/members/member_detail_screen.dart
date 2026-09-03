@@ -6,10 +6,13 @@ import '../../bloc/member_detail_bloc.dart';
 import '../../data/member_repository.dart';
 import '../../data/payment_repository.dart';
 import '../../domain/money.dart';
+import '../../services/billing_cycle_service.dart';
 import '../../theme/app_theme.dart';
+import '../payments/advance_payment_dialog.dart';
 import '../payments/payment_history_table.dart';
 import '../payments/record_payment_dialog.dart';
 import '../widgets/status_badge.dart';
+import 'billing_day_action.dart';
 import 'member_form_screen.dart';
 
 class MemberDetailScreen extends StatelessWidget {
@@ -285,11 +288,26 @@ class _Body extends StatelessWidget {
               ),
               const SizedBox(width: 10),
               Builder(
-                builder: (context) => FilledButton.icon(
+                builder: (context) => OutlinedButton.icon(
                   onPressed: () async {
                     final bloc = context.read<MemberDetailBloc>();
                     final recorded =
                         await showRecordPaymentDialog(context, member: row);
+                    if (recorded == true) {
+                      bloc.add(const MemberDetailRequested());
+                    }
+                  },
+                  icon: const Icon(Icons.calendar_month_outlined, size: 16),
+                  label: const Text('Bill a Month'),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Builder(
+                builder: (context) => FilledButton.icon(
+                  onPressed: () async {
+                    final bloc = context.read<MemberDetailBloc>();
+                    final recorded =
+                        await showAdvancePaymentDialog(context, member: row);
                     if (recorded == true) {
                       bloc.add(const MemberDetailRequested());
                     }
@@ -316,6 +334,7 @@ class _Body extends StatelessWidget {
               _Detail(
                   label: 'Paid until',
                   value: formatCalendarDate(row.paidUntil)),
+              _BillingDayDetail(row: row, onChanged: onPaymentsChanged),
             ],
           ),
           if (error != null) ...[
@@ -340,6 +359,79 @@ class _Body extends StatelessWidget {
             onMutated: onPaymentsChanged,
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// The member's billing day, resolved and shown alongside a way to change it.
+///
+/// Resolved rather than read off a raw column: most members have no
+/// [Membership.billingAnchorDay] set at all, and the day they actually bill
+/// on comes from `resolveAnchorDay`'s fallback — see
+/// `BillingCycleService.forMember`.
+class _BillingDayDetail extends StatelessWidget {
+  const _BillingDayDetail({required this.row, required this.onChanged});
+
+  final MemberRow row;
+  final VoidCallback onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final cycles = context.read<BillingCycleService>();
+
+    return Expanded(
+      child: FutureBuilder(
+        future: cycles.forMember(row.id),
+        builder: (context, snapshot) {
+          final anchorDay = snapshot.data?.anchorDay;
+
+          return Container(
+            margin: const EdgeInsets.only(right: 12),
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: context.palette.surfaceRaised,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: context.palette.border),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('BILLING DAY', style: labelStyleOf(context)),
+                const SizedBox(height: 6),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        anchorDay == null ? '—' : 'Day $anchorDay',
+                        style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                            color: context.palette.textPrimary),
+                      ),
+                    ),
+                    if (anchorDay != null)
+                      InkWell(
+                        onTap: () async {
+                          final changed = await showBillingDayDialog(
+                            context,
+                            member: row,
+                            currentAnchorDay: anchorDay,
+                          );
+                          if (changed) onChanged();
+                        },
+                        child: Text('Change',
+                            style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: context.palette.accent)),
+                      ),
+                  ],
+                ),
+              ],
+            ),
+          );
+        },
       ),
     );
   }

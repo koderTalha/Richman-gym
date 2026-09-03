@@ -24,6 +24,14 @@ abstract final class AuditAction {
   static const billingMonthBlocked = 'billing.month_blocked';
   static const billingMonthConfirmed = 'billing.month_confirmed';
 
+  /// The owner moved a member onto a different billing day. Worth recording:
+  /// it changes when that member is next asked for money.
+  static const billingAnchorChanged = 'billing.anchor_changed';
+
+  static const reminderSent = 'reminder.sent';
+  static const reminderFailed = 'reminder.failed';
+  static const reminderSkipped = 'reminder.skipped';
+
   static const receiptResaveFailed = 'receipt.resave_failed';
   static const receiptRenderFailed = 'receipt.render_failed';
   static const receiptFilesOrphaned = 'receipt.files_orphaned';

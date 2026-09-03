@@ -72,6 +72,49 @@ class WhatsAppSettingsSaved extends SettingsEvent {
       ];
 }
 
+class ReminderSettingsSaved extends SettingsEvent {
+  const ReminderSettingsSaved({
+    required this.autoSend,
+    required this.daysBefore,
+    required this.onDueDate,
+    required this.daysAfter,
+    required this.sendFromHour,
+    required this.sendUntilHour,
+    required this.maxPerRun,
+    this.template,
+    required this.templateLanguage,
+    this.paymentInstructions,
+  });
+
+  final bool autoSend;
+
+  /// Comma-separated, already validated by the form — see
+  /// `domain/reminder_schedule.dart`'s `parseOffsetDays`/`formatOffsetDays`.
+  final String daysBefore;
+  final bool onDueDate;
+  final String daysAfter;
+  final int sendFromHour;
+  final int sendUntilHour;
+  final int maxPerRun;
+  final String? template;
+  final String templateLanguage;
+  final String? paymentInstructions;
+
+  @override
+  List<Object?> get props => [
+        autoSend,
+        daysBefore,
+        onDueDate,
+        daysAfter,
+        sendFromHour,
+        sendUntilHour,
+        maxPerRun,
+        template,
+        templateLanguage,
+        paymentInstructions,
+      ];
+}
+
 /// Verifies Meta credentials without sending anything.
 class WhatsAppCredentialsTested extends SettingsEvent {
   const WhatsAppCredentialsTested({this.phoneNumberId, this.accessToken});
@@ -197,6 +240,7 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
     on<PlanActiveToggled>(_onTogglePlan);
     on<WhatsAppCredentialsTested>(_onTestCredentials);
     on<PasswordChangeRequested>(_onChangePassword);
+    on<ReminderSettingsSaved>(_onSaveReminderSettings);
   }
 
   final SettingsRepository _repository;
@@ -239,6 +283,25 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
       whatsappReceiptTemplateLanguage: Value(event.receiptTemplateLanguage),
     ));
     await _load(emit, message: 'WhatsApp settings saved.');
+  }
+
+  Future<void> _onSaveReminderSettings(
+    ReminderSettingsSaved event,
+    Emitter<SettingsState> emit,
+  ) async {
+    await _repository.update(GymSettingsCompanion(
+      reminderAutoSend: Value(event.autoSend),
+      reminderDaysBefore: Value(event.daysBefore),
+      reminderOnDueDate: Value(event.onDueDate),
+      reminderDaysAfter: Value(event.daysAfter),
+      reminderSendFromHour: Value(event.sendFromHour),
+      reminderSendUntilHour: Value(event.sendUntilHour),
+      reminderMaxPerRun: Value(event.maxPerRun),
+      whatsappReminderTemplate: Value(event.template),
+      whatsappReminderTemplateLanguage: Value(event.templateLanguage),
+      paymentInstructions: Value(event.paymentInstructions),
+    ));
+    await _load(emit, message: 'Reminder settings saved.');
   }
 
   Future<void> _onTestCredentials(

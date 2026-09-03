@@ -10,8 +10,10 @@ import '../domain/dates.dart';
 import '../domain/money.dart';
 import '../domain/payment_errors.dart';
 import '../domain/payment_method.dart';
+import '../domain/payment_settlement.dart';
 import '../domain/phone.dart';
 import '../domain/receipt_number.dart';
+import 'billing_cycle_service.dart';
 import 'billing_month_checker.dart';
 import 'receipt_renderer.dart';
 import 'receipt_storage.dart';
@@ -55,6 +57,40 @@ class RecordPaymentInput {
   /// Billing-month warnings the owner confirmed. Recorded so the log shows a
   /// decision was made rather than that the check never ran.
   final List<BillingMonthIssue> acknowledgedIssues;
+}
+
+/// A payment with no billing month attached — see
+/// [RecordPaymentService.recordAdvancePayment].
+///
+/// Deliberately a separate shape from [RecordPaymentInput] rather than that
+/// class with a nullable `billingMonth`: the two describe genuinely different
+/// operations, and a shared shape would let a caller supply both or neither
+/// and leave the ambiguity to be discovered at run time instead of at the call
+/// site.
+class AdvancePaymentInput {
+  const AdvancePaymentInput({
+    required this.memberId,
+    required this.amountMinor,
+    required this.method,
+    required this.paymentDate,
+    required this.sendWhatsApp,
+    required this.recordedById,
+    required this.idempotencyKey,
+    this.referenceNumber,
+    this.notes,
+  });
+
+  final int memberId;
+  final int amountMinor;
+  final PaymentMethod method;
+  final DateTime paymentDate;
+  final bool sendWhatsApp;
+  final int recordedById;
+
+  /// Generated once when the form opens — see [RecordPaymentInput] for why.
+  final String idempotencyKey;
+  final String? referenceNumber;
+  final String? notes;
 }
 
 sealed class WhatsAppOutcome {
@@ -117,8 +153,10 @@ class RecordPaymentService {
     required this.clientFactory,
     AuditRepository? audit,
     BillingMonthChecker? checker,
+    BillingCycleService? cycles,
   })  : _audit = audit ?? AuditRepository(db),
-        _checker = checker ?? BillingMonthChecker(db);
+        _checker = checker ?? BillingMonthChecker(db),
+        _cycles = cycles ?? BillingCycleService(db, audit: audit);
 
   final AppDatabase db;
   final ReceiptRenderer renderer;
@@ -129,6 +167,10 @@ class RecordPaymentService {
   /// month that cannot be right is refused by the code that writes the money,
   /// not only by the form in front of it.
   final BillingMonthChecker _checker;
+
+  /// Where cycles and settlement live. Shared with [recordAdvancePayment],
+  /// which is built entirely on it.
+  final BillingCycleService _cycles;
 
   /// Resolved per send, so a provider or credential change in Settings takes
   /// effect without a restart.
@@ -299,6 +341,19 @@ class RecordPaymentService {
               ),
             );
 
+        // The full amount is attributed to this one cycle, whatever it is
+        // relative to the fee: a generous top-up is not left partly homeless,
+        // and a short payment is exactly what `refreshSettlement` needs to see
+        // to read the cycle as partly paid rather than settled.
+        await db.into(db.paymentAllocations).insert(
+              PaymentAllocationsCompanion.insert(
+                paymentId: paymentId,
+                membershipPeriodId: period.id,
+                amountMinor: input.amountMinor,
+              ),
+            );
+        await _cycles.refreshSettlement(period.id);
+
         return (paymentId: paymentId, receiptId: receiptId);
       });
     } catch (error, stack) {
@@ -320,6 +375,205 @@ class RecordPaymentService {
     }
 
     // --- Past this line the money is safely recorded ------------------------
+    if (!input.sendWhatsApp) {
+      return RecordPaymentResult(
+        paymentId: committed.paymentId,
+        receiptId: committed.receiptId,
+        receiptNumber: receiptNumber,
+        whatsApp: const WhatsAppNotRequested(),
+      );
+    }
+
+    final sendResult = await sendReceipt(
+      receiptId: committed.receiptId,
+      receiptNumber: receiptNumber,
+      memberId: member.id,
+      memberName: member.fullName,
+      phone: member.phone,
+      amountLabel: amountLabel,
+      periodLabel: periodLabel,
+      pngBytes: rendered.png,
+    );
+
+    return RecordPaymentResult(
+      paymentId: committed.paymentId,
+      receiptId: committed.receiptId,
+      receiptNumber: receiptNumber,
+      whatsApp: sendResult,
+    );
+  }
+
+  /// Records a payment against the member's own next unsettled cycle, or as
+  /// many of them as the amount reaches, with no billing month to pick at all.
+  ///
+  /// This is the flexible path: the owner types an amount and a date, and the
+  /// system works out which cycle it settles from the member's own timeline —
+  /// arrears first, oldest to newest, exactly like [allocate] guarantees. Pay
+  /// three days early, three weeks late, or three months in advance, and the
+  /// same call does the right thing, because nothing here reads a "billing
+  /// month" the owner would otherwise have to get right by hand.
+  ///
+  /// One payment, one receipt, however many cycles the money reaches. The
+  /// cycles it settles are materialised only as this money actually reaches
+  /// them — a cycle a payment does not touch is never created and never reads
+  /// as debt.
+  Future<RecordPaymentResult> recordAdvancePayment(
+    AdvancePaymentInput input,
+  ) async {
+    final alreadyRecorded = await _resultForKey(input.idempotencyKey);
+    if (alreadyRecorded != null) return alreadyRecorded;
+
+    if (input.amountMinor <= 0) {
+      throw PaymentRuleException('Enter an amount greater than zero.');
+    }
+
+    final member = await (db.select(db.members)
+          ..where((m) => m.id.equals(input.memberId)))
+        .getSingle();
+
+    final billing = await _cycles.forMember(input.memberId);
+    if (billing == null) {
+      throw PaymentRuleException(
+        '${member.fullName} has no active membership. '
+        'Assign a plan before recording a payment.',
+      );
+    }
+
+    final settings =
+        await (db.select(db.gymSettings)..where((s) => s.id.equals(1)))
+            .getSingle();
+
+    final offered = _cycles.settleableFor(
+      billing: billing,
+      amountMinor: input.amountMinor,
+    );
+    final settlement = allocate(amountMinor: input.amountMinor, cycles: offered);
+
+    if (settlement.isEmpty) {
+      throw PaymentRuleException(
+        '${member.fullName} has nothing due right now that this amount can '
+        'be applied to.',
+      );
+    }
+    if (settlement.unallocatedMinor > 0) {
+      throw PaymentRuleException(
+        '${formatMinorUnits(settlement.unallocatedMinor, settings.currency)} '
+        'of this payment does not fit inside the '
+        '${BillingCycleService.maxCyclesPerPayment} cycles this can be applied '
+        'to at once. Record the rest as a separate payment.',
+      );
+    }
+
+    final span = settlement.coveredSpan!;
+    final spanMonths = (span.end.year - span.start.year) * 12 +
+        (span.end.month - span.start.month);
+    final periodLabel = formatBillingPeriod(span.start, spanMonths);
+    final amountLabel = formatMinorUnits(input.amountMinor, settings.currency);
+    final receiptYear = input.paymentDate.year;
+
+    // --- 1. Reserve the receipt number --------------------------------------
+    final receiptNumber = await db.transaction(() async {
+      final counter = await (db.select(db.receiptCounters)
+            ..where((c) => c.year.equals(receiptYear)))
+          .getSingleOrNull();
+
+      final next = (counter?.lastNumber ?? 0) + 1;
+      if (counter == null) {
+        await db.into(db.receiptCounters).insert(
+            ReceiptCountersCompanion.insert(
+                year: Value(receiptYear), lastNumber: Value(next)));
+      } else {
+        await (db.update(db.receiptCounters)
+              ..where((c) => c.year.equals(receiptYear)))
+            .write(ReceiptCountersCompanion(lastNumber: Value(next)));
+      }
+
+      return formatReceiptNumber(settings.receiptPrefix, receiptYear, next);
+    });
+
+    // --- 2. Render and write the files, holding no database lock -------------
+    final rendered = await renderer.render(ReceiptData(
+      gymName: settings.gymName,
+      receiptNumber: receiptNumber,
+      paymentDate: formatDayMonthYear(input.paymentDate),
+      memberName: member.fullName,
+      memberCode: member.memberCode,
+      membershipLabel: billing.plan.name,
+      billingPeriod: periodLabel,
+      paymentMethod: paymentMethodLabel(input.method),
+      referenceNumber: input.referenceNumber,
+      amountLabel: amountLabel,
+      footerMessage: settings.receiptFooterMessage,
+      gymPhone: settings.phone,
+      gymAddress: settings.address,
+    ));
+
+    final pngPath = await storage.save('$receiptNumber.png', rendered.png);
+    final pdfPath = await storage.save('$receiptNumber.pdf', rendered.pdf);
+
+    // --- 3. The money, its cycles and its receipt commit together ------------
+    final ({int paymentId, int receiptId}) committed;
+    try {
+      committed = await db.transaction(() async {
+        final paymentId = await db.into(db.payments).insert(
+              PaymentsCompanion.insert(
+                memberId: member.id,
+                // The first cycle the money touches, for every caller that
+                // still reads a payment's period as a single value — the
+                // importer, the editor, the payment history table.
+                membershipPeriodId:
+                    Value(settlement.allocations.first.cycle.periodId),
+                amountMinor: input.amountMinor,
+                method: input.method,
+                referenceNumber: Value(_blankToNull(input.referenceNumber)),
+                paymentDate: input.paymentDate,
+                notes: Value(_blankToNull(input.notes)),
+                recordedById: input.recordedById,
+                idempotencyKey: input.idempotencyKey,
+              ),
+            );
+
+        for (final allocation in settlement.allocations) {
+          final period = await _cycles.materialise(
+            membershipId: billing.membership.id,
+            cycle: allocation.cycle,
+          );
+
+          await db.into(db.paymentAllocations).insert(
+                PaymentAllocationsCompanion.insert(
+                  paymentId: paymentId,
+                  membershipPeriodId: period.id,
+                  amountMinor: allocation.amountMinor,
+                ),
+              );
+          await _cycles.refreshSettlement(period.id);
+        }
+
+        final receiptId = await db.into(db.receipts).insert(
+              ReceiptsCompanion.insert(
+                receiptNumber: receiptNumber,
+                paymentId: paymentId,
+                pngPath: pngPath,
+                pdfPath: Value(pdfPath),
+              ),
+            );
+
+        return (paymentId: paymentId, receiptId: receiptId);
+      });
+    } catch (error, stack) {
+      await storage.delete(pngPath);
+      await storage.delete(pdfPath);
+
+      final winner = await _resultForKey(input.idempotencyKey);
+      if (winner != null) {
+        _log.info('Duplicate submit for ${input.idempotencyKey} ignored');
+        return winner;
+      }
+
+      _log.severe('Recording the advance payment failed', error, stack);
+      rethrow;
+    }
+
     if (!input.sendWhatsApp) {
       return RecordPaymentResult(
         paymentId: committed.paymentId,

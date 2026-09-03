@@ -53,6 +53,7 @@ class MemberRow {
     required this.status,
     required this.feeMinor,
     required this.paidUntil,
+    this.outstandingMinor,
   });
 
   final Member member;
@@ -65,6 +66,15 @@ class MemberRow {
 
   /// End of the latest paid cycle — when money is owed again.
   final DateTime? paidUntil;
+
+  /// What is still owed on the earliest unsettled cycle, if there is one.
+  ///
+  /// Null rather than zero when nothing is owed, so a reminder or a detail
+  /// screen can tell "fully paid" apart from "a free cycle that owes nothing".
+  /// This is the balance a part-payment leaves behind — see
+  /// `domain/payment_settlement.dart` — and it is what a reminder message
+  /// quotes rather than the plan's full fee.
+  final int? outstandingMinor;
 
   int get id => member.id;
 }
@@ -188,7 +198,10 @@ class MemberRepository {
               ..orderBy([(p) => OrderingTerm(expression: p.periodStart)]))
             .get();
 
-    // Which cycles have at least one payment.
+    // Which cycles have at least one payment — the old signal, kept as a
+    // fallback for a cycle whose money was never given an allocation row: a
+    // database predating v10 that has not been grandfathered by anything
+    // running the migration, or a raw row written straight to `payments`.
     final periodIds = periods.map((p) => p.id).toList();
     final paidPeriodIds = <int>{};
     if (periodIds.isNotEmpty) {
@@ -203,6 +216,24 @@ class MemberRepository {
       }
     }
 
+    // Once a cycle has an allocation, its money is judged by the balance rule
+    // — `settledAt` — and the any-payment-exists fallback above no longer
+    // applies to it: a part-payment recorded through the current app must read
+    // as still owing, not as paid because a payment row happens to exist.
+    final allocatedPeriodIds = await periodsWithAnyAllocation(db, periodIds);
+    final collectedByPeriodId = await collectedByPeriod(db, periodIds);
+
+    bool isSettled(MembershipPeriod period) {
+      if (period.settledAt != null) return true;
+      if (allocatedPeriodIds.contains(period.id)) return false;
+      return paidPeriodIds.contains(period.id);
+    }
+
+    final settledPeriodIds = {
+      for (final period in periods)
+        if (isSettled(period)) period.id,
+    };
+
     final periodsByMember = <int, List<MembershipPeriod>>{};
     for (final period in periods) {
       final memberId = memberByMembership[period.membershipId];
@@ -216,13 +247,24 @@ class MemberRepository {
       final membership = membershipByMember[member.id];
       final plan = membership == null ? null : plans[membership.planId];
 
-      final statusPeriods = _mergeCycles(
-        periodsByMember[member.id] ?? const [],
-        paidPeriodIds,
-      );
+      final memberPeriods = periodsByMember[member.id] ?? const [];
+      final statusPeriods = _mergeCycles(memberPeriods, settledPeriodIds);
 
       final paidEnds =
           statusPeriods.where((p) => p.isPaid).map((p) => p.periodEnd);
+
+      // The earliest unsettled cycle, raw rather than merged — merging keeps
+      // only the boundaries a status needs, and outstanding is a question
+      // about one specific cycle's own expected fee.
+      final unsettled = [...memberPeriods]
+        ..sort((a, b) => a.periodStart.compareTo(b.periodStart));
+      final owingCycle = unsettled
+          .where((p) => !settledPeriodIds.contains(p.id))
+          .firstOrNull;
+      final outstanding = owingCycle == null
+          ? null
+          : owingCycle.expectedAmountMinor -
+              (collectedByPeriodId[owingCycle.id] ?? 0);
 
       return MemberRow(
         member: member,
@@ -239,6 +281,8 @@ class MemberRepository {
         paidUntil: paidEnds.isEmpty
             ? null
             : paidEnds.reduce((a, b) => a.isAfter(b) ? a : b),
+        outstandingMinor:
+            outstanding == null ? null : (outstanding < 0 ? 0 : outstanding),
       );
     }).toList();
   }

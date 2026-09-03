@@ -279,7 +279,7 @@ class ImportService {
             continue;
           }
 
-          await db.into(db.payments).insert(
+          final paymentId = await db.into(db.payments).insert(
                 PaymentsCompanion.insert(
                   memberId: memberId,
                   membershipPeriodId: Value(period.id),
@@ -292,6 +292,24 @@ class ImportService {
                   idempotencyKey: idempotencyKey,
                 ),
               );
+
+          // The ledger names no fee separate from what was actually paid — see
+          // `expectedAmountMinor: amountMinor` above — so this always settles
+          // the cycle outright; there is no such thing as an imported month
+          // read as partly paid.
+          await db.into(db.paymentAllocations).insert(
+                PaymentAllocationsCompanion.insert(
+                  paymentId: paymentId,
+                  membershipPeriodId: period.id,
+                  amountMinor: amountMinor,
+                ),
+              );
+          final periodId = period.id;
+          await (db.update(db.membershipPeriods)
+                ..where((p) => p.id.equals(periodId)))
+              .write(MembershipPeriodsCompanion(
+                  settledAt: Value(periodStart)));
+
           paymentsCreated++;
         }
       }

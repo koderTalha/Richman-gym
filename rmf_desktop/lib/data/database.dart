@@ -19,6 +19,8 @@ part 'database.g.dart';
     Memberships,
     MembershipPeriods,
     Payments,
+    PaymentAllocations,
+    PaymentReminders,
     Receipts,
     ReceiptCounters,
     WhatsAppMessages,
@@ -33,7 +35,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 9;
+  int get schemaVersion => 10;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -96,6 +98,39 @@ class AppDatabase extends _$AppDatabase {
             await m.addColumn(
                 gymSettings, gymSettings.whatsappReceiptTemplateLanguage);
           }
+          // v10 moves billing off the calendar month and onto a day the member
+          // is anchored to, and adds the reminder machinery.
+          //
+          // Deliberately a no-op for existing data. `billingAnchorDay` is left
+          // null on every membership, and `resolveAnchorDay` reads a null
+          // anchor as the day the member's latest cycle starts — which, for
+          // every cycle this app has ever written, is the 1st. So nobody's due
+          // date moves on upgrade, and the owner re-anchors members one at a
+          // time from the member screen.
+          if (from < 10) {
+            await m.addColumn(memberships, memberships.billingAnchorDay);
+            await m.addColumn(membershipPeriods, membershipPeriods.settledAt);
+            await m.createTable(paymentAllocations);
+            await m.createTable(paymentReminders);
+
+            for (final column in [
+              gymSettings.reminderAutoSend,
+              gymSettings.reminderDaysBefore,
+              gymSettings.reminderDaysAfter,
+              gymSettings.reminderOnDueDate,
+              gymSettings.reminderSendFromHour,
+              gymSettings.reminderSendUntilHour,
+              gymSettings.reminderMaxPerRun,
+              gymSettings.whatsappReminderTemplate,
+              gymSettings.whatsappReminderTemplateLanguage,
+              gymSettings.paymentInstructions,
+            ]) {
+              await m.addColumn(gymSettings, column);
+            }
+
+            await _grandfatherSettledPeriods();
+            await _backfillPaymentAllocations();
+          }
         },
         beforeOpen: (details) async {
           // Enforce the foreign keys declared in tables.dart; SQLite ignores
@@ -104,6 +139,62 @@ class AppDatabase extends _$AppDatabase {
           await _createIndexes();
         },
       );
+
+  /// Closes every cycle that already had a payment against it.
+  ///
+  /// Settlement is now a question of money — a cycle is closed once the
+  /// allocations against it reach the fee it expects. Applying that rule
+  /// backwards would reopen any historical month recorded for less than the
+  /// plan price: a discount the owner gave, a short cash payment, a typo in the
+  /// 2024 ledger. The gym would open the app after updating and find months it
+  /// considers long closed showing as owing money.
+  ///
+  /// So history is grandfathered here, in the data. Every pre-existing cycle
+  /// with a payment against it is stamped settled, and from this point the
+  /// balance rule governs. No cutoff date is tested anywhere in the code, and
+  /// no reported amount is altered — `Payments.amountMinor` keeps saying
+  /// exactly what was collected.
+  Future<void> _grandfatherSettledPeriods() async {
+    await customStatement(
+      'UPDATE membership_periods SET settled_at = COALESCE('
+      '  (SELECT MIN(p.payment_date) FROM payments p'
+      '   WHERE p.membership_period_id = membership_periods.id),'
+      // Drift stores a DateTime as unix *seconds*, so no millisecond factor
+      // here. Only reached for a payment with no date at all.
+      "  strftime('%s', 'now')"
+      ') '
+      'WHERE settled_at IS NULL AND EXISTS ('
+      '  SELECT 1 FROM payments p'
+      '  WHERE p.membership_period_id = membership_periods.id'
+      ')',
+    );
+  }
+
+  /// Gives every existing payment an allocation row for the cycle it names.
+  ///
+  /// Without this, a historical payment would read as money allocated nowhere,
+  /// and the first correction to an old payment would recompute its cycle's
+  /// balance from zero. The allocation records what the payment actually was,
+  /// capped at what its cycle expected: a member who overpaid does not get
+  /// credit spilling into a month they never paid for, and the true amount
+  /// stays on the payment row either way.
+  Future<void> _backfillPaymentAllocations() async {
+    await customStatement(
+      'INSERT INTO payment_allocations '
+      '  (payment_id, membership_period_id, amount_minor, created_at) '
+      'SELECT p.id, p.membership_period_id, '
+      '  MIN(p.amount_minor, mp.expected_amount_minor), '
+      "  strftime('%s', 'now') "
+      'FROM payments p '
+      'JOIN membership_periods mp ON mp.id = p.membership_period_id '
+      'WHERE p.membership_period_id IS NOT NULL '
+      '  AND NOT EXISTS ('
+      '    SELECT 1 FROM payment_allocations a'
+      '    WHERE a.payment_id = p.id'
+      '      AND a.membership_period_id = p.membership_period_id'
+      '  )',
+    );
+  }
 
   /// Indexes live here rather than in a numbered migration.
   ///
@@ -121,6 +212,21 @@ class AppDatabase extends _$AppDatabase {
       'CREATE INDEX IF NOT EXISTS idx_payments_member ON payments (member_id)',
       'CREATE INDEX IF NOT EXISTS idx_payments_period ON payments (membership_period_id)',
       'CREATE INDEX IF NOT EXISTS idx_messages_receipt ON whats_app_messages (receipt_id)',
+      // Settlement reads every allocation for a cycle, and deleting a payment
+      // reads every allocation it made.
+      'CREATE INDEX IF NOT EXISTS idx_allocations_period '
+          'ON payment_allocations (membership_period_id)',
+      'CREATE INDEX IF NOT EXISTS idx_allocations_payment '
+          'ON payment_allocations (payment_id)',
+      // The reminder queue asks "what has already been handled for this
+      // cycle?" once per member, every time it is built.
+      'CREATE INDEX IF NOT EXISTS idx_reminders_period '
+          'ON payment_reminders (membership_period_id)',
+      'CREATE INDEX IF NOT EXISTS idx_reminders_member '
+          'ON payment_reminders (member_id)',
+      // Deriving status now reads open cycles by their settled flag.
+      'CREATE INDEX IF NOT EXISTS idx_periods_settled '
+          'ON membership_periods (settled_at)',
       // The Logs screen always reads newest-first, and pages with a limit.
       'CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_events (created_at)',
     ];

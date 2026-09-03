@@ -74,6 +74,34 @@ List<String> receiptTemplateParams({
         .map(flattenTemplateParam)
         .toList();
 
+/// The values that fill a payment-reminder template's `{{1}}`…`{{5}}`.
+///
+/// Order is the contract with whatever template the owner registers in Meta's
+/// Business Manager under [GymSettings.whatsappReminderTemplate] and cannot be
+/// rearranged here alone:
+///
+///   1. member name  2. amount due  3. due date  4. gym name
+///   5. payment instructions
+///
+/// [paymentInstructions] is the owner's own words for how to pay — "Cash at
+/// the counter, or Easypaisa to 0300-1234567" — and is optional: a gym that
+/// has not filled it in still sends a complete, readable reminder, just
+/// without a fifth line.
+List<String> reminderTemplateParams({
+  required String memberName,
+  required String amountLabel,
+  required String dueDateLabel,
+  required String gymName,
+  String? paymentInstructions,
+}) =>
+    [
+      memberName,
+      amountLabel,
+      dueDateLabel,
+      gymName,
+      paymentInstructions ?? '—',
+    ].map(flattenTemplateParam).toList();
+
 /// Collapses every run of whitespace to a single space and trims the result.
 ///
 /// An empty value becomes "—": Meta rejects an empty parameter outright, and a

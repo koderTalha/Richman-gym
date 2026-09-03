@@ -6,6 +6,7 @@ import '../../bloc/settings_bloc.dart';
 import '../../data/database.dart';
 import '../../data/settings_repository.dart';
 import '../../domain/money.dart';
+import '../../domain/reminder_schedule.dart';
 import '../../theme/app_theme.dart';
 import 'backup_card.dart';
 import 'update_card.dart';
@@ -54,6 +55,8 @@ class _SettingsView extends StatelessWidget {
                 const _AccountCard(),
                 const SizedBox(height: 16),
                 _WhatsAppCard(settings: state.settings!, state: state),
+                const SizedBox(height: 16),
+                _ReminderCard(settings: state.settings!),
                 const SizedBox(height: 16),
                 _PlansCard(plans: state.plans),
                 const SizedBox(height: 16),
@@ -766,4 +769,247 @@ class _PlanDialogState extends State<_PlanDialog> {
       ],
     );
   }
+}
+
+/// Automatic payment reminders.
+///
+/// Auto-send is off until the owner turns it on here, and even then it is
+/// bounded by the gym's own hours and a per-run cap: this app has no server,
+/// so "automatic" means "when the counter machine is opened", and an app
+/// reopened after a fortnight shut must not message the whole roster at once.
+/// See `domain/reminder_schedule.dart`.
+class _ReminderCard extends StatefulWidget {
+  const _ReminderCard({required this.settings});
+
+  final GymSetting settings;
+
+  @override
+  State<_ReminderCard> createState() => _ReminderCardState();
+}
+
+class _ReminderCardState extends State<_ReminderCard> {
+  late bool _autoSend = widget.settings.reminderAutoSend;
+  late bool _onDueDate = widget.settings.reminderOnDueDate;
+  late int _fromHour = widget.settings.reminderSendFromHour;
+  late int _untilHour = widget.settings.reminderSendUntilHour;
+
+  late final _daysBefore =
+      TextEditingController(text: widget.settings.reminderDaysBefore);
+  late final _daysAfter =
+      TextEditingController(text: widget.settings.reminderDaysAfter);
+  late final _maxPerRun = TextEditingController(
+      text: widget.settings.reminderMaxPerRun.toString());
+  late final _template = TextEditingController(
+      text: widget.settings.whatsappReminderTemplate ?? '');
+  late final _templateLanguage = TextEditingController(
+      text: widget.settings.whatsappReminderTemplateLanguage);
+  late final _instructions = TextEditingController(
+      text: widget.settings.paymentInstructions ?? '');
+
+  @override
+  void dispose() {
+    for (final c in [
+      _daysBefore,
+      _daysAfter,
+      _maxPerRun,
+      _template,
+      _templateLanguage,
+      _instructions,
+    ]) {
+      c.dispose();
+    }
+    super.dispose();
+  }
+
+  String? _blank(String v) => v.trim().isEmpty ? null : v.trim();
+
+  void _save() => context.read<SettingsBloc>().add(
+        ReminderSettingsSaved(
+          autoSend: _autoSend,
+          // Normalised through the same parser the schedule reads them with,
+          // so what is stored is always something it can understand.
+          daysBefore: formatOffsetDays(parseOffsetDays(_daysBefore.text)),
+          onDueDate: _onDueDate,
+          daysAfter: formatOffsetDays(parseOffsetDays(_daysAfter.text)),
+          sendFromHour: _fromHour,
+          sendUntilHour: _untilHour,
+          maxPerRun: int.tryParse(_maxPerRun.text.trim()) ?? 25,
+          template: _blank(_template.text),
+          templateLanguage: _blank(_templateLanguage.text) ?? 'en',
+          paymentInstructions: _blank(_instructions.text),
+        ),
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    final noTemplate = _template.text.trim().isEmpty;
+
+    return _Card(
+      title: 'Payment reminders',
+      subtitle: 'Who gets chased for a due payment, and when.',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          SwitchListTile(
+            value: _autoSend,
+            onChanged: (v) => setState(() => _autoSend = v),
+            contentPadding: EdgeInsets.zero,
+            activeThumbColor: context.palette.accent,
+            title: Text('Send reminders automatically',
+                style: TextStyle(
+                    fontSize: 13, color: context.palette.textPrimary)),
+            subtitle: Text(
+              _autoSend
+                  ? 'Sent when the app is opened, inside the hours below.'
+                  : 'Off — reminders go out only from the Reminders screen.',
+              style: mutedStyleOf(context),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _daysBefore,
+                  decoration: const InputDecoration(
+                    labelText: 'Days before due',
+                    hintText: 'e.g. 3',
+                    isDense: true,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: TextField(
+                  controller: _daysAfter,
+                  decoration: const InputDecoration(
+                    labelText: 'Days after due',
+                    hintText: 'e.g. 3,7',
+                    isDense: true,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          CheckboxListTile(
+            value: _onDueDate,
+            onChanged: (v) => setState(() => _onDueDate = v ?? true),
+            contentPadding: EdgeInsets.zero,
+            controlAffinity: ListTileControlAffinity.leading,
+            activeColor: context.palette.accent,
+            dense: true,
+            title: Text('Also remind on the due date itself',
+                style: TextStyle(
+                    fontSize: 13, color: context.palette.textPrimary)),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: DropdownButtonFormField<int>(
+                  initialValue: _fromHour,
+                  decoration: const InputDecoration(
+                      labelText: 'Send from', isDense: true),
+                  items: [
+                    for (var h = 0; h < 24; h++)
+                      DropdownMenuItem(value: h, child: Text(_hourLabel(h))),
+                  ],
+                  onChanged: (v) => setState(() => _fromHour = v ?? _fromHour),
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: DropdownButtonFormField<int>(
+                  initialValue: _untilHour,
+                  decoration: const InputDecoration(
+                      labelText: 'Send until', isDense: true),
+                  items: [
+                    for (var h = 0; h < 24; h++)
+                      DropdownMenuItem(value: h, child: Text(_hourLabel(h))),
+                  ],
+                  onChanged: (v) =>
+                      setState(() => _untilHour = v ?? _untilHour),
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: TextField(
+                  controller: _maxPerRun,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                      labelText: 'Max per run', isDense: true),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Text('MESSAGE', style: labelStyleOf(context)),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                flex: 2,
+                child: TextField(
+                  controller: _template,
+                  onChanged: (_) => setState(() {}),
+                  decoration: const InputDecoration(
+                    labelText: 'Approved template name',
+                    hintText: 'e.g. payment_reminder',
+                    isDense: true,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: TextField(
+                  controller: _templateLanguage,
+                  decoration: const InputDecoration(
+                      labelText: 'Language', hintText: 'en', isDense: true),
+                ),
+              ),
+            ],
+          ),
+          if (noTemplate) ...[
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: context.palette.dueBg,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                'No template set, so no reminder can be sent yet. Register one '
+                'in Meta Business Manager with five placeholders — member '
+                'name, amount due, due date, gym name, payment instructions — '
+                'then put its name here.',
+                style: TextStyle(fontSize: 12, color: context.palette.due),
+              ),
+            ),
+          ],
+          const SizedBox(height: 14),
+          TextField(
+            controller: _instructions,
+            maxLines: 2,
+            decoration: const InputDecoration(
+              labelText: 'Payment instructions (optional)',
+              hintText: 'e.g. Cash at the counter, or Easypaisa 0300-1234567',
+              isDense: true,
+            ),
+          ),
+          const SizedBox(height: 18),
+          Align(
+            alignment: Alignment.centerRight,
+            child: FilledButton(
+              onPressed: _save,
+              child: const Text('Save reminder settings'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  static String _hourLabel(int hour) =>
+      '${hour.toString().padLeft(2, '0')}:00';
 }

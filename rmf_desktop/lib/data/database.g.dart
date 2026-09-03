@@ -923,6 +923,129 @@ class $GymSettingsTable extends GymSettings
         type: DriftSqlType.string,
         requiredDuringInsert: false,
       );
+  static const VerificationMeta _reminderAutoSendMeta = const VerificationMeta(
+    'reminderAutoSend',
+  );
+  @override
+  late final GeneratedColumn<bool> reminderAutoSend = GeneratedColumn<bool>(
+    'reminder_auto_send',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("reminder_auto_send" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  static const VerificationMeta _reminderDaysBeforeMeta =
+      const VerificationMeta('reminderDaysBefore');
+  @override
+  late final GeneratedColumn<String> reminderDaysBefore =
+      GeneratedColumn<String>(
+        'reminder_days_before',
+        aliasedName,
+        false,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+        defaultValue: const Constant('3'),
+      );
+  static const VerificationMeta _reminderDaysAfterMeta = const VerificationMeta(
+    'reminderDaysAfter',
+  );
+  @override
+  late final GeneratedColumn<String> reminderDaysAfter =
+      GeneratedColumn<String>(
+        'reminder_days_after',
+        aliasedName,
+        false,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+        defaultValue: const Constant('3,7'),
+      );
+  static const VerificationMeta _reminderOnDueDateMeta = const VerificationMeta(
+    'reminderOnDueDate',
+  );
+  @override
+  late final GeneratedColumn<bool> reminderOnDueDate = GeneratedColumn<bool>(
+    'reminder_on_due_date',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("reminder_on_due_date" IN (0, 1))',
+    ),
+    defaultValue: const Constant(true),
+  );
+  static const VerificationMeta _reminderSendFromHourMeta =
+      const VerificationMeta('reminderSendFromHour');
+  @override
+  late final GeneratedColumn<int> reminderSendFromHour = GeneratedColumn<int>(
+    'reminder_send_from_hour',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(9),
+  );
+  static const VerificationMeta _reminderSendUntilHourMeta =
+      const VerificationMeta('reminderSendUntilHour');
+  @override
+  late final GeneratedColumn<int> reminderSendUntilHour = GeneratedColumn<int>(
+    'reminder_send_until_hour',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(21),
+  );
+  static const VerificationMeta _reminderMaxPerRunMeta = const VerificationMeta(
+    'reminderMaxPerRun',
+  );
+  @override
+  late final GeneratedColumn<int> reminderMaxPerRun = GeneratedColumn<int>(
+    'reminder_max_per_run',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(25),
+  );
+  static const VerificationMeta _whatsappReminderTemplateMeta =
+      const VerificationMeta('whatsappReminderTemplate');
+  @override
+  late final GeneratedColumn<String> whatsappReminderTemplate =
+      GeneratedColumn<String>(
+        'whatsapp_reminder_template',
+        aliasedName,
+        true,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+      );
+  static const VerificationMeta _whatsappReminderTemplateLanguageMeta =
+      const VerificationMeta('whatsappReminderTemplateLanguage');
+  @override
+  late final GeneratedColumn<String> whatsappReminderTemplateLanguage =
+      GeneratedColumn<String>(
+        'whatsapp_reminder_template_language',
+        aliasedName,
+        false,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+        defaultValue: const Constant('en'),
+      );
+  static const VerificationMeta _paymentInstructionsMeta =
+      const VerificationMeta('paymentInstructions');
+  @override
+  late final GeneratedColumn<String> paymentInstructions =
+      GeneratedColumn<String>(
+        'payment_instructions',
+        aliasedName,
+        true,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+      );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -947,6 +1070,16 @@ class $GymSettingsTable extends GymSettings
     themeMode,
     lastUpdateCheckAt,
     dismissedUpdateVersion,
+    reminderAutoSend,
+    reminderDaysBefore,
+    reminderDaysAfter,
+    reminderOnDueDate,
+    reminderSendFromHour,
+    reminderSendUntilHour,
+    reminderMaxPerRun,
+    whatsappReminderTemplate,
+    whatsappReminderTemplateLanguage,
+    paymentInstructions,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -1122,6 +1255,96 @@ class $GymSettingsTable extends GymSettings
         ),
       );
     }
+    if (data.containsKey('reminder_auto_send')) {
+      context.handle(
+        _reminderAutoSendMeta,
+        reminderAutoSend.isAcceptableOrUnknown(
+          data['reminder_auto_send']!,
+          _reminderAutoSendMeta,
+        ),
+      );
+    }
+    if (data.containsKey('reminder_days_before')) {
+      context.handle(
+        _reminderDaysBeforeMeta,
+        reminderDaysBefore.isAcceptableOrUnknown(
+          data['reminder_days_before']!,
+          _reminderDaysBeforeMeta,
+        ),
+      );
+    }
+    if (data.containsKey('reminder_days_after')) {
+      context.handle(
+        _reminderDaysAfterMeta,
+        reminderDaysAfter.isAcceptableOrUnknown(
+          data['reminder_days_after']!,
+          _reminderDaysAfterMeta,
+        ),
+      );
+    }
+    if (data.containsKey('reminder_on_due_date')) {
+      context.handle(
+        _reminderOnDueDateMeta,
+        reminderOnDueDate.isAcceptableOrUnknown(
+          data['reminder_on_due_date']!,
+          _reminderOnDueDateMeta,
+        ),
+      );
+    }
+    if (data.containsKey('reminder_send_from_hour')) {
+      context.handle(
+        _reminderSendFromHourMeta,
+        reminderSendFromHour.isAcceptableOrUnknown(
+          data['reminder_send_from_hour']!,
+          _reminderSendFromHourMeta,
+        ),
+      );
+    }
+    if (data.containsKey('reminder_send_until_hour')) {
+      context.handle(
+        _reminderSendUntilHourMeta,
+        reminderSendUntilHour.isAcceptableOrUnknown(
+          data['reminder_send_until_hour']!,
+          _reminderSendUntilHourMeta,
+        ),
+      );
+    }
+    if (data.containsKey('reminder_max_per_run')) {
+      context.handle(
+        _reminderMaxPerRunMeta,
+        reminderMaxPerRun.isAcceptableOrUnknown(
+          data['reminder_max_per_run']!,
+          _reminderMaxPerRunMeta,
+        ),
+      );
+    }
+    if (data.containsKey('whatsapp_reminder_template')) {
+      context.handle(
+        _whatsappReminderTemplateMeta,
+        whatsappReminderTemplate.isAcceptableOrUnknown(
+          data['whatsapp_reminder_template']!,
+          _whatsappReminderTemplateMeta,
+        ),
+      );
+    }
+    if (data.containsKey('whatsapp_reminder_template_language')) {
+      context.handle(
+        _whatsappReminderTemplateLanguageMeta,
+        whatsappReminderTemplateLanguage.isAcceptableOrUnknown(
+          data['whatsapp_reminder_template_language']!,
+          _whatsappReminderTemplateLanguageMeta,
+        ),
+      );
+    }
+    if (data.containsKey('payment_instructions')) {
+      context.handle(
+        _paymentInstructionsMeta,
+        paymentInstructions.isAcceptableOrUnknown(
+          data['payment_instructions']!,
+          _paymentInstructionsMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -1221,6 +1444,46 @@ class $GymSettingsTable extends GymSettings
         DriftSqlType.string,
         data['${effectivePrefix}dismissed_update_version'],
       ),
+      reminderAutoSend: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}reminder_auto_send'],
+      )!,
+      reminderDaysBefore: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}reminder_days_before'],
+      )!,
+      reminderDaysAfter: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}reminder_days_after'],
+      )!,
+      reminderOnDueDate: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}reminder_on_due_date'],
+      )!,
+      reminderSendFromHour: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}reminder_send_from_hour'],
+      )!,
+      reminderSendUntilHour: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}reminder_send_until_hour'],
+      )!,
+      reminderMaxPerRun: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}reminder_max_per_run'],
+      )!,
+      whatsappReminderTemplate: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}whatsapp_reminder_template'],
+      ),
+      whatsappReminderTemplateLanguage: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}whatsapp_reminder_template_language'],
+      )!,
+      paymentInstructions: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}payment_instructions'],
+      ),
     );
   }
 
@@ -1287,6 +1550,47 @@ class GymSetting extends DataClass implements Insertable<GymSetting> {
   /// A version the owner answered "Later" to, so the banner stops asking about
   /// that one and starts again at the next release.
   final String? dismissedUpdateVersion;
+
+  /// Whether reminders may leave the app without the owner pressing Send.
+  ///
+  /// Off by default, on every install and every upgrade. The Reminders screen
+  /// works either way; this only decides whether an app being opened is also
+  /// an app that starts messaging people.
+  final bool reminderAutoSend;
+
+  /// Days before the due date to nudge, and days after it to chase, as
+  /// comma-separated lists ("3", "3,7").
+  ///
+  /// Text rather than a column per offset so the owner can have two overdue
+  /// reminders, or none, without a migration each time — the same reason
+  /// [themeMode] is text. Parsed by `parseOffsetDays`, which drops anything
+  /// unreadable rather than throwing on a settings row.
+  final String reminderDaysBefore;
+  final String reminderDaysAfter;
+  final bool reminderOnDueDate;
+
+  /// The gym's own hours on the wall clock, 0-23. Nothing is sent outside
+  /// them, so opening the app at half past six does not wake the membership.
+  final int reminderSendFromHour;
+  final int reminderSendUntilHour;
+
+  /// A ceiling on one automatic run, so reopening the app after a fortnight
+  /// shut does not fire off the whole roster at once.
+  final int reminderMaxPerRun;
+
+  /// The approved template a reminder travels as, and its language.
+  ///
+  /// Separate from the receipt template because Meta approves each template
+  /// individually and the two say different things. Null means reminders
+  /// cannot be sent through Meta yet — reported on the Reminders screen rather
+  /// than failing per member.
+  final String? whatsappReminderTemplate;
+  final String whatsappReminderTemplateLanguage;
+
+  /// How a member is meant to pay, in the owner's own words — "Pay at the
+  /// counter, or Easypaisa to 0300-1234567". Goes into the reminder so the
+  /// message tells the member what to actually do.
+  final String? paymentInstructions;
   const GymSetting({
     required this.id,
     required this.gymName,
@@ -1310,6 +1614,16 @@ class GymSetting extends DataClass implements Insertable<GymSetting> {
     required this.themeMode,
     this.lastUpdateCheckAt,
     this.dismissedUpdateVersion,
+    required this.reminderAutoSend,
+    required this.reminderDaysBefore,
+    required this.reminderDaysAfter,
+    required this.reminderOnDueDate,
+    required this.reminderSendFromHour,
+    required this.reminderSendUntilHour,
+    required this.reminderMaxPerRun,
+    this.whatsappReminderTemplate,
+    required this.whatsappReminderTemplateLanguage,
+    this.paymentInstructions,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -1374,6 +1688,24 @@ class GymSetting extends DataClass implements Insertable<GymSetting> {
         dismissedUpdateVersion,
       );
     }
+    map['reminder_auto_send'] = Variable<bool>(reminderAutoSend);
+    map['reminder_days_before'] = Variable<String>(reminderDaysBefore);
+    map['reminder_days_after'] = Variable<String>(reminderDaysAfter);
+    map['reminder_on_due_date'] = Variable<bool>(reminderOnDueDate);
+    map['reminder_send_from_hour'] = Variable<int>(reminderSendFromHour);
+    map['reminder_send_until_hour'] = Variable<int>(reminderSendUntilHour);
+    map['reminder_max_per_run'] = Variable<int>(reminderMaxPerRun);
+    if (!nullToAbsent || whatsappReminderTemplate != null) {
+      map['whatsapp_reminder_template'] = Variable<String>(
+        whatsappReminderTemplate,
+      );
+    }
+    map['whatsapp_reminder_template_language'] = Variable<String>(
+      whatsappReminderTemplateLanguage,
+    );
+    if (!nullToAbsent || paymentInstructions != null) {
+      map['payment_instructions'] = Variable<String>(paymentInstructions);
+    }
     return map;
   }
 
@@ -1426,6 +1758,20 @@ class GymSetting extends DataClass implements Insertable<GymSetting> {
       dismissedUpdateVersion: dismissedUpdateVersion == null && nullToAbsent
           ? const Value.absent()
           : Value(dismissedUpdateVersion),
+      reminderAutoSend: Value(reminderAutoSend),
+      reminderDaysBefore: Value(reminderDaysBefore),
+      reminderDaysAfter: Value(reminderDaysAfter),
+      reminderOnDueDate: Value(reminderOnDueDate),
+      reminderSendFromHour: Value(reminderSendFromHour),
+      reminderSendUntilHour: Value(reminderSendUntilHour),
+      reminderMaxPerRun: Value(reminderMaxPerRun),
+      whatsappReminderTemplate: whatsappReminderTemplate == null && nullToAbsent
+          ? const Value.absent()
+          : Value(whatsappReminderTemplate),
+      whatsappReminderTemplateLanguage: Value(whatsappReminderTemplateLanguage),
+      paymentInstructions: paymentInstructions == null && nullToAbsent
+          ? const Value.absent()
+          : Value(paymentInstructions),
     );
   }
 
@@ -1477,6 +1823,28 @@ class GymSetting extends DataClass implements Insertable<GymSetting> {
       dismissedUpdateVersion: serializer.fromJson<String?>(
         json['dismissedUpdateVersion'],
       ),
+      reminderAutoSend: serializer.fromJson<bool>(json['reminderAutoSend']),
+      reminderDaysBefore: serializer.fromJson<String>(
+        json['reminderDaysBefore'],
+      ),
+      reminderDaysAfter: serializer.fromJson<String>(json['reminderDaysAfter']),
+      reminderOnDueDate: serializer.fromJson<bool>(json['reminderOnDueDate']),
+      reminderSendFromHour: serializer.fromJson<int>(
+        json['reminderSendFromHour'],
+      ),
+      reminderSendUntilHour: serializer.fromJson<int>(
+        json['reminderSendUntilHour'],
+      ),
+      reminderMaxPerRun: serializer.fromJson<int>(json['reminderMaxPerRun']),
+      whatsappReminderTemplate: serializer.fromJson<String?>(
+        json['whatsappReminderTemplate'],
+      ),
+      whatsappReminderTemplateLanguage: serializer.fromJson<String>(
+        json['whatsappReminderTemplateLanguage'],
+      ),
+      paymentInstructions: serializer.fromJson<String?>(
+        json['paymentInstructions'],
+      ),
     );
   }
   @override
@@ -1519,6 +1887,20 @@ class GymSetting extends DataClass implements Insertable<GymSetting> {
       'dismissedUpdateVersion': serializer.toJson<String?>(
         dismissedUpdateVersion,
       ),
+      'reminderAutoSend': serializer.toJson<bool>(reminderAutoSend),
+      'reminderDaysBefore': serializer.toJson<String>(reminderDaysBefore),
+      'reminderDaysAfter': serializer.toJson<String>(reminderDaysAfter),
+      'reminderOnDueDate': serializer.toJson<bool>(reminderOnDueDate),
+      'reminderSendFromHour': serializer.toJson<int>(reminderSendFromHour),
+      'reminderSendUntilHour': serializer.toJson<int>(reminderSendUntilHour),
+      'reminderMaxPerRun': serializer.toJson<int>(reminderMaxPerRun),
+      'whatsappReminderTemplate': serializer.toJson<String?>(
+        whatsappReminderTemplate,
+      ),
+      'whatsappReminderTemplateLanguage': serializer.toJson<String>(
+        whatsappReminderTemplateLanguage,
+      ),
+      'paymentInstructions': serializer.toJson<String?>(paymentInstructions),
     };
   }
 
@@ -1545,6 +1927,16 @@ class GymSetting extends DataClass implements Insertable<GymSetting> {
     String? themeMode,
     Value<DateTime?> lastUpdateCheckAt = const Value.absent(),
     Value<String?> dismissedUpdateVersion = const Value.absent(),
+    bool? reminderAutoSend,
+    String? reminderDaysBefore,
+    String? reminderDaysAfter,
+    bool? reminderOnDueDate,
+    int? reminderSendFromHour,
+    int? reminderSendUntilHour,
+    int? reminderMaxPerRun,
+    Value<String?> whatsappReminderTemplate = const Value.absent(),
+    String? whatsappReminderTemplateLanguage,
+    Value<String?> paymentInstructions = const Value.absent(),
   }) => GymSetting(
     id: id ?? this.id,
     gymName: gymName ?? this.gymName,
@@ -1584,6 +1976,22 @@ class GymSetting extends DataClass implements Insertable<GymSetting> {
     dismissedUpdateVersion: dismissedUpdateVersion.present
         ? dismissedUpdateVersion.value
         : this.dismissedUpdateVersion,
+    reminderAutoSend: reminderAutoSend ?? this.reminderAutoSend,
+    reminderDaysBefore: reminderDaysBefore ?? this.reminderDaysBefore,
+    reminderDaysAfter: reminderDaysAfter ?? this.reminderDaysAfter,
+    reminderOnDueDate: reminderOnDueDate ?? this.reminderOnDueDate,
+    reminderSendFromHour: reminderSendFromHour ?? this.reminderSendFromHour,
+    reminderSendUntilHour: reminderSendUntilHour ?? this.reminderSendUntilHour,
+    reminderMaxPerRun: reminderMaxPerRun ?? this.reminderMaxPerRun,
+    whatsappReminderTemplate: whatsappReminderTemplate.present
+        ? whatsappReminderTemplate.value
+        : this.whatsappReminderTemplate,
+    whatsappReminderTemplateLanguage:
+        whatsappReminderTemplateLanguage ??
+        this.whatsappReminderTemplateLanguage,
+    paymentInstructions: paymentInstructions.present
+        ? paymentInstructions.value
+        : this.paymentInstructions,
   );
   GymSetting copyWithCompanion(GymSettingsCompanion data) {
     return GymSetting(
@@ -1638,6 +2046,37 @@ class GymSetting extends DataClass implements Insertable<GymSetting> {
       dismissedUpdateVersion: data.dismissedUpdateVersion.present
           ? data.dismissedUpdateVersion.value
           : this.dismissedUpdateVersion,
+      reminderAutoSend: data.reminderAutoSend.present
+          ? data.reminderAutoSend.value
+          : this.reminderAutoSend,
+      reminderDaysBefore: data.reminderDaysBefore.present
+          ? data.reminderDaysBefore.value
+          : this.reminderDaysBefore,
+      reminderDaysAfter: data.reminderDaysAfter.present
+          ? data.reminderDaysAfter.value
+          : this.reminderDaysAfter,
+      reminderOnDueDate: data.reminderOnDueDate.present
+          ? data.reminderOnDueDate.value
+          : this.reminderOnDueDate,
+      reminderSendFromHour: data.reminderSendFromHour.present
+          ? data.reminderSendFromHour.value
+          : this.reminderSendFromHour,
+      reminderSendUntilHour: data.reminderSendUntilHour.present
+          ? data.reminderSendUntilHour.value
+          : this.reminderSendUntilHour,
+      reminderMaxPerRun: data.reminderMaxPerRun.present
+          ? data.reminderMaxPerRun.value
+          : this.reminderMaxPerRun,
+      whatsappReminderTemplate: data.whatsappReminderTemplate.present
+          ? data.whatsappReminderTemplate.value
+          : this.whatsappReminderTemplate,
+      whatsappReminderTemplateLanguage:
+          data.whatsappReminderTemplateLanguage.present
+          ? data.whatsappReminderTemplateLanguage.value
+          : this.whatsappReminderTemplateLanguage,
+      paymentInstructions: data.paymentInstructions.present
+          ? data.paymentInstructions.value
+          : this.paymentInstructions,
     );
   }
 
@@ -1667,7 +2106,19 @@ class GymSetting extends DataClass implements Insertable<GymSetting> {
           ..write('whatsappMockFails: $whatsappMockFails, ')
           ..write('themeMode: $themeMode, ')
           ..write('lastUpdateCheckAt: $lastUpdateCheckAt, ')
-          ..write('dismissedUpdateVersion: $dismissedUpdateVersion')
+          ..write('dismissedUpdateVersion: $dismissedUpdateVersion, ')
+          ..write('reminderAutoSend: $reminderAutoSend, ')
+          ..write('reminderDaysBefore: $reminderDaysBefore, ')
+          ..write('reminderDaysAfter: $reminderDaysAfter, ')
+          ..write('reminderOnDueDate: $reminderOnDueDate, ')
+          ..write('reminderSendFromHour: $reminderSendFromHour, ')
+          ..write('reminderSendUntilHour: $reminderSendUntilHour, ')
+          ..write('reminderMaxPerRun: $reminderMaxPerRun, ')
+          ..write('whatsappReminderTemplate: $whatsappReminderTemplate, ')
+          ..write(
+            'whatsappReminderTemplateLanguage: $whatsappReminderTemplateLanguage, ',
+          )
+          ..write('paymentInstructions: $paymentInstructions')
           ..write(')'))
         .toString();
   }
@@ -1696,6 +2147,16 @@ class GymSetting extends DataClass implements Insertable<GymSetting> {
     themeMode,
     lastUpdateCheckAt,
     dismissedUpdateVersion,
+    reminderAutoSend,
+    reminderDaysBefore,
+    reminderDaysAfter,
+    reminderOnDueDate,
+    reminderSendFromHour,
+    reminderSendUntilHour,
+    reminderMaxPerRun,
+    whatsappReminderTemplate,
+    whatsappReminderTemplateLanguage,
+    paymentInstructions,
   ]);
   @override
   bool operator ==(Object other) =>
@@ -1723,7 +2184,18 @@ class GymSetting extends DataClass implements Insertable<GymSetting> {
           other.whatsappMockFails == this.whatsappMockFails &&
           other.themeMode == this.themeMode &&
           other.lastUpdateCheckAt == this.lastUpdateCheckAt &&
-          other.dismissedUpdateVersion == this.dismissedUpdateVersion);
+          other.dismissedUpdateVersion == this.dismissedUpdateVersion &&
+          other.reminderAutoSend == this.reminderAutoSend &&
+          other.reminderDaysBefore == this.reminderDaysBefore &&
+          other.reminderDaysAfter == this.reminderDaysAfter &&
+          other.reminderOnDueDate == this.reminderOnDueDate &&
+          other.reminderSendFromHour == this.reminderSendFromHour &&
+          other.reminderSendUntilHour == this.reminderSendUntilHour &&
+          other.reminderMaxPerRun == this.reminderMaxPerRun &&
+          other.whatsappReminderTemplate == this.whatsappReminderTemplate &&
+          other.whatsappReminderTemplateLanguage ==
+              this.whatsappReminderTemplateLanguage &&
+          other.paymentInstructions == this.paymentInstructions);
 }
 
 class GymSettingsCompanion extends UpdateCompanion<GymSetting> {
@@ -1749,6 +2221,16 @@ class GymSettingsCompanion extends UpdateCompanion<GymSetting> {
   final Value<String> themeMode;
   final Value<DateTime?> lastUpdateCheckAt;
   final Value<String?> dismissedUpdateVersion;
+  final Value<bool> reminderAutoSend;
+  final Value<String> reminderDaysBefore;
+  final Value<String> reminderDaysAfter;
+  final Value<bool> reminderOnDueDate;
+  final Value<int> reminderSendFromHour;
+  final Value<int> reminderSendUntilHour;
+  final Value<int> reminderMaxPerRun;
+  final Value<String?> whatsappReminderTemplate;
+  final Value<String> whatsappReminderTemplateLanguage;
+  final Value<String?> paymentInstructions;
   const GymSettingsCompanion({
     this.id = const Value.absent(),
     this.gymName = const Value.absent(),
@@ -1772,6 +2254,16 @@ class GymSettingsCompanion extends UpdateCompanion<GymSetting> {
     this.themeMode = const Value.absent(),
     this.lastUpdateCheckAt = const Value.absent(),
     this.dismissedUpdateVersion = const Value.absent(),
+    this.reminderAutoSend = const Value.absent(),
+    this.reminderDaysBefore = const Value.absent(),
+    this.reminderDaysAfter = const Value.absent(),
+    this.reminderOnDueDate = const Value.absent(),
+    this.reminderSendFromHour = const Value.absent(),
+    this.reminderSendUntilHour = const Value.absent(),
+    this.reminderMaxPerRun = const Value.absent(),
+    this.whatsappReminderTemplate = const Value.absent(),
+    this.whatsappReminderTemplateLanguage = const Value.absent(),
+    this.paymentInstructions = const Value.absent(),
   });
   GymSettingsCompanion.insert({
     this.id = const Value.absent(),
@@ -1796,6 +2288,16 @@ class GymSettingsCompanion extends UpdateCompanion<GymSetting> {
     this.themeMode = const Value.absent(),
     this.lastUpdateCheckAt = const Value.absent(),
     this.dismissedUpdateVersion = const Value.absent(),
+    this.reminderAutoSend = const Value.absent(),
+    this.reminderDaysBefore = const Value.absent(),
+    this.reminderDaysAfter = const Value.absent(),
+    this.reminderOnDueDate = const Value.absent(),
+    this.reminderSendFromHour = const Value.absent(),
+    this.reminderSendUntilHour = const Value.absent(),
+    this.reminderMaxPerRun = const Value.absent(),
+    this.whatsappReminderTemplate = const Value.absent(),
+    this.whatsappReminderTemplateLanguage = const Value.absent(),
+    this.paymentInstructions = const Value.absent(),
   });
   static Insertable<GymSetting> custom({
     Expression<int>? id,
@@ -1820,6 +2322,16 @@ class GymSettingsCompanion extends UpdateCompanion<GymSetting> {
     Expression<String>? themeMode,
     Expression<DateTime>? lastUpdateCheckAt,
     Expression<String>? dismissedUpdateVersion,
+    Expression<bool>? reminderAutoSend,
+    Expression<String>? reminderDaysBefore,
+    Expression<String>? reminderDaysAfter,
+    Expression<bool>? reminderOnDueDate,
+    Expression<int>? reminderSendFromHour,
+    Expression<int>? reminderSendUntilHour,
+    Expression<int>? reminderMaxPerRun,
+    Expression<String>? whatsappReminderTemplate,
+    Expression<String>? whatsappReminderTemplateLanguage,
+    Expression<String>? paymentInstructions,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -1852,6 +2364,22 @@ class GymSettingsCompanion extends UpdateCompanion<GymSetting> {
       if (lastUpdateCheckAt != null) 'last_update_check_at': lastUpdateCheckAt,
       if (dismissedUpdateVersion != null)
         'dismissed_update_version': dismissedUpdateVersion,
+      if (reminderAutoSend != null) 'reminder_auto_send': reminderAutoSend,
+      if (reminderDaysBefore != null)
+        'reminder_days_before': reminderDaysBefore,
+      if (reminderDaysAfter != null) 'reminder_days_after': reminderDaysAfter,
+      if (reminderOnDueDate != null) 'reminder_on_due_date': reminderOnDueDate,
+      if (reminderSendFromHour != null)
+        'reminder_send_from_hour': reminderSendFromHour,
+      if (reminderSendUntilHour != null)
+        'reminder_send_until_hour': reminderSendUntilHour,
+      if (reminderMaxPerRun != null) 'reminder_max_per_run': reminderMaxPerRun,
+      if (whatsappReminderTemplate != null)
+        'whatsapp_reminder_template': whatsappReminderTemplate,
+      if (whatsappReminderTemplateLanguage != null)
+        'whatsapp_reminder_template_language': whatsappReminderTemplateLanguage,
+      if (paymentInstructions != null)
+        'payment_instructions': paymentInstructions,
     });
   }
 
@@ -1878,6 +2406,16 @@ class GymSettingsCompanion extends UpdateCompanion<GymSetting> {
     Value<String>? themeMode,
     Value<DateTime?>? lastUpdateCheckAt,
     Value<String?>? dismissedUpdateVersion,
+    Value<bool>? reminderAutoSend,
+    Value<String>? reminderDaysBefore,
+    Value<String>? reminderDaysAfter,
+    Value<bool>? reminderOnDueDate,
+    Value<int>? reminderSendFromHour,
+    Value<int>? reminderSendUntilHour,
+    Value<int>? reminderMaxPerRun,
+    Value<String?>? whatsappReminderTemplate,
+    Value<String>? whatsappReminderTemplateLanguage,
+    Value<String?>? paymentInstructions,
   }) {
     return GymSettingsCompanion(
       id: id ?? this.id,
@@ -1909,6 +2447,20 @@ class GymSettingsCompanion extends UpdateCompanion<GymSetting> {
       lastUpdateCheckAt: lastUpdateCheckAt ?? this.lastUpdateCheckAt,
       dismissedUpdateVersion:
           dismissedUpdateVersion ?? this.dismissedUpdateVersion,
+      reminderAutoSend: reminderAutoSend ?? this.reminderAutoSend,
+      reminderDaysBefore: reminderDaysBefore ?? this.reminderDaysBefore,
+      reminderDaysAfter: reminderDaysAfter ?? this.reminderDaysAfter,
+      reminderOnDueDate: reminderOnDueDate ?? this.reminderOnDueDate,
+      reminderSendFromHour: reminderSendFromHour ?? this.reminderSendFromHour,
+      reminderSendUntilHour:
+          reminderSendUntilHour ?? this.reminderSendUntilHour,
+      reminderMaxPerRun: reminderMaxPerRun ?? this.reminderMaxPerRun,
+      whatsappReminderTemplate:
+          whatsappReminderTemplate ?? this.whatsappReminderTemplate,
+      whatsappReminderTemplateLanguage:
+          whatsappReminderTemplateLanguage ??
+          this.whatsappReminderTemplateLanguage,
+      paymentInstructions: paymentInstructions ?? this.paymentInstructions,
     );
   }
 
@@ -2001,6 +2553,44 @@ class GymSettingsCompanion extends UpdateCompanion<GymSetting> {
         dismissedUpdateVersion.value,
       );
     }
+    if (reminderAutoSend.present) {
+      map['reminder_auto_send'] = Variable<bool>(reminderAutoSend.value);
+    }
+    if (reminderDaysBefore.present) {
+      map['reminder_days_before'] = Variable<String>(reminderDaysBefore.value);
+    }
+    if (reminderDaysAfter.present) {
+      map['reminder_days_after'] = Variable<String>(reminderDaysAfter.value);
+    }
+    if (reminderOnDueDate.present) {
+      map['reminder_on_due_date'] = Variable<bool>(reminderOnDueDate.value);
+    }
+    if (reminderSendFromHour.present) {
+      map['reminder_send_from_hour'] = Variable<int>(
+        reminderSendFromHour.value,
+      );
+    }
+    if (reminderSendUntilHour.present) {
+      map['reminder_send_until_hour'] = Variable<int>(
+        reminderSendUntilHour.value,
+      );
+    }
+    if (reminderMaxPerRun.present) {
+      map['reminder_max_per_run'] = Variable<int>(reminderMaxPerRun.value);
+    }
+    if (whatsappReminderTemplate.present) {
+      map['whatsapp_reminder_template'] = Variable<String>(
+        whatsappReminderTemplate.value,
+      );
+    }
+    if (whatsappReminderTemplateLanguage.present) {
+      map['whatsapp_reminder_template_language'] = Variable<String>(
+        whatsappReminderTemplateLanguage.value,
+      );
+    }
+    if (paymentInstructions.present) {
+      map['payment_instructions'] = Variable<String>(paymentInstructions.value);
+    }
     return map;
   }
 
@@ -2030,7 +2620,19 @@ class GymSettingsCompanion extends UpdateCompanion<GymSetting> {
           ..write('whatsappMockFails: $whatsappMockFails, ')
           ..write('themeMode: $themeMode, ')
           ..write('lastUpdateCheckAt: $lastUpdateCheckAt, ')
-          ..write('dismissedUpdateVersion: $dismissedUpdateVersion')
+          ..write('dismissedUpdateVersion: $dismissedUpdateVersion, ')
+          ..write('reminderAutoSend: $reminderAutoSend, ')
+          ..write('reminderDaysBefore: $reminderDaysBefore, ')
+          ..write('reminderDaysAfter: $reminderDaysAfter, ')
+          ..write('reminderOnDueDate: $reminderOnDueDate, ')
+          ..write('reminderSendFromHour: $reminderSendFromHour, ')
+          ..write('reminderSendUntilHour: $reminderSendUntilHour, ')
+          ..write('reminderMaxPerRun: $reminderMaxPerRun, ')
+          ..write('whatsappReminderTemplate: $whatsappReminderTemplate, ')
+          ..write(
+            'whatsappReminderTemplateLanguage: $whatsappReminderTemplateLanguage, ',
+          )
+          ..write('paymentInstructions: $paymentInstructions')
           ..write(')'))
         .toString();
   }
@@ -3294,6 +3896,17 @@ class $MembershipsTable extends Memberships
     type: DriftSqlType.dateTime,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _billingAnchorDayMeta = const VerificationMeta(
+    'billingAnchorDay',
+  );
+  @override
+  late final GeneratedColumn<int> billingAnchorDay = GeneratedColumn<int>(
+    'billing_anchor_day',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _endDateMeta = const VerificationMeta(
     'endDate',
   );
@@ -3312,6 +3925,7 @@ class $MembershipsTable extends Memberships
     planId,
     feeOverrideMinor,
     startDate,
+    billingAnchorDay,
     endDate,
   ];
   @override
@@ -3362,6 +3976,15 @@ class $MembershipsTable extends Memberships
     } else if (isInserting) {
       context.missing(_startDateMeta);
     }
+    if (data.containsKey('billing_anchor_day')) {
+      context.handle(
+        _billingAnchorDayMeta,
+        billingAnchorDay.isAcceptableOrUnknown(
+          data['billing_anchor_day']!,
+          _billingAnchorDayMeta,
+        ),
+      );
+    }
     if (data.containsKey('end_date')) {
       context.handle(
         _endDateMeta,
@@ -3397,6 +4020,10 @@ class $MembershipsTable extends Memberships
         DriftSqlType.dateTime,
         data['${effectivePrefix}start_date'],
       )!,
+      billingAnchorDay: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}billing_anchor_day'],
+      ),
       endDate: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}end_date'],
@@ -3419,6 +4046,18 @@ class Membership extends DataClass implements Insertable<Membership> {
   final int? feeOverrideMinor;
   final DateTime startDate;
 
+  /// The day of the month this member is billed on, 1-31.
+  ///
+  /// Nullable, and that is deliberate rather than lazy: every billing cycle
+  /// recorded before this column existed starts on the 1st of a month, so a
+  /// membership with no anchor resolves to the 1st and its cycles keep landing
+  /// exactly where they always have. The upgrade therefore writes no rows and
+  /// moves nobody's due date. See `resolveAnchorDay` in domain/billing_cycle.
+  ///
+  /// A month too short to hold the day clamps to its last — 31 becomes 28 in
+  /// February — without losing the anchor for the month after.
+  final int? billingAnchorDay;
+
   /// Null means this is the member's currently active enrolment.
   final DateTime? endDate;
   const Membership({
@@ -3427,6 +4066,7 @@ class Membership extends DataClass implements Insertable<Membership> {
     required this.planId,
     this.feeOverrideMinor,
     required this.startDate,
+    this.billingAnchorDay,
     this.endDate,
   });
   @override
@@ -3439,6 +4079,9 @@ class Membership extends DataClass implements Insertable<Membership> {
       map['fee_override_minor'] = Variable<int>(feeOverrideMinor);
     }
     map['start_date'] = Variable<DateTime>(startDate);
+    if (!nullToAbsent || billingAnchorDay != null) {
+      map['billing_anchor_day'] = Variable<int>(billingAnchorDay);
+    }
     if (!nullToAbsent || endDate != null) {
       map['end_date'] = Variable<DateTime>(endDate);
     }
@@ -3454,6 +4097,9 @@ class Membership extends DataClass implements Insertable<Membership> {
           ? const Value.absent()
           : Value(feeOverrideMinor),
       startDate: Value(startDate),
+      billingAnchorDay: billingAnchorDay == null && nullToAbsent
+          ? const Value.absent()
+          : Value(billingAnchorDay),
       endDate: endDate == null && nullToAbsent
           ? const Value.absent()
           : Value(endDate),
@@ -3471,6 +4117,7 @@ class Membership extends DataClass implements Insertable<Membership> {
       planId: serializer.fromJson<int>(json['planId']),
       feeOverrideMinor: serializer.fromJson<int?>(json['feeOverrideMinor']),
       startDate: serializer.fromJson<DateTime>(json['startDate']),
+      billingAnchorDay: serializer.fromJson<int?>(json['billingAnchorDay']),
       endDate: serializer.fromJson<DateTime?>(json['endDate']),
     );
   }
@@ -3483,6 +4130,7 @@ class Membership extends DataClass implements Insertable<Membership> {
       'planId': serializer.toJson<int>(planId),
       'feeOverrideMinor': serializer.toJson<int?>(feeOverrideMinor),
       'startDate': serializer.toJson<DateTime>(startDate),
+      'billingAnchorDay': serializer.toJson<int?>(billingAnchorDay),
       'endDate': serializer.toJson<DateTime?>(endDate),
     };
   }
@@ -3493,6 +4141,7 @@ class Membership extends DataClass implements Insertable<Membership> {
     int? planId,
     Value<int?> feeOverrideMinor = const Value.absent(),
     DateTime? startDate,
+    Value<int?> billingAnchorDay = const Value.absent(),
     Value<DateTime?> endDate = const Value.absent(),
   }) => Membership(
     id: id ?? this.id,
@@ -3502,6 +4151,9 @@ class Membership extends DataClass implements Insertable<Membership> {
         ? feeOverrideMinor.value
         : this.feeOverrideMinor,
     startDate: startDate ?? this.startDate,
+    billingAnchorDay: billingAnchorDay.present
+        ? billingAnchorDay.value
+        : this.billingAnchorDay,
     endDate: endDate.present ? endDate.value : this.endDate,
   );
   Membership copyWithCompanion(MembershipsCompanion data) {
@@ -3513,6 +4165,9 @@ class Membership extends DataClass implements Insertable<Membership> {
           ? data.feeOverrideMinor.value
           : this.feeOverrideMinor,
       startDate: data.startDate.present ? data.startDate.value : this.startDate,
+      billingAnchorDay: data.billingAnchorDay.present
+          ? data.billingAnchorDay.value
+          : this.billingAnchorDay,
       endDate: data.endDate.present ? data.endDate.value : this.endDate,
     );
   }
@@ -3525,14 +4180,22 @@ class Membership extends DataClass implements Insertable<Membership> {
           ..write('planId: $planId, ')
           ..write('feeOverrideMinor: $feeOverrideMinor, ')
           ..write('startDate: $startDate, ')
+          ..write('billingAnchorDay: $billingAnchorDay, ')
           ..write('endDate: $endDate')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode =>
-      Object.hash(id, memberId, planId, feeOverrideMinor, startDate, endDate);
+  int get hashCode => Object.hash(
+    id,
+    memberId,
+    planId,
+    feeOverrideMinor,
+    startDate,
+    billingAnchorDay,
+    endDate,
+  );
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -3542,6 +4205,7 @@ class Membership extends DataClass implements Insertable<Membership> {
           other.planId == this.planId &&
           other.feeOverrideMinor == this.feeOverrideMinor &&
           other.startDate == this.startDate &&
+          other.billingAnchorDay == this.billingAnchorDay &&
           other.endDate == this.endDate);
 }
 
@@ -3551,6 +4215,7 @@ class MembershipsCompanion extends UpdateCompanion<Membership> {
   final Value<int> planId;
   final Value<int?> feeOverrideMinor;
   final Value<DateTime> startDate;
+  final Value<int?> billingAnchorDay;
   final Value<DateTime?> endDate;
   const MembershipsCompanion({
     this.id = const Value.absent(),
@@ -3558,6 +4223,7 @@ class MembershipsCompanion extends UpdateCompanion<Membership> {
     this.planId = const Value.absent(),
     this.feeOverrideMinor = const Value.absent(),
     this.startDate = const Value.absent(),
+    this.billingAnchorDay = const Value.absent(),
     this.endDate = const Value.absent(),
   });
   MembershipsCompanion.insert({
@@ -3566,6 +4232,7 @@ class MembershipsCompanion extends UpdateCompanion<Membership> {
     required int planId,
     this.feeOverrideMinor = const Value.absent(),
     required DateTime startDate,
+    this.billingAnchorDay = const Value.absent(),
     this.endDate = const Value.absent(),
   }) : memberId = Value(memberId),
        planId = Value(planId),
@@ -3576,6 +4243,7 @@ class MembershipsCompanion extends UpdateCompanion<Membership> {
     Expression<int>? planId,
     Expression<int>? feeOverrideMinor,
     Expression<DateTime>? startDate,
+    Expression<int>? billingAnchorDay,
     Expression<DateTime>? endDate,
   }) {
     return RawValuesInsertable({
@@ -3584,6 +4252,7 @@ class MembershipsCompanion extends UpdateCompanion<Membership> {
       if (planId != null) 'plan_id': planId,
       if (feeOverrideMinor != null) 'fee_override_minor': feeOverrideMinor,
       if (startDate != null) 'start_date': startDate,
+      if (billingAnchorDay != null) 'billing_anchor_day': billingAnchorDay,
       if (endDate != null) 'end_date': endDate,
     });
   }
@@ -3594,6 +4263,7 @@ class MembershipsCompanion extends UpdateCompanion<Membership> {
     Value<int>? planId,
     Value<int?>? feeOverrideMinor,
     Value<DateTime>? startDate,
+    Value<int?>? billingAnchorDay,
     Value<DateTime?>? endDate,
   }) {
     return MembershipsCompanion(
@@ -3602,6 +4272,7 @@ class MembershipsCompanion extends UpdateCompanion<Membership> {
       planId: planId ?? this.planId,
       feeOverrideMinor: feeOverrideMinor ?? this.feeOverrideMinor,
       startDate: startDate ?? this.startDate,
+      billingAnchorDay: billingAnchorDay ?? this.billingAnchorDay,
       endDate: endDate ?? this.endDate,
     );
   }
@@ -3624,6 +4295,9 @@ class MembershipsCompanion extends UpdateCompanion<Membership> {
     if (startDate.present) {
       map['start_date'] = Variable<DateTime>(startDate.value);
     }
+    if (billingAnchorDay.present) {
+      map['billing_anchor_day'] = Variable<int>(billingAnchorDay.value);
+    }
     if (endDate.present) {
       map['end_date'] = Variable<DateTime>(endDate.value);
     }
@@ -3638,6 +4312,7 @@ class MembershipsCompanion extends UpdateCompanion<Membership> {
           ..write('planId: $planId, ')
           ..write('feeOverrideMinor: $feeOverrideMinor, ')
           ..write('startDate: $startDate, ')
+          ..write('billingAnchorDay: $billingAnchorDay, ')
           ..write('endDate: $endDate')
           ..write(')'))
         .toString();
@@ -3709,6 +4384,17 @@ class $MembershipPeriodsTable extends MembershipPeriods
     type: DriftSqlType.int,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _settledAtMeta = const VerificationMeta(
+    'settledAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> settledAt = GeneratedColumn<DateTime>(
+    'settled_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -3716,6 +4402,7 @@ class $MembershipPeriodsTable extends MembershipPeriods
     periodStart,
     periodEnd,
     expectedAmountMinor,
+    settledAt,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -3773,6 +4460,12 @@ class $MembershipPeriodsTable extends MembershipPeriods
     } else if (isInserting) {
       context.missing(_expectedAmountMinorMeta);
     }
+    if (data.containsKey('settled_at')) {
+      context.handle(
+        _settledAtMeta,
+        settledAt.isAcceptableOrUnknown(data['settled_at']!, _settledAtMeta),
+      );
+    }
     return context;
   }
 
@@ -3806,6 +4499,10 @@ class $MembershipPeriodsTable extends MembershipPeriods
         DriftSqlType.int,
         data['${effectivePrefix}expected_amount_minor'],
       )!,
+      settledAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}settled_at'],
+      ),
     );
   }
 
@@ -3826,12 +4523,27 @@ class MembershipPeriod extends DataClass
 
   /// Fee snapshot at creation time, so later price changes don't rewrite history.
   final int expectedAmountMinor;
+
+  /// When the cycle was closed, or null while it still owes money.
+  ///
+  /// Set once [PaymentAllocations] against the cycle reach
+  /// [expectedAmountMinor]; a cycle holding less than that is part-paid, not
+  /// paid. Settlement used to be inferred from the mere existence of a
+  /// payment, which marked a 500-rupee instalment against a 3,000-rupee fee as
+  /// a month fully settled.
+  ///
+  /// It is also how history is grandfathered. The v10 migration stamps every
+  /// cycle that already had a payment against it, so the imported ledger stays
+  /// closed under the new rule without a cutoff date being tested anywhere in
+  /// the code.
+  final DateTime? settledAt;
   const MembershipPeriod({
     required this.id,
     required this.membershipId,
     required this.periodStart,
     required this.periodEnd,
     required this.expectedAmountMinor,
+    this.settledAt,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -3841,6 +4553,9 @@ class MembershipPeriod extends DataClass
     map['period_start'] = Variable<DateTime>(periodStart);
     map['period_end'] = Variable<DateTime>(periodEnd);
     map['expected_amount_minor'] = Variable<int>(expectedAmountMinor);
+    if (!nullToAbsent || settledAt != null) {
+      map['settled_at'] = Variable<DateTime>(settledAt);
+    }
     return map;
   }
 
@@ -3851,6 +4566,9 @@ class MembershipPeriod extends DataClass
       periodStart: Value(periodStart),
       periodEnd: Value(periodEnd),
       expectedAmountMinor: Value(expectedAmountMinor),
+      settledAt: settledAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(settledAt),
     );
   }
 
@@ -3867,6 +4585,7 @@ class MembershipPeriod extends DataClass
       expectedAmountMinor: serializer.fromJson<int>(
         json['expectedAmountMinor'],
       ),
+      settledAt: serializer.fromJson<DateTime?>(json['settledAt']),
     );
   }
   @override
@@ -3878,6 +4597,7 @@ class MembershipPeriod extends DataClass
       'periodStart': serializer.toJson<DateTime>(periodStart),
       'periodEnd': serializer.toJson<DateTime>(periodEnd),
       'expectedAmountMinor': serializer.toJson<int>(expectedAmountMinor),
+      'settledAt': serializer.toJson<DateTime?>(settledAt),
     };
   }
 
@@ -3887,12 +4607,14 @@ class MembershipPeriod extends DataClass
     DateTime? periodStart,
     DateTime? periodEnd,
     int? expectedAmountMinor,
+    Value<DateTime?> settledAt = const Value.absent(),
   }) => MembershipPeriod(
     id: id ?? this.id,
     membershipId: membershipId ?? this.membershipId,
     periodStart: periodStart ?? this.periodStart,
     periodEnd: periodEnd ?? this.periodEnd,
     expectedAmountMinor: expectedAmountMinor ?? this.expectedAmountMinor,
+    settledAt: settledAt.present ? settledAt.value : this.settledAt,
   );
   MembershipPeriod copyWithCompanion(MembershipPeriodsCompanion data) {
     return MembershipPeriod(
@@ -3907,6 +4629,7 @@ class MembershipPeriod extends DataClass
       expectedAmountMinor: data.expectedAmountMinor.present
           ? data.expectedAmountMinor.value
           : this.expectedAmountMinor,
+      settledAt: data.settledAt.present ? data.settledAt.value : this.settledAt,
     );
   }
 
@@ -3917,7 +4640,8 @@ class MembershipPeriod extends DataClass
           ..write('membershipId: $membershipId, ')
           ..write('periodStart: $periodStart, ')
           ..write('periodEnd: $periodEnd, ')
-          ..write('expectedAmountMinor: $expectedAmountMinor')
+          ..write('expectedAmountMinor: $expectedAmountMinor, ')
+          ..write('settledAt: $settledAt')
           ..write(')'))
         .toString();
   }
@@ -3929,6 +4653,7 @@ class MembershipPeriod extends DataClass
     periodStart,
     periodEnd,
     expectedAmountMinor,
+    settledAt,
   );
   @override
   bool operator ==(Object other) =>
@@ -3938,7 +4663,8 @@ class MembershipPeriod extends DataClass
           other.membershipId == this.membershipId &&
           other.periodStart == this.periodStart &&
           other.periodEnd == this.periodEnd &&
-          other.expectedAmountMinor == this.expectedAmountMinor);
+          other.expectedAmountMinor == this.expectedAmountMinor &&
+          other.settledAt == this.settledAt);
 }
 
 class MembershipPeriodsCompanion extends UpdateCompanion<MembershipPeriod> {
@@ -3947,12 +4673,14 @@ class MembershipPeriodsCompanion extends UpdateCompanion<MembershipPeriod> {
   final Value<DateTime> periodStart;
   final Value<DateTime> periodEnd;
   final Value<int> expectedAmountMinor;
+  final Value<DateTime?> settledAt;
   const MembershipPeriodsCompanion({
     this.id = const Value.absent(),
     this.membershipId = const Value.absent(),
     this.periodStart = const Value.absent(),
     this.periodEnd = const Value.absent(),
     this.expectedAmountMinor = const Value.absent(),
+    this.settledAt = const Value.absent(),
   });
   MembershipPeriodsCompanion.insert({
     this.id = const Value.absent(),
@@ -3960,6 +4688,7 @@ class MembershipPeriodsCompanion extends UpdateCompanion<MembershipPeriod> {
     required DateTime periodStart,
     required DateTime periodEnd,
     required int expectedAmountMinor,
+    this.settledAt = const Value.absent(),
   }) : membershipId = Value(membershipId),
        periodStart = Value(periodStart),
        periodEnd = Value(periodEnd),
@@ -3970,6 +4699,7 @@ class MembershipPeriodsCompanion extends UpdateCompanion<MembershipPeriod> {
     Expression<DateTime>? periodStart,
     Expression<DateTime>? periodEnd,
     Expression<int>? expectedAmountMinor,
+    Expression<DateTime>? settledAt,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -3978,6 +4708,7 @@ class MembershipPeriodsCompanion extends UpdateCompanion<MembershipPeriod> {
       if (periodEnd != null) 'period_end': periodEnd,
       if (expectedAmountMinor != null)
         'expected_amount_minor': expectedAmountMinor,
+      if (settledAt != null) 'settled_at': settledAt,
     });
   }
 
@@ -3987,6 +4718,7 @@ class MembershipPeriodsCompanion extends UpdateCompanion<MembershipPeriod> {
     Value<DateTime>? periodStart,
     Value<DateTime>? periodEnd,
     Value<int>? expectedAmountMinor,
+    Value<DateTime?>? settledAt,
   }) {
     return MembershipPeriodsCompanion(
       id: id ?? this.id,
@@ -3994,6 +4726,7 @@ class MembershipPeriodsCompanion extends UpdateCompanion<MembershipPeriod> {
       periodStart: periodStart ?? this.periodStart,
       periodEnd: periodEnd ?? this.periodEnd,
       expectedAmountMinor: expectedAmountMinor ?? this.expectedAmountMinor,
+      settledAt: settledAt ?? this.settledAt,
     );
   }
 
@@ -4015,6 +4748,9 @@ class MembershipPeriodsCompanion extends UpdateCompanion<MembershipPeriod> {
     if (expectedAmountMinor.present) {
       map['expected_amount_minor'] = Variable<int>(expectedAmountMinor.value);
     }
+    if (settledAt.present) {
+      map['settled_at'] = Variable<DateTime>(settledAt.value);
+    }
     return map;
   }
 
@@ -4025,7 +4761,8 @@ class MembershipPeriodsCompanion extends UpdateCompanion<MembershipPeriod> {
           ..write('membershipId: $membershipId, ')
           ..write('periodStart: $periodStart, ')
           ..write('periodEnd: $periodEnd, ')
-          ..write('expectedAmountMinor: $expectedAmountMinor')
+          ..write('expectedAmountMinor: $expectedAmountMinor, ')
+          ..write('settledAt: $settledAt')
           ..write(')'))
         .toString();
   }
@@ -4883,6 +5620,1198 @@ class PaymentsCompanion extends UpdateCompanion<Payment> {
           ..write('updatedAt: $updatedAt, ')
           ..write('updatedById: $updatedById, ')
           ..write('idempotencyKey: $idempotencyKey, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $PaymentAllocationsTable extends PaymentAllocations
+    with TableInfo<$PaymentAllocationsTable, PaymentAllocation> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $PaymentAllocationsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _paymentIdMeta = const VerificationMeta(
+    'paymentId',
+  );
+  @override
+  late final GeneratedColumn<int> paymentId = GeneratedColumn<int>(
+    'payment_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES payments (id) ON DELETE CASCADE',
+    ),
+  );
+  static const VerificationMeta _membershipPeriodIdMeta =
+      const VerificationMeta('membershipPeriodId');
+  @override
+  late final GeneratedColumn<int> membershipPeriodId = GeneratedColumn<int>(
+    'membership_period_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES membership_periods (id) ON DELETE CASCADE',
+    ),
+  );
+  static const VerificationMeta _amountMinorMeta = const VerificationMeta(
+    'amountMinor',
+  );
+  @override
+  late final GeneratedColumn<int> amountMinor = GeneratedColumn<int>(
+    'amount_minor',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    paymentId,
+    membershipPeriodId,
+    amountMinor,
+    createdAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'payment_allocations';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<PaymentAllocation> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('payment_id')) {
+      context.handle(
+        _paymentIdMeta,
+        paymentId.isAcceptableOrUnknown(data['payment_id']!, _paymentIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_paymentIdMeta);
+    }
+    if (data.containsKey('membership_period_id')) {
+      context.handle(
+        _membershipPeriodIdMeta,
+        membershipPeriodId.isAcceptableOrUnknown(
+          data['membership_period_id']!,
+          _membershipPeriodIdMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_membershipPeriodIdMeta);
+    }
+    if (data.containsKey('amount_minor')) {
+      context.handle(
+        _amountMinorMeta,
+        amountMinor.isAcceptableOrUnknown(
+          data['amount_minor']!,
+          _amountMinorMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_amountMinorMeta);
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  List<Set<GeneratedColumn>> get uniqueKeys => [
+    {paymentId, membershipPeriodId},
+  ];
+  @override
+  PaymentAllocation map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return PaymentAllocation(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      paymentId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}payment_id'],
+      )!,
+      membershipPeriodId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}membership_period_id'],
+      )!,
+      amountMinor: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}amount_minor'],
+      )!,
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+    );
+  }
+
+  @override
+  $PaymentAllocationsTable createAlias(String alias) {
+    return $PaymentAllocationsTable(attachedDatabase, alias);
+  }
+}
+
+class PaymentAllocation extends DataClass
+    implements Insertable<PaymentAllocation> {
+  final int id;
+
+  /// Cascades: deleting a payment must release the cycles it was settling, or
+  /// they would stay closed with no money behind them.
+  final int paymentId;
+  final int membershipPeriodId;
+
+  /// Minor units, matching [Payments.amountMinor]. The allocations for one
+  /// payment always sum to no more than the payment itself.
+  final int amountMinor;
+  final DateTime createdAt;
+  const PaymentAllocation({
+    required this.id,
+    required this.paymentId,
+    required this.membershipPeriodId,
+    required this.amountMinor,
+    required this.createdAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['payment_id'] = Variable<int>(paymentId);
+    map['membership_period_id'] = Variable<int>(membershipPeriodId);
+    map['amount_minor'] = Variable<int>(amountMinor);
+    map['created_at'] = Variable<DateTime>(createdAt);
+    return map;
+  }
+
+  PaymentAllocationsCompanion toCompanion(bool nullToAbsent) {
+    return PaymentAllocationsCompanion(
+      id: Value(id),
+      paymentId: Value(paymentId),
+      membershipPeriodId: Value(membershipPeriodId),
+      amountMinor: Value(amountMinor),
+      createdAt: Value(createdAt),
+    );
+  }
+
+  factory PaymentAllocation.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return PaymentAllocation(
+      id: serializer.fromJson<int>(json['id']),
+      paymentId: serializer.fromJson<int>(json['paymentId']),
+      membershipPeriodId: serializer.fromJson<int>(json['membershipPeriodId']),
+      amountMinor: serializer.fromJson<int>(json['amountMinor']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'paymentId': serializer.toJson<int>(paymentId),
+      'membershipPeriodId': serializer.toJson<int>(membershipPeriodId),
+      'amountMinor': serializer.toJson<int>(amountMinor),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+    };
+  }
+
+  PaymentAllocation copyWith({
+    int? id,
+    int? paymentId,
+    int? membershipPeriodId,
+    int? amountMinor,
+    DateTime? createdAt,
+  }) => PaymentAllocation(
+    id: id ?? this.id,
+    paymentId: paymentId ?? this.paymentId,
+    membershipPeriodId: membershipPeriodId ?? this.membershipPeriodId,
+    amountMinor: amountMinor ?? this.amountMinor,
+    createdAt: createdAt ?? this.createdAt,
+  );
+  PaymentAllocation copyWithCompanion(PaymentAllocationsCompanion data) {
+    return PaymentAllocation(
+      id: data.id.present ? data.id.value : this.id,
+      paymentId: data.paymentId.present ? data.paymentId.value : this.paymentId,
+      membershipPeriodId: data.membershipPeriodId.present
+          ? data.membershipPeriodId.value
+          : this.membershipPeriodId,
+      amountMinor: data.amountMinor.present
+          ? data.amountMinor.value
+          : this.amountMinor,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('PaymentAllocation(')
+          ..write('id: $id, ')
+          ..write('paymentId: $paymentId, ')
+          ..write('membershipPeriodId: $membershipPeriodId, ')
+          ..write('amountMinor: $amountMinor, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode =>
+      Object.hash(id, paymentId, membershipPeriodId, amountMinor, createdAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is PaymentAllocation &&
+          other.id == this.id &&
+          other.paymentId == this.paymentId &&
+          other.membershipPeriodId == this.membershipPeriodId &&
+          other.amountMinor == this.amountMinor &&
+          other.createdAt == this.createdAt);
+}
+
+class PaymentAllocationsCompanion extends UpdateCompanion<PaymentAllocation> {
+  final Value<int> id;
+  final Value<int> paymentId;
+  final Value<int> membershipPeriodId;
+  final Value<int> amountMinor;
+  final Value<DateTime> createdAt;
+  const PaymentAllocationsCompanion({
+    this.id = const Value.absent(),
+    this.paymentId = const Value.absent(),
+    this.membershipPeriodId = const Value.absent(),
+    this.amountMinor = const Value.absent(),
+    this.createdAt = const Value.absent(),
+  });
+  PaymentAllocationsCompanion.insert({
+    this.id = const Value.absent(),
+    required int paymentId,
+    required int membershipPeriodId,
+    required int amountMinor,
+    this.createdAt = const Value.absent(),
+  }) : paymentId = Value(paymentId),
+       membershipPeriodId = Value(membershipPeriodId),
+       amountMinor = Value(amountMinor);
+  static Insertable<PaymentAllocation> custom({
+    Expression<int>? id,
+    Expression<int>? paymentId,
+    Expression<int>? membershipPeriodId,
+    Expression<int>? amountMinor,
+    Expression<DateTime>? createdAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (paymentId != null) 'payment_id': paymentId,
+      if (membershipPeriodId != null)
+        'membership_period_id': membershipPeriodId,
+      if (amountMinor != null) 'amount_minor': amountMinor,
+      if (createdAt != null) 'created_at': createdAt,
+    });
+  }
+
+  PaymentAllocationsCompanion copyWith({
+    Value<int>? id,
+    Value<int>? paymentId,
+    Value<int>? membershipPeriodId,
+    Value<int>? amountMinor,
+    Value<DateTime>? createdAt,
+  }) {
+    return PaymentAllocationsCompanion(
+      id: id ?? this.id,
+      paymentId: paymentId ?? this.paymentId,
+      membershipPeriodId: membershipPeriodId ?? this.membershipPeriodId,
+      amountMinor: amountMinor ?? this.amountMinor,
+      createdAt: createdAt ?? this.createdAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (paymentId.present) {
+      map['payment_id'] = Variable<int>(paymentId.value);
+    }
+    if (membershipPeriodId.present) {
+      map['membership_period_id'] = Variable<int>(membershipPeriodId.value);
+    }
+    if (amountMinor.present) {
+      map['amount_minor'] = Variable<int>(amountMinor.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('PaymentAllocationsCompanion(')
+          ..write('id: $id, ')
+          ..write('paymentId: $paymentId, ')
+          ..write('membershipPeriodId: $membershipPeriodId, ')
+          ..write('amountMinor: $amountMinor, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $PaymentRemindersTable extends PaymentReminders
+    with TableInfo<$PaymentRemindersTable, PaymentReminder> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $PaymentRemindersTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _membershipPeriodIdMeta =
+      const VerificationMeta('membershipPeriodId');
+  @override
+  late final GeneratedColumn<int> membershipPeriodId = GeneratedColumn<int>(
+    'membership_period_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES membership_periods (id) ON DELETE CASCADE',
+    ),
+  );
+  static const VerificationMeta _memberIdMeta = const VerificationMeta(
+    'memberId',
+  );
+  @override
+  late final GeneratedColumn<int> memberId = GeneratedColumn<int>(
+    'member_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES members (id)',
+    ),
+  );
+  static const VerificationMeta _stageMeta = const VerificationMeta('stage');
+  @override
+  late final GeneratedColumn<String> stage = GeneratedColumn<String>(
+    'stage',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _offsetDaysMeta = const VerificationMeta(
+    'offsetDays',
+  );
+  @override
+  late final GeneratedColumn<int> offsetDays = GeneratedColumn<int>(
+    'offset_days',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  @override
+  late final GeneratedColumnWithTypeConverter<ReminderSendStatus, String>
+  status = GeneratedColumn<String>(
+    'status',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  ).withConverter<ReminderSendStatus>($PaymentRemindersTable.$converterstatus);
+  static const VerificationMeta _dueDateMeta = const VerificationMeta(
+    'dueDate',
+  );
+  @override
+  late final GeneratedColumn<DateTime> dueDate = GeneratedColumn<DateTime>(
+    'due_date',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _amountMinorMeta = const VerificationMeta(
+    'amountMinor',
+  );
+  @override
+  late final GeneratedColumn<int> amountMinor = GeneratedColumn<int>(
+    'amount_minor',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _externalMessageIdMeta = const VerificationMeta(
+    'externalMessageId',
+  );
+  @override
+  late final GeneratedColumn<String> externalMessageId =
+      GeneratedColumn<String>(
+        'external_message_id',
+        aliasedName,
+        true,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+      );
+  static const VerificationMeta _errorMessageMeta = const VerificationMeta(
+    'errorMessage',
+  );
+  @override
+  late final GeneratedColumn<String> errorMessage = GeneratedColumn<String>(
+    'error_message',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _attemptsMeta = const VerificationMeta(
+    'attempts',
+  );
+  @override
+  late final GeneratedColumn<int> attempts = GeneratedColumn<int>(
+    'attempts',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(1),
+  );
+  static const VerificationMeta _sentAtMeta = const VerificationMeta('sentAt');
+  @override
+  late final GeneratedColumn<DateTime> sentAt = GeneratedColumn<DateTime>(
+    'sent_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    membershipPeriodId,
+    memberId,
+    stage,
+    offsetDays,
+    status,
+    dueDate,
+    amountMinor,
+    externalMessageId,
+    errorMessage,
+    attempts,
+    sentAt,
+    createdAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'payment_reminders';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<PaymentReminder> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('membership_period_id')) {
+      context.handle(
+        _membershipPeriodIdMeta,
+        membershipPeriodId.isAcceptableOrUnknown(
+          data['membership_period_id']!,
+          _membershipPeriodIdMeta,
+        ),
+      );
+    }
+    if (data.containsKey('member_id')) {
+      context.handle(
+        _memberIdMeta,
+        memberId.isAcceptableOrUnknown(data['member_id']!, _memberIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_memberIdMeta);
+    }
+    if (data.containsKey('stage')) {
+      context.handle(
+        _stageMeta,
+        stage.isAcceptableOrUnknown(data['stage']!, _stageMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_stageMeta);
+    }
+    if (data.containsKey('offset_days')) {
+      context.handle(
+        _offsetDaysMeta,
+        offsetDays.isAcceptableOrUnknown(data['offset_days']!, _offsetDaysMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_offsetDaysMeta);
+    }
+    if (data.containsKey('due_date')) {
+      context.handle(
+        _dueDateMeta,
+        dueDate.isAcceptableOrUnknown(data['due_date']!, _dueDateMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_dueDateMeta);
+    }
+    if (data.containsKey('amount_minor')) {
+      context.handle(
+        _amountMinorMeta,
+        amountMinor.isAcceptableOrUnknown(
+          data['amount_minor']!,
+          _amountMinorMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_amountMinorMeta);
+    }
+    if (data.containsKey('external_message_id')) {
+      context.handle(
+        _externalMessageIdMeta,
+        externalMessageId.isAcceptableOrUnknown(
+          data['external_message_id']!,
+          _externalMessageIdMeta,
+        ),
+      );
+    }
+    if (data.containsKey('error_message')) {
+      context.handle(
+        _errorMessageMeta,
+        errorMessage.isAcceptableOrUnknown(
+          data['error_message']!,
+          _errorMessageMeta,
+        ),
+      );
+    }
+    if (data.containsKey('attempts')) {
+      context.handle(
+        _attemptsMeta,
+        attempts.isAcceptableOrUnknown(data['attempts']!, _attemptsMeta),
+      );
+    }
+    if (data.containsKey('sent_at')) {
+      context.handle(
+        _sentAtMeta,
+        sentAt.isAcceptableOrUnknown(data['sent_at']!, _sentAtMeta),
+      );
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  List<Set<GeneratedColumn>> get uniqueKeys => [
+    {memberId, stage, offsetDays, dueDate},
+  ];
+  @override
+  PaymentReminder map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return PaymentReminder(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      membershipPeriodId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}membership_period_id'],
+      ),
+      memberId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}member_id'],
+      )!,
+      stage: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}stage'],
+      )!,
+      offsetDays: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}offset_days'],
+      )!,
+      status: $PaymentRemindersTable.$converterstatus.fromSql(
+        attachedDatabase.typeMapping.read(
+          DriftSqlType.string,
+          data['${effectivePrefix}status'],
+        )!,
+      ),
+      dueDate: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}due_date'],
+      )!,
+      amountMinor: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}amount_minor'],
+      )!,
+      externalMessageId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}external_message_id'],
+      ),
+      errorMessage: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}error_message'],
+      ),
+      attempts: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}attempts'],
+      )!,
+      sentAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}sent_at'],
+      ),
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+    );
+  }
+
+  @override
+  $PaymentRemindersTable createAlias(String alias) {
+    return $PaymentRemindersTable(attachedDatabase, alias);
+  }
+
+  static JsonTypeConverter2<ReminderSendStatus, String, String>
+  $converterstatus = const EnumNameConverter<ReminderSendStatus>(
+    ReminderSendStatus.values,
+  );
+}
+
+class PaymentReminder extends DataClass implements Insertable<PaymentReminder> {
+  final int id;
+
+  /// Null for a reminder about a cycle that has not been billed yet — a
+  /// "before due" nudge fires days ahead of the cycle even existing as a row,
+  /// deliberately: materialising one just to hang a reminder off it would mean
+  /// a cycle nobody has been charged for reading as debt. See
+  /// `BillingCycleService`'s note on not creating cycles speculatively. Set
+  /// once a matching cycle exists, for the on-the-day and overdue stages.
+  final int? membershipPeriodId;
+
+  /// Copied alongside the cycle so the Reminders screen can list by member
+  /// without joining through memberships.
+  final int memberId;
+
+  /// `ReminderStage.name`, stored as text rather than as a `textEnum`.
+  ///
+  /// The stage lives in `domain/reminder_schedule.dart`, and a reminder log is
+  /// exactly the place a later release wants to start recording a new kind of
+  /// nudge without a migration — the same reasoning as [AuditEvents.action].
+  final String stage;
+
+  /// Days from the due date. Zero for the reminder on the day itself. Paired
+  /// with [stage] because "three days overdue" and "seven days overdue" are two
+  /// different messages against one cycle.
+  final int offsetDays;
+  final ReminderSendStatus status;
+
+  /// The cycle's due date at the time the reminder was resolved, copied so the
+  /// history stays readable if the cycle is later re-anchored. Part of the
+  /// duplicate guard together with [memberId], [stage] and [offsetDays] —
+  /// [membershipPeriodId] cannot serve that role since it is not always set.
+  final DateTime dueDate;
+
+  /// What was owed when the reminder went out. Minor units.
+  final int amountMinor;
+  final String? externalMessageId;
+  final String? errorMessage;
+
+  /// Retries update this row rather than inserting another, so the unique key
+  /// can stay the duplicate guard. The count is kept for the owner to see.
+  final int attempts;
+  final DateTime? sentAt;
+  final DateTime createdAt;
+  const PaymentReminder({
+    required this.id,
+    this.membershipPeriodId,
+    required this.memberId,
+    required this.stage,
+    required this.offsetDays,
+    required this.status,
+    required this.dueDate,
+    required this.amountMinor,
+    this.externalMessageId,
+    this.errorMessage,
+    required this.attempts,
+    this.sentAt,
+    required this.createdAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    if (!nullToAbsent || membershipPeriodId != null) {
+      map['membership_period_id'] = Variable<int>(membershipPeriodId);
+    }
+    map['member_id'] = Variable<int>(memberId);
+    map['stage'] = Variable<String>(stage);
+    map['offset_days'] = Variable<int>(offsetDays);
+    {
+      map['status'] = Variable<String>(
+        $PaymentRemindersTable.$converterstatus.toSql(status),
+      );
+    }
+    map['due_date'] = Variable<DateTime>(dueDate);
+    map['amount_minor'] = Variable<int>(amountMinor);
+    if (!nullToAbsent || externalMessageId != null) {
+      map['external_message_id'] = Variable<String>(externalMessageId);
+    }
+    if (!nullToAbsent || errorMessage != null) {
+      map['error_message'] = Variable<String>(errorMessage);
+    }
+    map['attempts'] = Variable<int>(attempts);
+    if (!nullToAbsent || sentAt != null) {
+      map['sent_at'] = Variable<DateTime>(sentAt);
+    }
+    map['created_at'] = Variable<DateTime>(createdAt);
+    return map;
+  }
+
+  PaymentRemindersCompanion toCompanion(bool nullToAbsent) {
+    return PaymentRemindersCompanion(
+      id: Value(id),
+      membershipPeriodId: membershipPeriodId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(membershipPeriodId),
+      memberId: Value(memberId),
+      stage: Value(stage),
+      offsetDays: Value(offsetDays),
+      status: Value(status),
+      dueDate: Value(dueDate),
+      amountMinor: Value(amountMinor),
+      externalMessageId: externalMessageId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(externalMessageId),
+      errorMessage: errorMessage == null && nullToAbsent
+          ? const Value.absent()
+          : Value(errorMessage),
+      attempts: Value(attempts),
+      sentAt: sentAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(sentAt),
+      createdAt: Value(createdAt),
+    );
+  }
+
+  factory PaymentReminder.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return PaymentReminder(
+      id: serializer.fromJson<int>(json['id']),
+      membershipPeriodId: serializer.fromJson<int?>(json['membershipPeriodId']),
+      memberId: serializer.fromJson<int>(json['memberId']),
+      stage: serializer.fromJson<String>(json['stage']),
+      offsetDays: serializer.fromJson<int>(json['offsetDays']),
+      status: $PaymentRemindersTable.$converterstatus.fromJson(
+        serializer.fromJson<String>(json['status']),
+      ),
+      dueDate: serializer.fromJson<DateTime>(json['dueDate']),
+      amountMinor: serializer.fromJson<int>(json['amountMinor']),
+      externalMessageId: serializer.fromJson<String?>(
+        json['externalMessageId'],
+      ),
+      errorMessage: serializer.fromJson<String?>(json['errorMessage']),
+      attempts: serializer.fromJson<int>(json['attempts']),
+      sentAt: serializer.fromJson<DateTime?>(json['sentAt']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'membershipPeriodId': serializer.toJson<int?>(membershipPeriodId),
+      'memberId': serializer.toJson<int>(memberId),
+      'stage': serializer.toJson<String>(stage),
+      'offsetDays': serializer.toJson<int>(offsetDays),
+      'status': serializer.toJson<String>(
+        $PaymentRemindersTable.$converterstatus.toJson(status),
+      ),
+      'dueDate': serializer.toJson<DateTime>(dueDate),
+      'amountMinor': serializer.toJson<int>(amountMinor),
+      'externalMessageId': serializer.toJson<String?>(externalMessageId),
+      'errorMessage': serializer.toJson<String?>(errorMessage),
+      'attempts': serializer.toJson<int>(attempts),
+      'sentAt': serializer.toJson<DateTime?>(sentAt),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+    };
+  }
+
+  PaymentReminder copyWith({
+    int? id,
+    Value<int?> membershipPeriodId = const Value.absent(),
+    int? memberId,
+    String? stage,
+    int? offsetDays,
+    ReminderSendStatus? status,
+    DateTime? dueDate,
+    int? amountMinor,
+    Value<String?> externalMessageId = const Value.absent(),
+    Value<String?> errorMessage = const Value.absent(),
+    int? attempts,
+    Value<DateTime?> sentAt = const Value.absent(),
+    DateTime? createdAt,
+  }) => PaymentReminder(
+    id: id ?? this.id,
+    membershipPeriodId: membershipPeriodId.present
+        ? membershipPeriodId.value
+        : this.membershipPeriodId,
+    memberId: memberId ?? this.memberId,
+    stage: stage ?? this.stage,
+    offsetDays: offsetDays ?? this.offsetDays,
+    status: status ?? this.status,
+    dueDate: dueDate ?? this.dueDate,
+    amountMinor: amountMinor ?? this.amountMinor,
+    externalMessageId: externalMessageId.present
+        ? externalMessageId.value
+        : this.externalMessageId,
+    errorMessage: errorMessage.present ? errorMessage.value : this.errorMessage,
+    attempts: attempts ?? this.attempts,
+    sentAt: sentAt.present ? sentAt.value : this.sentAt,
+    createdAt: createdAt ?? this.createdAt,
+  );
+  PaymentReminder copyWithCompanion(PaymentRemindersCompanion data) {
+    return PaymentReminder(
+      id: data.id.present ? data.id.value : this.id,
+      membershipPeriodId: data.membershipPeriodId.present
+          ? data.membershipPeriodId.value
+          : this.membershipPeriodId,
+      memberId: data.memberId.present ? data.memberId.value : this.memberId,
+      stage: data.stage.present ? data.stage.value : this.stage,
+      offsetDays: data.offsetDays.present
+          ? data.offsetDays.value
+          : this.offsetDays,
+      status: data.status.present ? data.status.value : this.status,
+      dueDate: data.dueDate.present ? data.dueDate.value : this.dueDate,
+      amountMinor: data.amountMinor.present
+          ? data.amountMinor.value
+          : this.amountMinor,
+      externalMessageId: data.externalMessageId.present
+          ? data.externalMessageId.value
+          : this.externalMessageId,
+      errorMessage: data.errorMessage.present
+          ? data.errorMessage.value
+          : this.errorMessage,
+      attempts: data.attempts.present ? data.attempts.value : this.attempts,
+      sentAt: data.sentAt.present ? data.sentAt.value : this.sentAt,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('PaymentReminder(')
+          ..write('id: $id, ')
+          ..write('membershipPeriodId: $membershipPeriodId, ')
+          ..write('memberId: $memberId, ')
+          ..write('stage: $stage, ')
+          ..write('offsetDays: $offsetDays, ')
+          ..write('status: $status, ')
+          ..write('dueDate: $dueDate, ')
+          ..write('amountMinor: $amountMinor, ')
+          ..write('externalMessageId: $externalMessageId, ')
+          ..write('errorMessage: $errorMessage, ')
+          ..write('attempts: $attempts, ')
+          ..write('sentAt: $sentAt, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    membershipPeriodId,
+    memberId,
+    stage,
+    offsetDays,
+    status,
+    dueDate,
+    amountMinor,
+    externalMessageId,
+    errorMessage,
+    attempts,
+    sentAt,
+    createdAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is PaymentReminder &&
+          other.id == this.id &&
+          other.membershipPeriodId == this.membershipPeriodId &&
+          other.memberId == this.memberId &&
+          other.stage == this.stage &&
+          other.offsetDays == this.offsetDays &&
+          other.status == this.status &&
+          other.dueDate == this.dueDate &&
+          other.amountMinor == this.amountMinor &&
+          other.externalMessageId == this.externalMessageId &&
+          other.errorMessage == this.errorMessage &&
+          other.attempts == this.attempts &&
+          other.sentAt == this.sentAt &&
+          other.createdAt == this.createdAt);
+}
+
+class PaymentRemindersCompanion extends UpdateCompanion<PaymentReminder> {
+  final Value<int> id;
+  final Value<int?> membershipPeriodId;
+  final Value<int> memberId;
+  final Value<String> stage;
+  final Value<int> offsetDays;
+  final Value<ReminderSendStatus> status;
+  final Value<DateTime> dueDate;
+  final Value<int> amountMinor;
+  final Value<String?> externalMessageId;
+  final Value<String?> errorMessage;
+  final Value<int> attempts;
+  final Value<DateTime?> sentAt;
+  final Value<DateTime> createdAt;
+  const PaymentRemindersCompanion({
+    this.id = const Value.absent(),
+    this.membershipPeriodId = const Value.absent(),
+    this.memberId = const Value.absent(),
+    this.stage = const Value.absent(),
+    this.offsetDays = const Value.absent(),
+    this.status = const Value.absent(),
+    this.dueDate = const Value.absent(),
+    this.amountMinor = const Value.absent(),
+    this.externalMessageId = const Value.absent(),
+    this.errorMessage = const Value.absent(),
+    this.attempts = const Value.absent(),
+    this.sentAt = const Value.absent(),
+    this.createdAt = const Value.absent(),
+  });
+  PaymentRemindersCompanion.insert({
+    this.id = const Value.absent(),
+    this.membershipPeriodId = const Value.absent(),
+    required int memberId,
+    required String stage,
+    required int offsetDays,
+    required ReminderSendStatus status,
+    required DateTime dueDate,
+    required int amountMinor,
+    this.externalMessageId = const Value.absent(),
+    this.errorMessage = const Value.absent(),
+    this.attempts = const Value.absent(),
+    this.sentAt = const Value.absent(),
+    this.createdAt = const Value.absent(),
+  }) : memberId = Value(memberId),
+       stage = Value(stage),
+       offsetDays = Value(offsetDays),
+       status = Value(status),
+       dueDate = Value(dueDate),
+       amountMinor = Value(amountMinor);
+  static Insertable<PaymentReminder> custom({
+    Expression<int>? id,
+    Expression<int>? membershipPeriodId,
+    Expression<int>? memberId,
+    Expression<String>? stage,
+    Expression<int>? offsetDays,
+    Expression<String>? status,
+    Expression<DateTime>? dueDate,
+    Expression<int>? amountMinor,
+    Expression<String>? externalMessageId,
+    Expression<String>? errorMessage,
+    Expression<int>? attempts,
+    Expression<DateTime>? sentAt,
+    Expression<DateTime>? createdAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (membershipPeriodId != null)
+        'membership_period_id': membershipPeriodId,
+      if (memberId != null) 'member_id': memberId,
+      if (stage != null) 'stage': stage,
+      if (offsetDays != null) 'offset_days': offsetDays,
+      if (status != null) 'status': status,
+      if (dueDate != null) 'due_date': dueDate,
+      if (amountMinor != null) 'amount_minor': amountMinor,
+      if (externalMessageId != null) 'external_message_id': externalMessageId,
+      if (errorMessage != null) 'error_message': errorMessage,
+      if (attempts != null) 'attempts': attempts,
+      if (sentAt != null) 'sent_at': sentAt,
+      if (createdAt != null) 'created_at': createdAt,
+    });
+  }
+
+  PaymentRemindersCompanion copyWith({
+    Value<int>? id,
+    Value<int?>? membershipPeriodId,
+    Value<int>? memberId,
+    Value<String>? stage,
+    Value<int>? offsetDays,
+    Value<ReminderSendStatus>? status,
+    Value<DateTime>? dueDate,
+    Value<int>? amountMinor,
+    Value<String?>? externalMessageId,
+    Value<String?>? errorMessage,
+    Value<int>? attempts,
+    Value<DateTime?>? sentAt,
+    Value<DateTime>? createdAt,
+  }) {
+    return PaymentRemindersCompanion(
+      id: id ?? this.id,
+      membershipPeriodId: membershipPeriodId ?? this.membershipPeriodId,
+      memberId: memberId ?? this.memberId,
+      stage: stage ?? this.stage,
+      offsetDays: offsetDays ?? this.offsetDays,
+      status: status ?? this.status,
+      dueDate: dueDate ?? this.dueDate,
+      amountMinor: amountMinor ?? this.amountMinor,
+      externalMessageId: externalMessageId ?? this.externalMessageId,
+      errorMessage: errorMessage ?? this.errorMessage,
+      attempts: attempts ?? this.attempts,
+      sentAt: sentAt ?? this.sentAt,
+      createdAt: createdAt ?? this.createdAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (membershipPeriodId.present) {
+      map['membership_period_id'] = Variable<int>(membershipPeriodId.value);
+    }
+    if (memberId.present) {
+      map['member_id'] = Variable<int>(memberId.value);
+    }
+    if (stage.present) {
+      map['stage'] = Variable<String>(stage.value);
+    }
+    if (offsetDays.present) {
+      map['offset_days'] = Variable<int>(offsetDays.value);
+    }
+    if (status.present) {
+      map['status'] = Variable<String>(
+        $PaymentRemindersTable.$converterstatus.toSql(status.value),
+      );
+    }
+    if (dueDate.present) {
+      map['due_date'] = Variable<DateTime>(dueDate.value);
+    }
+    if (amountMinor.present) {
+      map['amount_minor'] = Variable<int>(amountMinor.value);
+    }
+    if (externalMessageId.present) {
+      map['external_message_id'] = Variable<String>(externalMessageId.value);
+    }
+    if (errorMessage.present) {
+      map['error_message'] = Variable<String>(errorMessage.value);
+    }
+    if (attempts.present) {
+      map['attempts'] = Variable<int>(attempts.value);
+    }
+    if (sentAt.present) {
+      map['sent_at'] = Variable<DateTime>(sentAt.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('PaymentRemindersCompanion(')
+          ..write('id: $id, ')
+          ..write('membershipPeriodId: $membershipPeriodId, ')
+          ..write('memberId: $memberId, ')
+          ..write('stage: $stage, ')
+          ..write('offsetDays: $offsetDays, ')
+          ..write('status: $status, ')
+          ..write('dueDate: $dueDate, ')
+          ..write('amountMinor: $amountMinor, ')
+          ..write('externalMessageId: $externalMessageId, ')
+          ..write('errorMessage: $errorMessage, ')
+          ..write('attempts: $attempts, ')
+          ..write('sentAt: $sentAt, ')
           ..write('createdAt: $createdAt')
           ..write(')'))
         .toString();
@@ -7588,6 +9517,11 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $MembershipPeriodsTable membershipPeriods =
       $MembershipPeriodsTable(this);
   late final $PaymentsTable payments = $PaymentsTable(this);
+  late final $PaymentAllocationsTable paymentAllocations =
+      $PaymentAllocationsTable(this);
+  late final $PaymentRemindersTable paymentReminders = $PaymentRemindersTable(
+    this,
+  );
   late final $ReceiptsTable receipts = $ReceiptsTable(this);
   late final $ReceiptCountersTable receiptCounters = $ReceiptCountersTable(
     this,
@@ -7610,6 +9544,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     memberships,
     membershipPeriods,
     payments,
+    paymentAllocations,
+    paymentReminders,
     receipts,
     receiptCounters,
     whatsAppMessages,
@@ -7624,6 +9560,27 @@ abstract class _$AppDatabase extends GeneratedDatabase {
         limitUpdateKind: UpdateKind.delete,
       ),
       result: [TableUpdate('app_sessions', kind: UpdateKind.delete)],
+    ),
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'payments',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [TableUpdate('payment_allocations', kind: UpdateKind.delete)],
+    ),
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'membership_periods',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [TableUpdate('payment_allocations', kind: UpdateKind.delete)],
+    ),
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'membership_periods',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [TableUpdate('payment_reminders', kind: UpdateKind.delete)],
     ),
   ]);
 }
@@ -8336,6 +10293,16 @@ typedef $$GymSettingsTableCreateCompanionBuilder =
       Value<String> themeMode,
       Value<DateTime?> lastUpdateCheckAt,
       Value<String?> dismissedUpdateVersion,
+      Value<bool> reminderAutoSend,
+      Value<String> reminderDaysBefore,
+      Value<String> reminderDaysAfter,
+      Value<bool> reminderOnDueDate,
+      Value<int> reminderSendFromHour,
+      Value<int> reminderSendUntilHour,
+      Value<int> reminderMaxPerRun,
+      Value<String?> whatsappReminderTemplate,
+      Value<String> whatsappReminderTemplateLanguage,
+      Value<String?> paymentInstructions,
     });
 typedef $$GymSettingsTableUpdateCompanionBuilder =
     GymSettingsCompanion Function({
@@ -8361,6 +10328,16 @@ typedef $$GymSettingsTableUpdateCompanionBuilder =
       Value<String> themeMode,
       Value<DateTime?> lastUpdateCheckAt,
       Value<String?> dismissedUpdateVersion,
+      Value<bool> reminderAutoSend,
+      Value<String> reminderDaysBefore,
+      Value<String> reminderDaysAfter,
+      Value<bool> reminderOnDueDate,
+      Value<int> reminderSendFromHour,
+      Value<int> reminderSendUntilHour,
+      Value<int> reminderMaxPerRun,
+      Value<String?> whatsappReminderTemplate,
+      Value<String> whatsappReminderTemplateLanguage,
+      Value<String?> paymentInstructions,
     });
 
 class $$GymSettingsTableFilterComposer
@@ -8487,6 +10464,57 @@ class $$GymSettingsTableFilterComposer
     column: $table.dismissedUpdateVersion,
     builder: (column) => ColumnFilters(column),
   );
+
+  ColumnFilters<bool> get reminderAutoSend => $composableBuilder(
+    column: $table.reminderAutoSend,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get reminderDaysBefore => $composableBuilder(
+    column: $table.reminderDaysBefore,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get reminderDaysAfter => $composableBuilder(
+    column: $table.reminderDaysAfter,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get reminderOnDueDate => $composableBuilder(
+    column: $table.reminderOnDueDate,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get reminderSendFromHour => $composableBuilder(
+    column: $table.reminderSendFromHour,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get reminderSendUntilHour => $composableBuilder(
+    column: $table.reminderSendUntilHour,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get reminderMaxPerRun => $composableBuilder(
+    column: $table.reminderMaxPerRun,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get whatsappReminderTemplate => $composableBuilder(
+    column: $table.whatsappReminderTemplate,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get whatsappReminderTemplateLanguage =>
+      $composableBuilder(
+        column: $table.whatsappReminderTemplateLanguage,
+        builder: (column) => ColumnFilters(column),
+      );
+
+  ColumnFilters<String> get paymentInstructions => $composableBuilder(
+    column: $table.paymentInstructions,
+    builder: (column) => ColumnFilters(column),
+  );
 }
 
 class $$GymSettingsTableOrderingComposer
@@ -8608,6 +10636,57 @@ class $$GymSettingsTableOrderingComposer
     column: $table.dismissedUpdateVersion,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<bool> get reminderAutoSend => $composableBuilder(
+    column: $table.reminderAutoSend,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get reminderDaysBefore => $composableBuilder(
+    column: $table.reminderDaysBefore,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get reminderDaysAfter => $composableBuilder(
+    column: $table.reminderDaysAfter,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get reminderOnDueDate => $composableBuilder(
+    column: $table.reminderOnDueDate,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get reminderSendFromHour => $composableBuilder(
+    column: $table.reminderSendFromHour,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get reminderSendUntilHour => $composableBuilder(
+    column: $table.reminderSendUntilHour,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get reminderMaxPerRun => $composableBuilder(
+    column: $table.reminderMaxPerRun,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get whatsappReminderTemplate => $composableBuilder(
+    column: $table.whatsappReminderTemplate,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get whatsappReminderTemplateLanguage =>
+      $composableBuilder(
+        column: $table.whatsappReminderTemplateLanguage,
+        builder: (column) => ColumnOrderings(column),
+      );
+
+  ColumnOrderings<String> get paymentInstructions => $composableBuilder(
+    column: $table.paymentInstructions,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$GymSettingsTableAnnotationComposer
@@ -8714,6 +10793,57 @@ class $$GymSettingsTableAnnotationComposer
     column: $table.dismissedUpdateVersion,
     builder: (column) => column,
   );
+
+  GeneratedColumn<bool> get reminderAutoSend => $composableBuilder(
+    column: $table.reminderAutoSend,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get reminderDaysBefore => $composableBuilder(
+    column: $table.reminderDaysBefore,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get reminderDaysAfter => $composableBuilder(
+    column: $table.reminderDaysAfter,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get reminderOnDueDate => $composableBuilder(
+    column: $table.reminderOnDueDate,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get reminderSendFromHour => $composableBuilder(
+    column: $table.reminderSendFromHour,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get reminderSendUntilHour => $composableBuilder(
+    column: $table.reminderSendUntilHour,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get reminderMaxPerRun => $composableBuilder(
+    column: $table.reminderMaxPerRun,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get whatsappReminderTemplate => $composableBuilder(
+    column: $table.whatsappReminderTemplate,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get whatsappReminderTemplateLanguage =>
+      $composableBuilder(
+        column: $table.whatsappReminderTemplateLanguage,
+        builder: (column) => column,
+      );
+
+  GeneratedColumn<String> get paymentInstructions => $composableBuilder(
+    column: $table.paymentInstructions,
+    builder: (column) => column,
+  );
 }
 
 class $$GymSettingsTableTableManager
@@ -8771,6 +10901,17 @@ class $$GymSettingsTableTableManager
                 Value<String> themeMode = const Value.absent(),
                 Value<DateTime?> lastUpdateCheckAt = const Value.absent(),
                 Value<String?> dismissedUpdateVersion = const Value.absent(),
+                Value<bool> reminderAutoSend = const Value.absent(),
+                Value<String> reminderDaysBefore = const Value.absent(),
+                Value<String> reminderDaysAfter = const Value.absent(),
+                Value<bool> reminderOnDueDate = const Value.absent(),
+                Value<int> reminderSendFromHour = const Value.absent(),
+                Value<int> reminderSendUntilHour = const Value.absent(),
+                Value<int> reminderMaxPerRun = const Value.absent(),
+                Value<String?> whatsappReminderTemplate = const Value.absent(),
+                Value<String> whatsappReminderTemplateLanguage =
+                    const Value.absent(),
+                Value<String?> paymentInstructions = const Value.absent(),
               }) => GymSettingsCompanion(
                 id: id,
                 gymName: gymName,
@@ -8795,6 +10936,17 @@ class $$GymSettingsTableTableManager
                 themeMode: themeMode,
                 lastUpdateCheckAt: lastUpdateCheckAt,
                 dismissedUpdateVersion: dismissedUpdateVersion,
+                reminderAutoSend: reminderAutoSend,
+                reminderDaysBefore: reminderDaysBefore,
+                reminderDaysAfter: reminderDaysAfter,
+                reminderOnDueDate: reminderOnDueDate,
+                reminderSendFromHour: reminderSendFromHour,
+                reminderSendUntilHour: reminderSendUntilHour,
+                reminderMaxPerRun: reminderMaxPerRun,
+                whatsappReminderTemplate: whatsappReminderTemplate,
+                whatsappReminderTemplateLanguage:
+                    whatsappReminderTemplateLanguage,
+                paymentInstructions: paymentInstructions,
               ),
           createCompanionCallback:
               ({
@@ -8822,6 +10974,17 @@ class $$GymSettingsTableTableManager
                 Value<String> themeMode = const Value.absent(),
                 Value<DateTime?> lastUpdateCheckAt = const Value.absent(),
                 Value<String?> dismissedUpdateVersion = const Value.absent(),
+                Value<bool> reminderAutoSend = const Value.absent(),
+                Value<String> reminderDaysBefore = const Value.absent(),
+                Value<String> reminderDaysAfter = const Value.absent(),
+                Value<bool> reminderOnDueDate = const Value.absent(),
+                Value<int> reminderSendFromHour = const Value.absent(),
+                Value<int> reminderSendUntilHour = const Value.absent(),
+                Value<int> reminderMaxPerRun = const Value.absent(),
+                Value<String?> whatsappReminderTemplate = const Value.absent(),
+                Value<String> whatsappReminderTemplateLanguage =
+                    const Value.absent(),
+                Value<String?> paymentInstructions = const Value.absent(),
               }) => GymSettingsCompanion.insert(
                 id: id,
                 gymName: gymName,
@@ -8846,6 +11009,17 @@ class $$GymSettingsTableTableManager
                 themeMode: themeMode,
                 lastUpdateCheckAt: lastUpdateCheckAt,
                 dismissedUpdateVersion: dismissedUpdateVersion,
+                reminderAutoSend: reminderAutoSend,
+                reminderDaysBefore: reminderDaysBefore,
+                reminderDaysAfter: reminderDaysAfter,
+                reminderOnDueDate: reminderOnDueDate,
+                reminderSendFromHour: reminderSendFromHour,
+                reminderSendUntilHour: reminderSendUntilHour,
+                reminderMaxPerRun: reminderMaxPerRun,
+                whatsappReminderTemplate: whatsappReminderTemplate,
+                whatsappReminderTemplateLanguage:
+                    whatsappReminderTemplateLanguage,
+                paymentInstructions: paymentInstructions,
               ),
           withReferenceMapper: (p0) => p0
               .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
@@ -9273,6 +11447,26 @@ final class $$MembersTableReferences
     );
   }
 
+  static MultiTypedResultKey<$PaymentRemindersTable, List<PaymentReminder>>
+  _paymentRemindersRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
+    db.paymentReminders,
+    aliasName: 'members__id__payment_reminders__member_id',
+  );
+
+  $$PaymentRemindersTableProcessedTableManager get paymentRemindersRefs {
+    final manager = $$PaymentRemindersTableTableManager(
+      $_db,
+      $_db.paymentReminders,
+    ).filter((f) => f.memberId.id.sqlEquals($_itemColumn<int>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(
+      _paymentRemindersRefsTable($_db),
+    );
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+
   static MultiTypedResultKey<$WhatsAppMessagesTable, List<WhatsAppMessage>>
   _whatsAppMessagesRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
     db.whatsAppMessages,
@@ -9427,6 +11621,31 @@ class $$MembersTableFilterComposer
           }) => $$PaymentsTableFilterComposer(
             $db: $db,
             $table: $db.payments,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<bool> paymentRemindersRefs(
+    Expression<bool> Function($$PaymentRemindersTableFilterComposer f) f,
+  ) {
+    final $$PaymentRemindersTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.paymentReminders,
+      getReferencedColumn: (t) => t.memberId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$PaymentRemindersTableFilterComposer(
+            $db: $db,
+            $table: $db.paymentReminders,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -9670,6 +11889,31 @@ class $$MembersTableAnnotationComposer
     return f(composer);
   }
 
+  Expression<T> paymentRemindersRefs<T extends Object>(
+    Expression<T> Function($$PaymentRemindersTableAnnotationComposer a) f,
+  ) {
+    final $$PaymentRemindersTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.paymentReminders,
+      getReferencedColumn: (t) => t.memberId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$PaymentRemindersTableAnnotationComposer(
+            $db: $db,
+            $table: $db.paymentReminders,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
   Expression<T> whatsAppMessagesRefs<T extends Object>(
     Expression<T> Function($$WhatsAppMessagesTableAnnotationComposer a) f,
   ) {
@@ -9737,6 +11981,7 @@ class $$MembersTableTableManager
           PrefetchHooks Function({
             bool membershipsRefs,
             bool paymentsRefs,
+            bool paymentRemindersRefs,
             bool whatsAppMessagesRefs,
             bool memberNotesRefs,
           })
@@ -9824,6 +12069,7 @@ class $$MembersTableTableManager
               ({
                 membershipsRefs = false,
                 paymentsRefs = false,
+                paymentRemindersRefs = false,
                 whatsAppMessagesRefs = false,
                 memberNotesRefs = false,
               }) {
@@ -9832,6 +12078,7 @@ class $$MembersTableTableManager
                   explicitlyWatchedTables: [
                     if (membershipsRefs) db.memberships,
                     if (paymentsRefs) db.payments,
+                    if (paymentRemindersRefs) db.paymentReminders,
                     if (whatsAppMessagesRefs) db.whatsAppMessages,
                     if (memberNotesRefs) db.memberNotes,
                   ],
@@ -9874,6 +12121,27 @@ class $$MembersTableTableManager
                                 table,
                                 p0,
                               ).paymentsRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.memberId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
+                      if (paymentRemindersRefs)
+                        await $_getPrefetchedData<
+                          Member,
+                          $MembersTable,
+                          PaymentReminder
+                        >(
+                          currentTable: table,
+                          referencedTable: $$MembersTableReferences
+                              ._paymentRemindersRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$MembersTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).paymentRemindersRefs,
                           referencedItemsForCurrentItem:
                               (item, referencedItems) => referencedItems.where(
                                 (e) => e.memberId == item.id,
@@ -9945,6 +12213,7 @@ typedef $$MembersTableProcessedTableManager =
       PrefetchHooks Function({
         bool membershipsRefs,
         bool paymentsRefs,
+        bool paymentRemindersRefs,
         bool whatsAppMessagesRefs,
         bool memberNotesRefs,
       })
@@ -9956,6 +12225,7 @@ typedef $$MembershipsTableCreateCompanionBuilder =
       required int planId,
       Value<int?> feeOverrideMinor,
       required DateTime startDate,
+      Value<int?> billingAnchorDay,
       Value<DateTime?> endDate,
     });
 typedef $$MembershipsTableUpdateCompanionBuilder =
@@ -9965,6 +12235,7 @@ typedef $$MembershipsTableUpdateCompanionBuilder =
       Value<int> planId,
       Value<int?> feeOverrideMinor,
       Value<DateTime> startDate,
+      Value<int?> billingAnchorDay,
       Value<DateTime?> endDate,
     });
 
@@ -10050,6 +12321,11 @@ class $$MembershipsTableFilterComposer
 
   ColumnFilters<DateTime> get startDate => $composableBuilder(
     column: $table.startDate,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get billingAnchorDay => $composableBuilder(
+    column: $table.billingAnchorDay,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -10154,6 +12430,11 @@ class $$MembershipsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<int> get billingAnchorDay => $composableBuilder(
+    column: $table.billingAnchorDay,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<DateTime> get endDate => $composableBuilder(
     column: $table.endDate,
     builder: (column) => ColumnOrderings(column),
@@ -10225,6 +12506,11 @@ class $$MembershipsTableAnnotationComposer
 
   GeneratedColumn<DateTime> get startDate =>
       $composableBuilder(column: $table.startDate, builder: (column) => column);
+
+  GeneratedColumn<int> get billingAnchorDay => $composableBuilder(
+    column: $table.billingAnchorDay,
+    builder: (column) => column,
+  );
 
   GeneratedColumn<DateTime> get endDate =>
       $composableBuilder(column: $table.endDate, builder: (column) => column);
@@ -10339,6 +12625,7 @@ class $$MembershipsTableTableManager
                 Value<int> planId = const Value.absent(),
                 Value<int?> feeOverrideMinor = const Value.absent(),
                 Value<DateTime> startDate = const Value.absent(),
+                Value<int?> billingAnchorDay = const Value.absent(),
                 Value<DateTime?> endDate = const Value.absent(),
               }) => MembershipsCompanion(
                 id: id,
@@ -10346,6 +12633,7 @@ class $$MembershipsTableTableManager
                 planId: planId,
                 feeOverrideMinor: feeOverrideMinor,
                 startDate: startDate,
+                billingAnchorDay: billingAnchorDay,
                 endDate: endDate,
               ),
           createCompanionCallback:
@@ -10355,6 +12643,7 @@ class $$MembershipsTableTableManager
                 required int planId,
                 Value<int?> feeOverrideMinor = const Value.absent(),
                 required DateTime startDate,
+                Value<int?> billingAnchorDay = const Value.absent(),
                 Value<DateTime?> endDate = const Value.absent(),
               }) => MembershipsCompanion.insert(
                 id: id,
@@ -10362,6 +12651,7 @@ class $$MembershipsTableTableManager
                 planId: planId,
                 feeOverrideMinor: feeOverrideMinor,
                 startDate: startDate,
+                billingAnchorDay: billingAnchorDay,
                 endDate: endDate,
               ),
           withReferenceMapper: (p0) => p0
@@ -10488,6 +12778,7 @@ typedef $$MembershipPeriodsTableCreateCompanionBuilder =
       required DateTime periodStart,
       required DateTime periodEnd,
       required int expectedAmountMinor,
+      Value<DateTime?> settledAt,
     });
 typedef $$MembershipPeriodsTableUpdateCompanionBuilder =
     MembershipPeriodsCompanion Function({
@@ -10496,6 +12787,7 @@ typedef $$MembershipPeriodsTableUpdateCompanionBuilder =
       Value<DateTime> periodStart,
       Value<DateTime> periodEnd,
       Value<int> expectedAmountMinor,
+      Value<DateTime?> settledAt,
     });
 
 final class $$MembershipPeriodsTableReferences
@@ -10546,6 +12838,52 @@ final class $$MembershipPeriodsTableReferences
       manager.$state.copyWith(prefetchedData: cache),
     );
   }
+
+  static MultiTypedResultKey<$PaymentAllocationsTable, List<PaymentAllocation>>
+  _paymentAllocationsRefsTable(_$AppDatabase db) =>
+      MultiTypedResultKey.fromTable(
+        db.paymentAllocations,
+        aliasName:
+            'membership_periods__id__payment_allocations__membership_period_id',
+      );
+
+  $$PaymentAllocationsTableProcessedTableManager get paymentAllocationsRefs {
+    final manager =
+        $$PaymentAllocationsTableTableManager(
+          $_db,
+          $_db.paymentAllocations,
+        ).filter(
+          (f) => f.membershipPeriodId.id.sqlEquals($_itemColumn<int>('id')!),
+        );
+
+    final cache = $_typedResult.readTableOrNull(
+      _paymentAllocationsRefsTable($_db),
+    );
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+
+  static MultiTypedResultKey<$PaymentRemindersTable, List<PaymentReminder>>
+  _paymentRemindersRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
+    db.paymentReminders,
+    aliasName:
+        'membership_periods__id__payment_reminders__membership_period_id',
+  );
+
+  $$PaymentRemindersTableProcessedTableManager get paymentRemindersRefs {
+    final manager =
+        $$PaymentRemindersTableTableManager($_db, $_db.paymentReminders).filter(
+          (f) => f.membershipPeriodId.id.sqlEquals($_itemColumn<int>('id')!),
+        );
+
+    final cache = $_typedResult.readTableOrNull(
+      _paymentRemindersRefsTable($_db),
+    );
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
 }
 
 class $$MembershipPeriodsTableFilterComposer
@@ -10574,6 +12912,11 @@ class $$MembershipPeriodsTableFilterComposer
 
   ColumnFilters<int> get expectedAmountMinor => $composableBuilder(
     column: $table.expectedAmountMinor,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get settledAt => $composableBuilder(
+    column: $table.settledAt,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -10624,6 +12967,56 @@ class $$MembershipPeriodsTableFilterComposer
     );
     return f(composer);
   }
+
+  Expression<bool> paymentAllocationsRefs(
+    Expression<bool> Function($$PaymentAllocationsTableFilterComposer f) f,
+  ) {
+    final $$PaymentAllocationsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.paymentAllocations,
+      getReferencedColumn: (t) => t.membershipPeriodId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$PaymentAllocationsTableFilterComposer(
+            $db: $db,
+            $table: $db.paymentAllocations,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<bool> paymentRemindersRefs(
+    Expression<bool> Function($$PaymentRemindersTableFilterComposer f) f,
+  ) {
+    final $$PaymentRemindersTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.paymentReminders,
+      getReferencedColumn: (t) => t.membershipPeriodId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$PaymentRemindersTableFilterComposer(
+            $db: $db,
+            $table: $db.paymentReminders,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
 }
 
 class $$MembershipPeriodsTableOrderingComposer
@@ -10652,6 +13045,11 @@ class $$MembershipPeriodsTableOrderingComposer
 
   ColumnOrderings<int> get expectedAmountMinor => $composableBuilder(
     column: $table.expectedAmountMinor,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get settledAt => $composableBuilder(
+    column: $table.settledAt,
     builder: (column) => ColumnOrderings(column),
   );
 
@@ -10704,6 +13102,9 @@ class $$MembershipPeriodsTableAnnotationComposer
     builder: (column) => column,
   );
 
+  GeneratedColumn<DateTime> get settledAt =>
+      $composableBuilder(column: $table.settledAt, builder: (column) => column);
+
   $$MembershipsTableAnnotationComposer get membershipId {
     final $$MembershipsTableAnnotationComposer composer = $composerBuilder(
       composer: this,
@@ -10751,6 +13152,57 @@ class $$MembershipPeriodsTableAnnotationComposer
     );
     return f(composer);
   }
+
+  Expression<T> paymentAllocationsRefs<T extends Object>(
+    Expression<T> Function($$PaymentAllocationsTableAnnotationComposer a) f,
+  ) {
+    final $$PaymentAllocationsTableAnnotationComposer composer =
+        $composerBuilder(
+          composer: this,
+          getCurrentColumn: (t) => t.id,
+          referencedTable: $db.paymentAllocations,
+          getReferencedColumn: (t) => t.membershipPeriodId,
+          builder:
+              (
+                joinBuilder, {
+                $addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer,
+              }) => $$PaymentAllocationsTableAnnotationComposer(
+                $db: $db,
+                $table: $db.paymentAllocations,
+                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+                joinBuilder: joinBuilder,
+                $removeJoinBuilderFromRootComposer:
+                    $removeJoinBuilderFromRootComposer,
+              ),
+        );
+    return f(composer);
+  }
+
+  Expression<T> paymentRemindersRefs<T extends Object>(
+    Expression<T> Function($$PaymentRemindersTableAnnotationComposer a) f,
+  ) {
+    final $$PaymentRemindersTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.paymentReminders,
+      getReferencedColumn: (t) => t.membershipPeriodId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$PaymentRemindersTableAnnotationComposer(
+            $db: $db,
+            $table: $db.paymentReminders,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
 }
 
 class $$MembershipPeriodsTableTableManager
@@ -10766,7 +13218,12 @@ class $$MembershipPeriodsTableTableManager
           $$MembershipPeriodsTableUpdateCompanionBuilder,
           (MembershipPeriod, $$MembershipPeriodsTableReferences),
           MembershipPeriod,
-          PrefetchHooks Function({bool membershipId, bool paymentsRefs})
+          PrefetchHooks Function({
+            bool membershipId,
+            bool paymentsRefs,
+            bool paymentAllocationsRefs,
+            bool paymentRemindersRefs,
+          })
         > {
   $$MembershipPeriodsTableTableManager(
     _$AppDatabase db,
@@ -10791,12 +13248,14 @@ class $$MembershipPeriodsTableTableManager
                 Value<DateTime> periodStart = const Value.absent(),
                 Value<DateTime> periodEnd = const Value.absent(),
                 Value<int> expectedAmountMinor = const Value.absent(),
+                Value<DateTime?> settledAt = const Value.absent(),
               }) => MembershipPeriodsCompanion(
                 id: id,
                 membershipId: membershipId,
                 periodStart: periodStart,
                 periodEnd: periodEnd,
                 expectedAmountMinor: expectedAmountMinor,
+                settledAt: settledAt,
               ),
           createCompanionCallback:
               ({
@@ -10805,12 +13264,14 @@ class $$MembershipPeriodsTableTableManager
                 required DateTime periodStart,
                 required DateTime periodEnd,
                 required int expectedAmountMinor,
+                Value<DateTime?> settledAt = const Value.absent(),
               }) => MembershipPeriodsCompanion.insert(
                 id: id,
                 membershipId: membershipId,
                 periodStart: periodStart,
                 periodEnd: periodEnd,
                 expectedAmountMinor: expectedAmountMinor,
+                settledAt: settledAt,
               ),
           withReferenceMapper: (p0) => p0
               .map(
@@ -10821,10 +13282,19 @@ class $$MembershipPeriodsTableTableManager
               )
               .toList(),
           prefetchHooksCallback:
-              ({membershipId = false, paymentsRefs = false}) {
+              ({
+                membershipId = false,
+                paymentsRefs = false,
+                paymentAllocationsRefs = false,
+                paymentRemindersRefs = false,
+              }) {
                 return PrefetchHooks(
                   db: db,
-                  explicitlyWatchedTables: [if (paymentsRefs) db.payments],
+                  explicitlyWatchedTables: [
+                    if (paymentsRefs) db.payments,
+                    if (paymentAllocationsRefs) db.paymentAllocations,
+                    if (paymentRemindersRefs) db.paymentReminders,
+                  ],
                   addJoins:
                       <
                         T extends TableManagerState<
@@ -10882,6 +13352,48 @@ class $$MembershipPeriodsTableTableManager
                               ),
                           typedResults: items,
                         ),
+                      if (paymentAllocationsRefs)
+                        await $_getPrefetchedData<
+                          MembershipPeriod,
+                          $MembershipPeriodsTable,
+                          PaymentAllocation
+                        >(
+                          currentTable: table,
+                          referencedTable: $$MembershipPeriodsTableReferences
+                              ._paymentAllocationsRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$MembershipPeriodsTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).paymentAllocationsRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.membershipPeriodId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
+                      if (paymentRemindersRefs)
+                        await $_getPrefetchedData<
+                          MembershipPeriod,
+                          $MembershipPeriodsTable,
+                          PaymentReminder
+                        >(
+                          currentTable: table,
+                          referencedTable: $$MembershipPeriodsTableReferences
+                              ._paymentRemindersRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$MembershipPeriodsTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).paymentRemindersRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.membershipPeriodId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
                     ];
                   },
                 );
@@ -10902,7 +13414,12 @@ typedef $$MembershipPeriodsTableProcessedTableManager =
       $$MembershipPeriodsTableUpdateCompanionBuilder,
       (MembershipPeriod, $$MembershipPeriodsTableReferences),
       MembershipPeriod,
-      PrefetchHooks Function({bool membershipId, bool paymentsRefs})
+      PrefetchHooks Function({
+        bool membershipId,
+        bool paymentsRefs,
+        bool paymentAllocationsRefs,
+        bool paymentRemindersRefs,
+      })
     >;
 typedef $$PaymentsTableCreateCompanionBuilder =
     PaymentsCompanion Function({
@@ -11010,6 +13527,27 @@ final class $$PaymentsTableReferences
     if (item == null) return manager;
     return ProcessedTableManager(
       manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+
+  static MultiTypedResultKey<$PaymentAllocationsTable, List<PaymentAllocation>>
+  _paymentAllocationsRefsTable(_$AppDatabase db) =>
+      MultiTypedResultKey.fromTable(
+        db.paymentAllocations,
+        aliasName: 'payments__id__payment_allocations__payment_id',
+      );
+
+  $$PaymentAllocationsTableProcessedTableManager get paymentAllocationsRefs {
+    final manager = $$PaymentAllocationsTableTableManager(
+      $_db,
+      $_db.paymentAllocations,
+    ).filter((f) => f.paymentId.id.sqlEquals($_itemColumn<int>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(
+      _paymentAllocationsRefsTable($_db),
+    );
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
     );
   }
 
@@ -11184,6 +13722,31 @@ class $$PaymentsTableFilterComposer
           ),
     );
     return composer;
+  }
+
+  Expression<bool> paymentAllocationsRefs(
+    Expression<bool> Function($$PaymentAllocationsTableFilterComposer f) f,
+  ) {
+    final $$PaymentAllocationsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.paymentAllocations,
+      getReferencedColumn: (t) => t.paymentId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$PaymentAllocationsTableFilterComposer(
+            $db: $db,
+            $table: $db.paymentAllocations,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
   }
 
   Expression<bool> receiptsRefs(
@@ -11504,6 +14067,32 @@ class $$PaymentsTableAnnotationComposer
     return composer;
   }
 
+  Expression<T> paymentAllocationsRefs<T extends Object>(
+    Expression<T> Function($$PaymentAllocationsTableAnnotationComposer a) f,
+  ) {
+    final $$PaymentAllocationsTableAnnotationComposer composer =
+        $composerBuilder(
+          composer: this,
+          getCurrentColumn: (t) => t.id,
+          referencedTable: $db.paymentAllocations,
+          getReferencedColumn: (t) => t.paymentId,
+          builder:
+              (
+                joinBuilder, {
+                $addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer,
+              }) => $$PaymentAllocationsTableAnnotationComposer(
+                $db: $db,
+                $table: $db.paymentAllocations,
+                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+                joinBuilder: joinBuilder,
+                $removeJoinBuilderFromRootComposer:
+                    $removeJoinBuilderFromRootComposer,
+              ),
+        );
+    return f(composer);
+  }
+
   Expression<T> receiptsRefs<T extends Object>(
     Expression<T> Function($$ReceiptsTableAnnotationComposer a) f,
   ) {
@@ -11548,6 +14137,7 @@ class $$PaymentsTableTableManager
             bool membershipPeriodId,
             bool recordedById,
             bool updatedById,
+            bool paymentAllocationsRefs,
             bool receiptsRefs,
           })
         > {
@@ -11640,11 +14230,15 @@ class $$PaymentsTableTableManager
                 membershipPeriodId = false,
                 recordedById = false,
                 updatedById = false,
+                paymentAllocationsRefs = false,
                 receiptsRefs = false,
               }) {
                 return PrefetchHooks(
                   db: db,
-                  explicitlyWatchedTables: [if (receiptsRefs) db.receipts],
+                  explicitlyWatchedTables: [
+                    if (paymentAllocationsRefs) db.paymentAllocations,
+                    if (receiptsRefs) db.receipts,
+                  ],
                   addJoins:
                       <
                         T extends TableManagerState<
@@ -11718,6 +14312,27 @@ class $$PaymentsTableTableManager
                       },
                   getPrefetchedDataCallback: (items) async {
                     return [
+                      if (paymentAllocationsRefs)
+                        await $_getPrefetchedData<
+                          Payment,
+                          $PaymentsTable,
+                          PaymentAllocation
+                        >(
+                          currentTable: table,
+                          referencedTable: $$PaymentsTableReferences
+                              ._paymentAllocationsRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$PaymentsTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).paymentAllocationsRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.paymentId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
                       if (receiptsRefs)
                         await $_getPrefetchedData<
                           Payment,
@@ -11764,8 +14379,1003 @@ typedef $$PaymentsTableProcessedTableManager =
         bool membershipPeriodId,
         bool recordedById,
         bool updatedById,
+        bool paymentAllocationsRefs,
         bool receiptsRefs,
       })
+    >;
+typedef $$PaymentAllocationsTableCreateCompanionBuilder =
+    PaymentAllocationsCompanion Function({
+      Value<int> id,
+      required int paymentId,
+      required int membershipPeriodId,
+      required int amountMinor,
+      Value<DateTime> createdAt,
+    });
+typedef $$PaymentAllocationsTableUpdateCompanionBuilder =
+    PaymentAllocationsCompanion Function({
+      Value<int> id,
+      Value<int> paymentId,
+      Value<int> membershipPeriodId,
+      Value<int> amountMinor,
+      Value<DateTime> createdAt,
+    });
+
+final class $$PaymentAllocationsTableReferences
+    extends
+        BaseReferences<
+          _$AppDatabase,
+          $PaymentAllocationsTable,
+          PaymentAllocation
+        > {
+  $$PaymentAllocationsTableReferences(
+    super.$_db,
+    super.$_table,
+    super.$_typedResult,
+  );
+
+  static $PaymentsTable _paymentIdTable(_$AppDatabase db) =>
+      db.payments.createAlias('payment_allocations__payment_id__payments__id');
+
+  $$PaymentsTableProcessedTableManager get paymentId {
+    final $_column = $_itemColumn<int>('payment_id')!;
+
+    final manager = $$PaymentsTableTableManager(
+      $_db,
+      $_db.payments,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_paymentIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+
+  static $MembershipPeriodsTable _membershipPeriodIdTable(_$AppDatabase db) =>
+      db.membershipPeriods.createAlias(
+        'payment_allocations__membership_period_id__membership_periods__id',
+      );
+
+  $$MembershipPeriodsTableProcessedTableManager get membershipPeriodId {
+    final $_column = $_itemColumn<int>('membership_period_id')!;
+
+    final manager = $$MembershipPeriodsTableTableManager(
+      $_db,
+      $_db.membershipPeriods,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_membershipPeriodIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$PaymentAllocationsTableFilterComposer
+    extends Composer<_$AppDatabase, $PaymentAllocationsTable> {
+  $$PaymentAllocationsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get amountMinor => $composableBuilder(
+    column: $table.amountMinor,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$PaymentsTableFilterComposer get paymentId {
+    final $$PaymentsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.paymentId,
+      referencedTable: $db.payments,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$PaymentsTableFilterComposer(
+            $db: $db,
+            $table: $db.payments,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$MembershipPeriodsTableFilterComposer get membershipPeriodId {
+    final $$MembershipPeriodsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.membershipPeriodId,
+      referencedTable: $db.membershipPeriods,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$MembershipPeriodsTableFilterComposer(
+            $db: $db,
+            $table: $db.membershipPeriods,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$PaymentAllocationsTableOrderingComposer
+    extends Composer<_$AppDatabase, $PaymentAllocationsTable> {
+  $$PaymentAllocationsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get amountMinor => $composableBuilder(
+    column: $table.amountMinor,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$PaymentsTableOrderingComposer get paymentId {
+    final $$PaymentsTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.paymentId,
+      referencedTable: $db.payments,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$PaymentsTableOrderingComposer(
+            $db: $db,
+            $table: $db.payments,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$MembershipPeriodsTableOrderingComposer get membershipPeriodId {
+    final $$MembershipPeriodsTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.membershipPeriodId,
+      referencedTable: $db.membershipPeriods,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$MembershipPeriodsTableOrderingComposer(
+            $db: $db,
+            $table: $db.membershipPeriods,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$PaymentAllocationsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $PaymentAllocationsTable> {
+  $$PaymentAllocationsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<int> get amountMinor => $composableBuilder(
+    column: $table.amountMinor,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  $$PaymentsTableAnnotationComposer get paymentId {
+    final $$PaymentsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.paymentId,
+      referencedTable: $db.payments,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$PaymentsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.payments,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$MembershipPeriodsTableAnnotationComposer get membershipPeriodId {
+    final $$MembershipPeriodsTableAnnotationComposer composer =
+        $composerBuilder(
+          composer: this,
+          getCurrentColumn: (t) => t.membershipPeriodId,
+          referencedTable: $db.membershipPeriods,
+          getReferencedColumn: (t) => t.id,
+          builder:
+              (
+                joinBuilder, {
+                $addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer,
+              }) => $$MembershipPeriodsTableAnnotationComposer(
+                $db: $db,
+                $table: $db.membershipPeriods,
+                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+                joinBuilder: joinBuilder,
+                $removeJoinBuilderFromRootComposer:
+                    $removeJoinBuilderFromRootComposer,
+              ),
+        );
+    return composer;
+  }
+}
+
+class $$PaymentAllocationsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $PaymentAllocationsTable,
+          PaymentAllocation,
+          $$PaymentAllocationsTableFilterComposer,
+          $$PaymentAllocationsTableOrderingComposer,
+          $$PaymentAllocationsTableAnnotationComposer,
+          $$PaymentAllocationsTableCreateCompanionBuilder,
+          $$PaymentAllocationsTableUpdateCompanionBuilder,
+          (PaymentAllocation, $$PaymentAllocationsTableReferences),
+          PaymentAllocation,
+          PrefetchHooks Function({bool paymentId, bool membershipPeriodId})
+        > {
+  $$PaymentAllocationsTableTableManager(
+    _$AppDatabase db,
+    $PaymentAllocationsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$PaymentAllocationsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$PaymentAllocationsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$PaymentAllocationsTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<int> paymentId = const Value.absent(),
+                Value<int> membershipPeriodId = const Value.absent(),
+                Value<int> amountMinor = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+              }) => PaymentAllocationsCompanion(
+                id: id,
+                paymentId: paymentId,
+                membershipPeriodId: membershipPeriodId,
+                amountMinor: amountMinor,
+                createdAt: createdAt,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required int paymentId,
+                required int membershipPeriodId,
+                required int amountMinor,
+                Value<DateTime> createdAt = const Value.absent(),
+              }) => PaymentAllocationsCompanion.insert(
+                id: id,
+                paymentId: paymentId,
+                membershipPeriodId: membershipPeriodId,
+                amountMinor: amountMinor,
+                createdAt: createdAt,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$PaymentAllocationsTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback:
+              ({paymentId = false, membershipPeriodId = false}) {
+                return PrefetchHooks(
+                  db: db,
+                  explicitlyWatchedTables: [],
+                  addJoins:
+                      <
+                        T extends TableManagerState<
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic
+                        >
+                      >(state) {
+                        if (paymentId) {
+                          state =
+                              state.withJoin(
+                                    currentTable: table,
+                                    currentColumn: table.paymentId,
+                                    referencedTable:
+                                        $$PaymentAllocationsTableReferences
+                                            ._paymentIdTable(db),
+                                    referencedColumn:
+                                        $$PaymentAllocationsTableReferences
+                                            ._paymentIdTable(db)
+                                            .id,
+                                  )
+                                  as T;
+                        }
+                        if (membershipPeriodId) {
+                          state =
+                              state.withJoin(
+                                    currentTable: table,
+                                    currentColumn: table.membershipPeriodId,
+                                    referencedTable:
+                                        $$PaymentAllocationsTableReferences
+                                            ._membershipPeriodIdTable(db),
+                                    referencedColumn:
+                                        $$PaymentAllocationsTableReferences
+                                            ._membershipPeriodIdTable(db)
+                                            .id,
+                                  )
+                                  as T;
+                        }
+
+                        return state;
+                      },
+                  getPrefetchedDataCallback: (items) async {
+                    return [];
+                  },
+                );
+              },
+        ),
+      );
+}
+
+typedef $$PaymentAllocationsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $PaymentAllocationsTable,
+      PaymentAllocation,
+      $$PaymentAllocationsTableFilterComposer,
+      $$PaymentAllocationsTableOrderingComposer,
+      $$PaymentAllocationsTableAnnotationComposer,
+      $$PaymentAllocationsTableCreateCompanionBuilder,
+      $$PaymentAllocationsTableUpdateCompanionBuilder,
+      (PaymentAllocation, $$PaymentAllocationsTableReferences),
+      PaymentAllocation,
+      PrefetchHooks Function({bool paymentId, bool membershipPeriodId})
+    >;
+typedef $$PaymentRemindersTableCreateCompanionBuilder =
+    PaymentRemindersCompanion Function({
+      Value<int> id,
+      Value<int?> membershipPeriodId,
+      required int memberId,
+      required String stage,
+      required int offsetDays,
+      required ReminderSendStatus status,
+      required DateTime dueDate,
+      required int amountMinor,
+      Value<String?> externalMessageId,
+      Value<String?> errorMessage,
+      Value<int> attempts,
+      Value<DateTime?> sentAt,
+      Value<DateTime> createdAt,
+    });
+typedef $$PaymentRemindersTableUpdateCompanionBuilder =
+    PaymentRemindersCompanion Function({
+      Value<int> id,
+      Value<int?> membershipPeriodId,
+      Value<int> memberId,
+      Value<String> stage,
+      Value<int> offsetDays,
+      Value<ReminderSendStatus> status,
+      Value<DateTime> dueDate,
+      Value<int> amountMinor,
+      Value<String?> externalMessageId,
+      Value<String?> errorMessage,
+      Value<int> attempts,
+      Value<DateTime?> sentAt,
+      Value<DateTime> createdAt,
+    });
+
+final class $$PaymentRemindersTableReferences
+    extends
+        BaseReferences<_$AppDatabase, $PaymentRemindersTable, PaymentReminder> {
+  $$PaymentRemindersTableReferences(
+    super.$_db,
+    super.$_table,
+    super.$_typedResult,
+  );
+
+  static $MembershipPeriodsTable _membershipPeriodIdTable(_$AppDatabase db) =>
+      db.membershipPeriods.createAlias(
+        'payment_reminders__membership_period_id__membership_periods__id',
+      );
+
+  $$MembershipPeriodsTableProcessedTableManager? get membershipPeriodId {
+    final $_column = $_itemColumn<int>('membership_period_id');
+    if ($_column == null) return null;
+    final manager = $$MembershipPeriodsTableTableManager(
+      $_db,
+      $_db.membershipPeriods,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_membershipPeriodIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+
+  static $MembersTable _memberIdTable(_$AppDatabase db) =>
+      db.members.createAlias('payment_reminders__member_id__members__id');
+
+  $$MembersTableProcessedTableManager get memberId {
+    final $_column = $_itemColumn<int>('member_id')!;
+
+    final manager = $$MembersTableTableManager(
+      $_db,
+      $_db.members,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_memberIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$PaymentRemindersTableFilterComposer
+    extends Composer<_$AppDatabase, $PaymentRemindersTable> {
+  $$PaymentRemindersTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get stage => $composableBuilder(
+    column: $table.stage,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get offsetDays => $composableBuilder(
+    column: $table.offsetDays,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnWithTypeConverterFilters<ReminderSendStatus, ReminderSendStatus, String>
+  get status => $composableBuilder(
+    column: $table.status,
+    builder: (column) => ColumnWithTypeConverterFilters(column),
+  );
+
+  ColumnFilters<DateTime> get dueDate => $composableBuilder(
+    column: $table.dueDate,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get amountMinor => $composableBuilder(
+    column: $table.amountMinor,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get externalMessageId => $composableBuilder(
+    column: $table.externalMessageId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get errorMessage => $composableBuilder(
+    column: $table.errorMessage,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get attempts => $composableBuilder(
+    column: $table.attempts,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get sentAt => $composableBuilder(
+    column: $table.sentAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$MembershipPeriodsTableFilterComposer get membershipPeriodId {
+    final $$MembershipPeriodsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.membershipPeriodId,
+      referencedTable: $db.membershipPeriods,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$MembershipPeriodsTableFilterComposer(
+            $db: $db,
+            $table: $db.membershipPeriods,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$MembersTableFilterComposer get memberId {
+    final $$MembersTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.memberId,
+      referencedTable: $db.members,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$MembersTableFilterComposer(
+            $db: $db,
+            $table: $db.members,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$PaymentRemindersTableOrderingComposer
+    extends Composer<_$AppDatabase, $PaymentRemindersTable> {
+  $$PaymentRemindersTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get stage => $composableBuilder(
+    column: $table.stage,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get offsetDays => $composableBuilder(
+    column: $table.offsetDays,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get status => $composableBuilder(
+    column: $table.status,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get dueDate => $composableBuilder(
+    column: $table.dueDate,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get amountMinor => $composableBuilder(
+    column: $table.amountMinor,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get externalMessageId => $composableBuilder(
+    column: $table.externalMessageId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get errorMessage => $composableBuilder(
+    column: $table.errorMessage,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get attempts => $composableBuilder(
+    column: $table.attempts,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get sentAt => $composableBuilder(
+    column: $table.sentAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$MembershipPeriodsTableOrderingComposer get membershipPeriodId {
+    final $$MembershipPeriodsTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.membershipPeriodId,
+      referencedTable: $db.membershipPeriods,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$MembershipPeriodsTableOrderingComposer(
+            $db: $db,
+            $table: $db.membershipPeriods,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$MembersTableOrderingComposer get memberId {
+    final $$MembersTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.memberId,
+      referencedTable: $db.members,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$MembersTableOrderingComposer(
+            $db: $db,
+            $table: $db.members,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$PaymentRemindersTableAnnotationComposer
+    extends Composer<_$AppDatabase, $PaymentRemindersTable> {
+  $$PaymentRemindersTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get stage =>
+      $composableBuilder(column: $table.stage, builder: (column) => column);
+
+  GeneratedColumn<int> get offsetDays => $composableBuilder(
+    column: $table.offsetDays,
+    builder: (column) => column,
+  );
+
+  GeneratedColumnWithTypeConverter<ReminderSendStatus, String> get status =>
+      $composableBuilder(column: $table.status, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get dueDate =>
+      $composableBuilder(column: $table.dueDate, builder: (column) => column);
+
+  GeneratedColumn<int> get amountMinor => $composableBuilder(
+    column: $table.amountMinor,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get externalMessageId => $composableBuilder(
+    column: $table.externalMessageId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get errorMessage => $composableBuilder(
+    column: $table.errorMessage,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get attempts =>
+      $composableBuilder(column: $table.attempts, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get sentAt =>
+      $composableBuilder(column: $table.sentAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  $$MembershipPeriodsTableAnnotationComposer get membershipPeriodId {
+    final $$MembershipPeriodsTableAnnotationComposer composer =
+        $composerBuilder(
+          composer: this,
+          getCurrentColumn: (t) => t.membershipPeriodId,
+          referencedTable: $db.membershipPeriods,
+          getReferencedColumn: (t) => t.id,
+          builder:
+              (
+                joinBuilder, {
+                $addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer,
+              }) => $$MembershipPeriodsTableAnnotationComposer(
+                $db: $db,
+                $table: $db.membershipPeriods,
+                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+                joinBuilder: joinBuilder,
+                $removeJoinBuilderFromRootComposer:
+                    $removeJoinBuilderFromRootComposer,
+              ),
+        );
+    return composer;
+  }
+
+  $$MembersTableAnnotationComposer get memberId {
+    final $$MembersTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.memberId,
+      referencedTable: $db.members,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$MembersTableAnnotationComposer(
+            $db: $db,
+            $table: $db.members,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$PaymentRemindersTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $PaymentRemindersTable,
+          PaymentReminder,
+          $$PaymentRemindersTableFilterComposer,
+          $$PaymentRemindersTableOrderingComposer,
+          $$PaymentRemindersTableAnnotationComposer,
+          $$PaymentRemindersTableCreateCompanionBuilder,
+          $$PaymentRemindersTableUpdateCompanionBuilder,
+          (PaymentReminder, $$PaymentRemindersTableReferences),
+          PaymentReminder,
+          PrefetchHooks Function({bool membershipPeriodId, bool memberId})
+        > {
+  $$PaymentRemindersTableTableManager(
+    _$AppDatabase db,
+    $PaymentRemindersTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$PaymentRemindersTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$PaymentRemindersTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$PaymentRemindersTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<int?> membershipPeriodId = const Value.absent(),
+                Value<int> memberId = const Value.absent(),
+                Value<String> stage = const Value.absent(),
+                Value<int> offsetDays = const Value.absent(),
+                Value<ReminderSendStatus> status = const Value.absent(),
+                Value<DateTime> dueDate = const Value.absent(),
+                Value<int> amountMinor = const Value.absent(),
+                Value<String?> externalMessageId = const Value.absent(),
+                Value<String?> errorMessage = const Value.absent(),
+                Value<int> attempts = const Value.absent(),
+                Value<DateTime?> sentAt = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+              }) => PaymentRemindersCompanion(
+                id: id,
+                membershipPeriodId: membershipPeriodId,
+                memberId: memberId,
+                stage: stage,
+                offsetDays: offsetDays,
+                status: status,
+                dueDate: dueDate,
+                amountMinor: amountMinor,
+                externalMessageId: externalMessageId,
+                errorMessage: errorMessage,
+                attempts: attempts,
+                sentAt: sentAt,
+                createdAt: createdAt,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<int?> membershipPeriodId = const Value.absent(),
+                required int memberId,
+                required String stage,
+                required int offsetDays,
+                required ReminderSendStatus status,
+                required DateTime dueDate,
+                required int amountMinor,
+                Value<String?> externalMessageId = const Value.absent(),
+                Value<String?> errorMessage = const Value.absent(),
+                Value<int> attempts = const Value.absent(),
+                Value<DateTime?> sentAt = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+              }) => PaymentRemindersCompanion.insert(
+                id: id,
+                membershipPeriodId: membershipPeriodId,
+                memberId: memberId,
+                stage: stage,
+                offsetDays: offsetDays,
+                status: status,
+                dueDate: dueDate,
+                amountMinor: amountMinor,
+                externalMessageId: externalMessageId,
+                errorMessage: errorMessage,
+                attempts: attempts,
+                sentAt: sentAt,
+                createdAt: createdAt,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$PaymentRemindersTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback:
+              ({membershipPeriodId = false, memberId = false}) {
+                return PrefetchHooks(
+                  db: db,
+                  explicitlyWatchedTables: [],
+                  addJoins:
+                      <
+                        T extends TableManagerState<
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic
+                        >
+                      >(state) {
+                        if (membershipPeriodId) {
+                          state =
+                              state.withJoin(
+                                    currentTable: table,
+                                    currentColumn: table.membershipPeriodId,
+                                    referencedTable:
+                                        $$PaymentRemindersTableReferences
+                                            ._membershipPeriodIdTable(db),
+                                    referencedColumn:
+                                        $$PaymentRemindersTableReferences
+                                            ._membershipPeriodIdTable(db)
+                                            .id,
+                                  )
+                                  as T;
+                        }
+                        if (memberId) {
+                          state =
+                              state.withJoin(
+                                    currentTable: table,
+                                    currentColumn: table.memberId,
+                                    referencedTable:
+                                        $$PaymentRemindersTableReferences
+                                            ._memberIdTable(db),
+                                    referencedColumn:
+                                        $$PaymentRemindersTableReferences
+                                            ._memberIdTable(db)
+                                            .id,
+                                  )
+                                  as T;
+                        }
+
+                        return state;
+                      },
+                  getPrefetchedDataCallback: (items) async {
+                    return [];
+                  },
+                );
+              },
+        ),
+      );
+}
+
+typedef $$PaymentRemindersTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $PaymentRemindersTable,
+      PaymentReminder,
+      $$PaymentRemindersTableFilterComposer,
+      $$PaymentRemindersTableOrderingComposer,
+      $$PaymentRemindersTableAnnotationComposer,
+      $$PaymentRemindersTableCreateCompanionBuilder,
+      $$PaymentRemindersTableUpdateCompanionBuilder,
+      (PaymentReminder, $$PaymentRemindersTableReferences),
+      PaymentReminder,
+      PrefetchHooks Function({bool membershipPeriodId, bool memberId})
     >;
 typedef $$ReceiptsTableCreateCompanionBuilder =
     ReceiptsCompanion Function({
@@ -13735,6 +17345,10 @@ class $AppDatabaseManager {
       $$MembershipPeriodsTableTableManager(_db, _db.membershipPeriods);
   $$PaymentsTableTableManager get payments =>
       $$PaymentsTableTableManager(_db, _db.payments);
+  $$PaymentAllocationsTableTableManager get paymentAllocations =>
+      $$PaymentAllocationsTableTableManager(_db, _db.paymentAllocations);
+  $$PaymentRemindersTableTableManager get paymentReminders =>
+      $$PaymentRemindersTableTableManager(_db, _db.paymentReminders);
   $$ReceiptsTableTableManager get receipts =>
       $$ReceiptsTableTableManager(_db, _db.receipts);
   $$ReceiptCountersTableTableManager get receiptCounters =>
