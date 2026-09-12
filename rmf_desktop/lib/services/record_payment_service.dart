@@ -37,6 +37,7 @@ class RecordPaymentInput {
     this.referenceNumber,
     this.notes,
     this.acknowledgedIssues = const [],
+    this.expectedAmountMinor,
   });
 
   final int memberId;
@@ -59,6 +60,19 @@ class RecordPaymentInput {
   /// Billing-month warnings the owner confirmed. Recorded so the log shows a
   /// decision was made rather than that the check never ran.
   final List<BillingMonthIssue> acknowledgedIssues;
+
+  /// What the named month cost, when this payment has to open its cycle.
+  ///
+  /// Only consulted when [billingMonth] has no cycle yet — an existing cycle
+  /// is settled history and its price is not a later caller's to move.
+  ///
+  /// Null means "whatever the member's fee is now", which is right for the
+  /// month in front of the owner and wrong for back-entry: a gym typing up
+  /// last year's ledger after a price rise would have every earlier month
+  /// conjured at today's fee, paid in full, and left permanently short by the
+  /// difference. Re-pricing cannot undo that, because a cycle holding money is
+  /// never re-priced.
+  final int? expectedAmountMinor;
 }
 
 /// A payment with no billing month attached — see
@@ -341,8 +355,11 @@ class RecordPaymentService {
                 membershipId: membership.id,
                 periodStart: bounds.periodStart,
                 periodEnd: bounds.periodEnd,
-                expectedAmountMinor:
-                    membership.feeOverrideMinor ?? plan.priceMinor,
+                // The caller's figure only when the cycle is being created
+                // here; a month that already has one keeps the price it was
+                // billed at. See [RecordPaymentInput.expectedAmountMinor].
+                expectedAmountMinor: input.expectedAmountMinor ??
+                    (membership.feeOverrideMinor ?? plan.priceMinor),
               ),
             );
 

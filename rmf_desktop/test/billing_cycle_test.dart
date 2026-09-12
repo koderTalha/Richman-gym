@@ -204,6 +204,7 @@ void main() {
         today: DateTime.utc(2026, 8, 15),
         anchorDay: 1,
         durationMonths: 1,
+        joiningDate: DateTime.utc(2020, 1, 1),
       );
 
       expect(cycle.start, DateTime.utc(2026, 8, 1));
@@ -215,6 +216,7 @@ void main() {
         today: DateTime.utc(2026, 8, 5),
         anchorDay: 20,
         durationMonths: 1,
+        joiningDate: DateTime.utc(2020, 1, 1),
       );
 
       expect(cycle.start, DateTime.utc(2026, 7, 20));
@@ -228,6 +230,7 @@ void main() {
         today: DateTime.utc(2026, 8, 15),
         anchorDay: 1,
         durationMonths: 3,
+        joiningDate: DateTime.utc(2020, 1, 1),
       );
 
       expect(cycle.start, DateTime.utc(2026, 8, 1));
@@ -239,6 +242,7 @@ void main() {
         today: DateTime.utc(2026, 8, 5),
         anchorDay: 20,
         durationMonths: 1,
+        joiningDate: DateTime.utc(2020, 1, 1),
       );
 
       expect(cycle.contains(DateTime.utc(2026, 8, 5)), isTrue);

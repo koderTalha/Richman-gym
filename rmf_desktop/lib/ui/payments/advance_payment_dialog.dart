@@ -7,6 +7,8 @@ import 'package:printing/printing.dart';
 import '../../bloc/auth_bloc.dart';
 import '../../data/database.dart';
 import '../../data/member_repository.dart';
+import '../../domain/billing_month_check.dart';
+import '../../domain/billing_period.dart';
 import '../../domain/dates.dart';
 import '../../domain/money.dart';
 import '../../domain/payment_errors.dart';
@@ -15,17 +17,32 @@ import '../../domain/payment_settlement.dart' show allocate;
 import '../../domain/payment_timing.dart';
 import '../../domain/phone.dart';
 import '../../services/billing_cycle_service.dart';
+import '../../services/billing_month_checker.dart';
 import '../../services/receipt_storage.dart';
 import '../../services/record_payment_service.dart';
 import '../../theme/app_theme.dart';
 import '../widgets/status_badge.dart';
+import 'billing_warnings_dialog.dart';
 import 'payment_history_table.dart' show formatShortDate;
 
 /// The one dialog for taking a member's money.
 ///
-/// There is no billing month to pick: the owner types an amount and the date
-/// it was handed over, and the app works out which of the member's own cycles
-/// it settles, arrears first, opening as many ahead as the money reaches.
+/// Two ways to say which cycle the money is for, and the default is to say
+/// nothing at all:
+///
+///   * **Automatic** — the owner types an amount and the date it was handed
+///     over, and the app works out which of the member's own cycles it
+///     settles, arrears first, opening as many ahead as the money reaches.
+///     This is the counter: somebody pays what they owe and nobody should have
+///     to think about months.
+///   * **A named billing period** — the owner is entering history the app was
+///     not open for. The month is stated outright, its cycle is opened if it is
+///     missing, and the payment settles that month and no other.
+///
+/// The second existed in the service and in Edit Payment from the start, but
+/// not here, so recording a back-dated payment meant letting it land on the
+/// wrong month and correcting it afterwards — writing a wrong row to the
+/// ledger on the way to the right one.
 ///
 /// The payment date and the billing cycle are deliberately independent. A
 /// member who pays on the 29th for a cycle due on the 6th settles that cycle
@@ -39,6 +56,7 @@ Future<bool?> showAdvancePaymentDialog(
 }) {
   final service = context.read<RecordPaymentService>();
   final cycles = context.read<BillingCycleService>();
+  final checker = context.read<BillingMonthChecker>();
   final userId = context.read<AuthBloc>().state.user!.id;
 
   return showDialog<bool>(
@@ -48,6 +66,7 @@ Future<bool?> showAdvancePaymentDialog(
       member: member,
       service: service,
       cycles: cycles,
+      checker: checker,
       recordedById: userId,
     ),
   );
@@ -58,12 +77,18 @@ class _AdvancePaymentDialog extends StatefulWidget {
     required this.member,
     required this.service,
     required this.cycles,
+    required this.checker,
     required this.recordedById,
   });
 
   final MemberRow member;
   final RecordPaymentService service;
   final BillingCycleService cycles;
+
+  /// Runs the billing-month rules when a month is named. The same checker Edit
+  /// Payment uses, so both routes ask identical questions.
+  final BillingMonthChecker checker;
+
   final int recordedById;
 
   @override
@@ -80,6 +105,7 @@ class _AdvancePaymentDialogState extends State<_AdvancePaymentDialog> {
   PaymentMethod _method = PaymentMethod.cash;
   bool _busy = false;
   bool _retrying = false;
+  bool _checkingMonth = false;
   String? _error;
 
   /// Sticky within one submission, so fixing a validation error after
@@ -89,6 +115,19 @@ class _AdvancePaymentDialogState extends State<_AdvancePaymentDialog> {
   RecordPaymentResult? _result;
   MemberBilling? _billing;
   late bool _sendWhatsApp;
+
+  /// "YYYY-MM", or null for Automatic. Null is the counter's answer and the
+  /// default; a value here means the owner is stating which month this money
+  /// belongs to.
+  String? _billingMonth;
+
+  /// The rules' verdict on [_billingMonth], re-read whenever it changes. Also
+  /// carries whether that month already has a cycle, which is what decides if
+  /// the fee has to be asked for.
+  BillingMonthCheck? _monthCheck;
+
+  /// What the named month cost, asked only when its cycle has to be created.
+  final _monthFee = TextEditingController();
 
   bool get _phoneUsable => isValidPhone(widget.member.member.phone);
 
@@ -108,8 +147,16 @@ class _AdvancePaymentDialogState extends State<_AdvancePaymentDialog> {
   @override
   void dispose() {
     _amount.dispose();
+    _monthFee.dispose();
     super.dispose();
   }
+
+  /// Whether the owner has named a month rather than leaving it automatic.
+  bool get _isBackEntry => _billingMonth != null;
+
+  /// True when the named month has no cycle, so recording will open one and
+  /// its price is the owner's to state.
+  bool get _opensNewCycle => _isBackEntry && _monthCheck?.period == null;
 
   Future<void> _loadBilling() async {
     final billing = await widget.cycles.forMember(widget.member.id);
@@ -142,6 +189,76 @@ class _AdvancePaymentDialogState extends State<_AdvancePaymentDialog> {
     if (picked != null) setState(() => _paymentDate = picked);
   }
 
+  Future<void> _pickBillingMonth() async {
+    final current = _billingMonth == null
+        ? DateTime.now()
+        : parseBillingMonth(_billingMonth!);
+
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: DateTime(current.year, current.month),
+      firstDate: DateTime(2020),
+      lastDate: DateTime(DateTime.now().year + 2),
+      initialDatePickerMode: DatePickerMode.year,
+      helpText: 'Select any day in the billing month',
+    );
+    if (picked == null) return;
+
+    setState(() => _billingMonth =
+        '${picked.year}-${picked.month.toString().padLeft(2, '0')}');
+    await _runMonthCheck();
+  }
+
+  void _clearBillingMonth() {
+    setState(() {
+      _billingMonth = null;
+      _monthCheck = null;
+    });
+  }
+
+  /// Re-reads the rules for the named month.
+  ///
+  /// Runs on every change rather than only on submit, so the owner sees a
+  /// month that needs a fee — or one the rules will refuse — while they can
+  /// still do something about it.
+  Future<void> _runMonthCheck() async {
+    final month = _billingMonth;
+    if (month == null) return;
+
+    setState(() => _checkingMonth = true);
+    try {
+      final check = await widget.checker.check(
+        memberId: widget.member.id,
+        billingMonth: month,
+      );
+      if (!mounted) return;
+      setState(() {
+        _monthCheck = check;
+        // A month with no cycle is about to get one, and it must be worth what
+        // that month cost — see RecordPaymentInput.expectedAmountMinor.
+        //
+        // For the month in front of the owner today's fee is that answer. For
+        // a month already gone it is the one answer that is certainly wrong,
+        // and offering it is worse than offering nothing: a gym typing up last
+        // year's register after a price rise accepts the suggestion once per
+        // row, and every old month is conjured at the new price, marked paid
+        // in full and left short by the difference. A cycle holding money is
+        // never re-priced, so nothing afterwards can put it back. The field is
+        // required, so leaving it empty asks the question instead.
+        final past = parseBillingMonth(month)
+            .isBefore(parseBillingMonth(currentBillingMonth()));
+        if (check.period == null && !past && _monthFee.text.trim().isEmpty) {
+          final fee = widget.member.feeMinor;
+          if (fee != null) {
+            _monthFee.text = fromMinorUnits(fee).toStringAsFixed(0);
+          }
+        }
+      });
+    } finally {
+      if (mounted) setState(() => _checkingMonth = false);
+    }
+  }
+
   /// The exclusive end of the span the amount currently typed would settle, or
   /// null when there is not yet enough to say.
   ///
@@ -165,6 +282,13 @@ class _AdvancePaymentDialogState extends State<_AdvancePaymentDialog> {
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
+
+    // A named month goes through the billing-month rules and settles that
+    // month alone. Nothing about the automatic path below changes.
+    if (_isBackEntry) {
+      await _submitForMonth();
+      return;
+    }
 
     setState(() {
       _busy = true;
@@ -224,6 +348,83 @@ class _AdvancePaymentDialogState extends State<_AdvancePaymentDialog> {
           confirmedAdvance: confirmedAdvance,
         ),
       );
+
+  /// Records against the month the owner named.
+  ///
+  /// The rules are re-run here rather than trusted from the last check: the
+  /// amount or the month may have moved since, and a duplicate payment that
+  /// appeared in between must still be caught.
+  Future<void> _submitForMonth() async {
+    final month = _billingMonth;
+    if (month == null) return;
+
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+
+    try {
+      final check = await widget.checker.check(
+        memberId: widget.member.id,
+        billingMonth: month,
+      );
+      if (!mounted) return;
+      setState(() => _monthCheck = check);
+
+      // Blocking findings are never negotiable — billing a month before the
+      // member joined is wrong however it is confirmed.
+      if (check.review.isBlocked) {
+        setState(() {
+          _busy = false;
+          _error = check.review.blocking.first.message;
+        });
+        return;
+      }
+
+      if (check.review.needsConfirmation) {
+        setState(() => _busy = false);
+        final go = await confirmBillingWarnings(
+          context,
+          check.review.confirmations,
+          continueLabel: 'Record payment',
+        );
+        if (!mounted || !go) return;
+        setState(() => _busy = true);
+      }
+
+      final result = await widget.service.call(RecordPaymentInput(
+        memberId: widget.member.id,
+        amountMinor: toMinorUnits(double.parse(_amount.text.trim())),
+        method: _method,
+        paymentDate: _paymentDate,
+        billingMonth: month,
+        sendWhatsApp: _sendWhatsApp,
+        recordedById: widget.recordedById,
+        idempotencyKey: _idempotencyKey,
+        acknowledgedIssues: check.review.issues,
+        // Only meaningful when the cycle is being opened by this payment; the
+        // service ignores it for a month that already has one.
+        expectedAmountMinor: _opensNewCycleFee(),
+      ));
+      if (!mounted) return;
+      setState(() => _result = result);
+    } catch (error, stack) {
+      if (!mounted) return;
+      setState(() => _error = describeSaveError(error,
+          stack: stack, whileDoing: 'recording the payment'));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  /// The fee to stamp on a cycle this payment is about to open, or null when
+  /// the month already has one.
+  int? _opensNewCycleFee() {
+    if (!_opensNewCycle) return null;
+    final parsed = double.tryParse(_monthFee.text.trim());
+    if (parsed == null || parsed <= 0) return null;
+    return toMinorUnits(parsed);
+  }
 
   /// Asks before booking several cycles at once.
   ///
@@ -287,6 +488,10 @@ class _AdvancePaymentDialogState extends State<_AdvancePaymentDialog> {
       _confirmedAdvance = false;
       _paymentDate = DateTime.now();
       _sendWhatsApp = _phoneUsable;
+      // Automatic again: the month belonged to the entry just saved.
+      _billingMonth = null;
+      _monthCheck = null;
+      _monthFee.clear();
       _amount.text = widget.member.feeMinor == null
           ? ''
           : fromMinorUnits(widget.member.feeMinor!).toStringAsFixed(0);
@@ -414,11 +619,19 @@ class _AdvancePaymentDialogState extends State<_AdvancePaymentDialog> {
               Expanded(
                 child: DropdownButtonFormField<PaymentMethod>(
                   initialValue: _method,
+                  // Without this the selected method lays itself out at its
+                  // natural width and the longer names run past the field.
+                  isExpanded: true,
                   decoration: const InputDecoration(
                       labelText: 'Payment method', isDense: true),
                   items: PaymentMethod.values
                       .map((m) => DropdownMenuItem(
-                          value: m, child: Text(paymentMethodLabel(m))))
+                            value: m,
+                            child: Text(
+                              paymentMethodLabel(m),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ))
                       .toList(),
                   onChanged: _busy
                       ? null
@@ -427,7 +640,69 @@ class _AdvancePaymentDialogState extends State<_AdvancePaymentDialog> {
               ),
             ],
           ),
-          if (billing != null) ...[
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Expanded(
+                child: InkWell(
+                  onTap: _busy ? null : _pickBillingMonth,
+                  child: InputDecorator(
+                    decoration: InputDecoration(
+                      labelText: 'Billing period',
+                      isDense: true,
+                      helperText: _isBackEntry
+                          ? 'Settles this month only'
+                          : 'Oldest unpaid cycle first',
+                      suffixIcon: _isBackEntry
+                          ? IconButton(
+                              icon: const Icon(Icons.close, size: 16),
+                              tooltip: 'Back to automatic',
+                              onPressed: _busy ? null : _clearBillingMonth,
+                            )
+                          : null,
+                    ),
+                    child: Text(
+                      _isBackEntry
+                          ? labelForNamedMonth(_billingMonth!, _monthCheck)
+                          : 'Automatic',
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ),
+              ),
+              if (_opensNewCycle) ...[
+                const SizedBox(width: 14),
+                Expanded(
+                  child: TextFormField(
+                    controller: _monthFee,
+                    enabled: !_busy,
+                    decoration: const InputDecoration(
+                      labelText: 'Fee for this month *',
+                      isDense: true,
+                      helperText: 'No cycle exists yet',
+                    ),
+                    keyboardType: TextInputType.number,
+                    validator: (v) {
+                      if (!_opensNewCycle) return null;
+                      final parsed = double.tryParse((v ?? '').trim());
+                      if (parsed == null || parsed <= 0) {
+                        return 'What did this month cost?';
+                      }
+                      return null;
+                    },
+                  ),
+                ),
+              ],
+            ],
+          ),
+          if (_isBackEntry) ...[
+            const SizedBox(height: 14),
+            _NamedMonthSummary(
+              billingMonth: _billingMonth!,
+              check: _monthCheck,
+              checking: _checkingMonth,
+            ),
+          ] else if (billing != null) ...[
             const SizedBox(height: 14),
             _AllocationPreview(
               cycles: widget.cycles,
@@ -660,6 +935,99 @@ class _WhatThisSettles extends StatelessWidget {
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
                     color: context.palette.textPrimary)),
+        ],
+      ),
+    );
+  }
+}
+
+/// The span a named month actually settles.
+///
+/// Not the month the owner picked: `periodForMemberContaining` resolves by
+/// containment, so on a quarterly plan every month of the quarter resolves to
+/// the single cycle covering it. Counting the plan's duration forward from the
+/// picked month therefore named a span that does not exist — "September 2026 -
+/// November 2026" for money settling the August quarter, and on a non-1st
+/// anchor "August" for a cycle running 6 July to 6 August.
+///
+/// Falls back to the picked month when no cycle exists yet, which is right:
+/// there is nothing to contain it, and this payment is about to open one
+/// starting there.
+String labelForNamedMonth(String billingMonth, BillingMonthCheck? check) =>
+    formatBillingPeriod(
+      check?.period?.periodStart ?? parseBillingMonth(billingMonth),
+      check?.durationMonths ?? 1,
+    );
+
+/// What naming a month is about to do, in place of the allocation preview.
+///
+/// The automatic path can spread one payment over several cycles, so it shows
+/// a list. A named month settles exactly one, and the only thing worth saying
+/// about it is whether that cycle exists yet — because if it does not, this
+/// payment is what brings it into being.
+class _NamedMonthSummary extends StatelessWidget {
+  const _NamedMonthSummary({
+    required this.billingMonth,
+    required this.check,
+    required this.checking,
+  });
+
+  final String billingMonth;
+  final BillingMonthCheck? check;
+  final bool checking;
+
+  @override
+  Widget build(BuildContext context) {
+    final resolved = check;
+    final label = labelForNamedMonth(billingMonth, resolved);
+
+    final blocking =
+        resolved == null ? const [] : resolved.review.blocking;
+    final warnings =
+        resolved == null ? const [] : resolved.review.confirmations;
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: context.palette.surfaceBase,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: blocking.isEmpty
+              ? context.palette.border
+              : context.palette.expired,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('This settles', style: labelStyleOf(context)),
+          const SizedBox(height: 6),
+          Text(
+            checking ? '$label — checking…' : label,
+            style: TextStyle(
+                fontSize: 13, color: context.palette.textPrimary),
+          ),
+          if (resolved != null && resolved.period == null) ...[
+            const SizedBox(height: 2),
+            Text(
+              'No billing cycle exists for this period yet — recording this '
+              'payment creates it.',
+              style: mutedStyleOf(context),
+            ),
+          ],
+          for (final finding in [...blocking, ...warnings]) ...[
+            const SizedBox(height: 6),
+            Text(
+              finding.message,
+              style: TextStyle(
+                fontSize: 12,
+                color: finding.severity == FindingSeverity.block
+                    ? context.palette.expired
+                    : context.palette.due,
+              ),
+            ),
+          ],
         ],
       ),
     );

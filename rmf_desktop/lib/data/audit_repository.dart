@@ -28,6 +28,24 @@ abstract final class AuditAction {
   /// it changes when that member is next asked for money.
   static const billingAnchorChanged = 'billing.anchor_changed';
 
+  /// The owner moved what a member is asked for each month — by giving them
+  /// their own fee, by taking it away, or by moving them to another plan.
+  /// Recorded against the member, with the fee either side of the change and
+  /// how many not-yet-issued bills moved with it.
+  static const memberFeeChanged = 'billing.member_fee_changed';
+
+  /// The owner re-priced a plan, which moves every member on it who has no fee
+  /// of their own. The single most far-reaching thing the Settings screen can
+  /// do, and until this existed the only evidence it had happened was the
+  /// number itself having changed.
+  static const planPriceChanged = 'billing.plan_price_changed';
+
+  /// A member has paid at least as much as they have been billed for and is
+  /// still shown owing money — the mark an earlier release's fee handling left
+  /// behind. Recorded rather than corrected, because the rows are identical to
+  /// a genuine arrears payment. See `services/billing_reconciliation.dart`.
+  static const billingDiscrepancyFound = 'billing.discrepancy_found';
+
   static const reminderSent = 'reminder.sent';
   static const reminderFailed = 'reminder.failed';
   static const reminderSkipped = 'reminder.skipped';

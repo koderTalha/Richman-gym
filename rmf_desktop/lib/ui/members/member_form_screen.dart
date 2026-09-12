@@ -9,6 +9,7 @@ import '../../domain/money.dart';
 import '../../domain/phone.dart';
 import '../../services/whatsapp/member_welcome_service.dart';
 import '../../theme/app_theme.dart';
+import 'pricing_summary.dart';
 
 class MemberFormScreen extends StatelessWidget {
   const MemberFormScreen({super.key, this.memberId});
@@ -87,6 +88,40 @@ class _MemberFormViewState extends State<_MemberFormView> {
     if (override != null) {
       _fee.text = fromMinorUnits(override).toStringAsFixed(0);
     }
+  }
+
+  /// What the member will be billed once this form is saved, and — when they
+  /// already have a bill open — what saving is about to do to it.
+  ///
+  /// Returns nothing at all until a plan is chosen, because until then there
+  /// is no price to fall back to and any number shown would be a guess.
+  Widget _pricingSummary(MemberFormState state) {
+    final plan = state.plans.where((p) => p.id == _planId).firstOrNull;
+    if (plan == null) return const SizedBox.shrink();
+
+    // Listening to the field rather than calling setState on every keystroke:
+    // `_prefill` writes to this controller *during* build, and a setState from
+    // there is illegal. This rebuilds the summary alone, whenever the number
+    // it is describing changes.
+    return ValueListenableBuilder<TextEditingValue>(
+      valueListenable: _fee,
+      builder: (context, value, _) {
+        final typed = value.text.trim();
+        final parsed = typed.isEmpty ? null : double.tryParse(typed);
+
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 14),
+          child: PricingSummary(
+            planPriceMinor: plan.priceMinor,
+            customFeeMinor:
+                (parsed == null || parsed <= 0) ? null : toMinorUnits(parsed),
+            // What they are billed today, so the warning can name both
+            // numbers. Null for a new member, who has no bill to move.
+            billedNowMinor: state.existing?.feeMinor,
+          ),
+        );
+      },
+    );
   }
 
   Future<void> _pickJoiningDate() async {
@@ -267,13 +302,19 @@ class _MemberFormViewState extends State<_MemberFormView> {
                             _FieldRow(children: [
                               DropdownButtonFormField<int>(
                                 initialValue: _planId,
+                                // Without this the selected item lays itself
+                                // out at its natural width and a plan named
+                                // more than a word runs past the field.
+                                isExpanded: true,
                                 decoration: const InputDecoration(
                                     labelText: 'Membership plan *'),
                                 items: state.plans
                                     .map((p) => DropdownMenuItem(
                                           value: p.id,
                                           child: Text(
-                                              '${p.name} — ${formatMinorUnits(p.priceMinor)}'),
+                                            '${p.name} — ${formatMinorUnits(p.priceMinor)}',
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
                                         ))
                                     .toList(),
                                 onChanged: (v) => setState(() => _planId = v),
@@ -297,6 +338,8 @@ class _MemberFormViewState extends State<_MemberFormView> {
                                 },
                               ),
                             ]),
+                            const SizedBox(height: 14),
+                            _pricingSummary(state),
                             _FieldRow(children: [
                               DropdownButtonFormField<String?>(
                                 initialValue: _gender,

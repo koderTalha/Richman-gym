@@ -212,13 +212,28 @@ class UpdateService {
   /// code outside Windows.
   final bool _windows;
 
-  /// Only updates on Windows. The gym runs Windows; the installer is an Inno
-  /// Setup .exe, and offering an update it cannot apply would be worse than
-  /// offering none.
+  /// Whether this copy can ask GitHub what has been released.
   ///
-  /// Also off when the installed version is unknown: there is no safe answer to
-  /// "is this release newer" without a left-hand side.
-  bool get isSupported => _windows && currentVersion.isKnown;
+  /// Any platform can: it is an HTTPS GET against a public endpoint. Refusing
+  /// to ask anywhere but Windows is what left the owner pressing a button that
+  /// did nothing, and what made the whole feature impossible to try out
+  /// anywhere except the gym's own machine.
+  ///
+  /// Still off when the installed version is unknown. There is no safe answer
+  /// to "is this release newer" without a left-hand side, and this decides
+  /// what to download and execute.
+  bool get canCheck => currentVersion.isKnown;
+
+  /// Whether an update found here could actually be applied.
+  ///
+  /// Windows only: the installer is an Inno Setup .exe. Elsewhere the release
+  /// is still reported — knowing one is waiting is useful even where the app
+  /// cannot install it — but [install] refuses.
+  bool get canInstall => _windows && currentVersion.isKnown;
+
+  /// Kept as the name the rest of the app already used for "can apply an
+  /// update", which is what every existing caller meant by it.
+  bool get isSupported => canInstall;
 
   /// Whether enough time has passed to look again.
   ///
@@ -227,7 +242,7 @@ class UpdateService {
   /// interrupted by a network call. A check that failed does not count as a
   /// check — see [_recordChecked] — so the next launch tries again.
   Future<bool> isDueForCheck({DateTime? now}) async {
-    if (!isSupported) return false;
+    if (!canCheck) return false;
 
     final at = now ?? DateTime.now();
 
@@ -248,6 +263,16 @@ class UpdateService {
         lastLocal.day == at.day);
   }
 
+  /// When GitHub last actually answered, on the local clock. Null when it
+  /// never has — which is itself worth showing, since it separates "checked
+  /// and found nothing" from "never managed to ask".
+  Future<DateTime?> lastCheckedAt() async =>
+      (await _settings.get()).lastUpdateCheckAt?.toLocal();
+
+  /// The endpoint being asked, so the diagnostics panel can name it rather
+  /// than leaving the owner guessing which repository this copy watches.
+  String get releasesEndpoint => _releasesEndpoint;
+
   /// The version the owner chose to skip, if any.
   Future<AppVersion?> dismissedVersion() async =>
       AppVersion.tryParse((await _settings.get()).dismissedUpdateVersion);
@@ -262,7 +287,7 @@ class UpdateService {
   /// This is what keeps a waiting update on screen across a restart: the daily
   /// interval stops the request, not the answer.
   Future<UpdateCheckResult?> lastKnownResult() async {
-    if (!isSupported) return null;
+    if (!canCheck) return null;
 
     final cached = await _cache.read();
     if (cached == null) return null;
@@ -275,12 +300,8 @@ class UpdateService {
 
   /// Asks GitHub for the latest release. Never throws.
   Future<UpdateCheckResult> check({DateTime? now}) async {
-    if (!_windows) {
-      return const UpdateCheckFailed(
-        'Updates are only available on Windows.',
-        kind: UpdateFailureKind.unsupported,
-      );
-    }
+    // Deliberately not gated on Windows. Finding out what has been released is
+    // useful everywhere, and [install] is where the platform actually matters.
     if (!currentVersion.isKnown) {
       _log.severe('Update check skipped: the installed version is unknown, so '
           'there is nothing to compare a release against.');
@@ -534,7 +555,7 @@ class UpdateService {
     UpdateAvailable update, {
     void Function(int received, int total)? onProgress,
   }) async {
-    if (!isSupported) {
+    if (!canInstall) {
       return const UpdateInstallFailed(
         'Updates can only be installed on Windows.',
       );

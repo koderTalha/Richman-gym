@@ -146,6 +146,7 @@ class BillingMaintenance {
         today: today,
         anchorDay: anchorDay,
         durationMonths: duration,
+        joiningDate: joiningDate,
       );
     }
 

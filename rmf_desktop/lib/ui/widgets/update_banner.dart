@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../bloc/update_bloc.dart';
 import '../../data/database.dart';
@@ -104,12 +105,20 @@ class UpdateBanner extends StatelessWidget {
                 child: const Text('Later'),
               ),
               const SizedBox(width: 8),
-              FilledButton(
-                onPressed: () => context
-                    .read<UpdateBloc>()
-                    .add(const UpdateInstallRequested()),
-                child: const Text('Install now'),
-              ),
+              if (state.canInstall)
+                FilledButton(
+                  onPressed: () => context
+                      .read<UpdateBloc>()
+                      .add(const UpdateInstallRequested()),
+                  child: const Text('Install now'),
+                )
+              else
+                // The installer is a Windows .exe. Saying a release exists is
+                // still worth doing anywhere; offering to apply it is not.
+                OutlinedButton(
+                  onPressed: () => launchUrl(update.installerUrl),
+                  child: const Text('Download'),
+                ),
             ],
           ),
         );

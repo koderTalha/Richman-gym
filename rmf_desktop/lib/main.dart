@@ -18,7 +18,6 @@ import 'data/session_repository.dart';
 import 'data/settings_repository.dart';
 import 'services/backup_service.dart';
 import 'services/billing_cycle_service.dart';
-import 'services/billing_maintenance.dart';
 import 'services/billing_month_checker.dart';
 import 'services/payment_edit_service.dart';
 import 'services/reminder_service.dart';
@@ -29,6 +28,7 @@ import 'services/receipt_renderer.dart';
 import 'services/receipt_storage.dart';
 import 'services/update/update_service.dart';
 import 'services/record_payment_service.dart';
+import 'services/startup_maintenance.dart';
 import 'theme/app_theme.dart';
 import 'ui/app_shell.dart';
 import 'ui/first_run_password_screen.dart';
@@ -71,9 +71,10 @@ Future<Widget> _boot() async {
   // it is where an unreadable file surfaces.
   await seedDatabase(db);
 
-  // Rolls each active membership into the current billing cycle, so members who
-  // owe this month read DUE rather than looking like lapsed memberships.
-  await BillingMaintenance(db).ensureCurrentPeriods();
+  // The billing roll and the reconciliation report. Shared with the Reload
+  // button in the top bar, so pressing it does exactly what opening the app
+  // does — see `services/startup_maintenance.dart`.
+  await runStartupMaintenance(db);
 
   // Read before the first frame so the app opens in the owner's chosen theme
   // rather than flashing dark and correcting itself.
@@ -141,9 +142,9 @@ class RichManFitnessApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final settings = SettingsRepository(db);
     final storage = ReceiptStorage();
     final audit = AuditRepository(db);
+    final settings = SettingsRepository(db, audit: audit);
     final renderer = ReceiptRenderer();
 
     // One instance shared by every service that reads or moves a billing

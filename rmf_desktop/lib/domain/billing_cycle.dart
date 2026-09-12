@@ -127,17 +127,42 @@ BillingCycle cycleAfter({
 /// every missed cycle since joining, which is debt the owner never recorded.
 /// Reconstructing real history, when there is any, is what [cycleAfter] is
 /// for.
+///
+/// Rooting it in the calendar month means backing up to the anchor's previous
+/// occurrence whenever today falls earlier in the month than the anchor —
+/// correct for somebody on the books for years, and wrong for somebody who
+/// joined this month. A member signed up on the 6th, in an app opened on the
+/// 3rd, was handed a cycle for 6 Dec – 6 Jan: a month that ended the day they
+/// walked in, unpaid, so they read DUE before they had been a member for an
+/// hour. With `payDay == joinDay` it cost them a thirteenth cycle for the
+/// twelve months they lived, and every payment after it landed a month behind
+/// where the owner thought it was going.
+///
+/// [joiningDate] is therefore a floor: there was no membership to bill before
+/// it, so a start earlier than it means this is the member's opening cycle and
+/// [firstCycleFor] is what builds it.
 BillingCycle cycleContaining({
   required DateTime today,
   required int anchorDay,
   required int durationMonths,
+  required DateTime joiningDate,
 }) {
   final at = _dayStart(today);
   final anchor = _clampAnchor(anchorDay);
+  final joined = _dayStart(joiningDate);
 
   var start = _anchorIn(at.year, at.month, anchor);
   if (start.isAfter(at)) {
     start = _anchorIn(at.year, at.month - 1, anchor);
+  }
+
+  // Never bill time the member had not joined for.
+  if (start.isBefore(joined)) {
+    return firstCycleFor(
+      joiningDate: joined,
+      durationMonths: durationMonths,
+      anchorDay: anchor,
+    );
   }
 
   return BillingCycle(

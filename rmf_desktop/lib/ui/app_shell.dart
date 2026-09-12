@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:logging/logging.dart';
 
 import '../bloc/auth_bloc.dart';
 import '../bloc/theme_cubit.dart';
+import '../data/database.dart';
+import '../services/startup_maintenance.dart';
 import '../theme/app_theme.dart';
 import 'dashboard_screen.dart';
 import 'logs/logs_screen.dart';
@@ -11,8 +14,15 @@ import 'payments/payments_screen.dart';
 import 'receipts/receipts_screen.dart';
 import 'reminders/reminders_screen.dart';
 import 'settings/settings_screen.dart';
+import 'widgets/connection_status.dart';
 import 'widgets/update_banner.dart';
 import 'whatsapp/whatsapp_screen.dart';
+
+final _log = Logger('shell');
+
+/// The top bar's Reload button. Named so a test can find it without matching
+/// on its icon: several screens carry a refresh icon of their own.
+const appShellReloadKey = Key('app-shell-reload');
 
 class NavDestination {
   const NavDestination(this.label, this.icon, this.builder, {this.enabled = true});
@@ -55,6 +65,40 @@ class AppShell extends StatefulWidget {
 class _AppShellState extends State<AppShell> {
   int _index = 0;
 
+  /// Keys the subtree holding whichever screen is showing. Bumping it throws
+  /// that screen away and builds a fresh one, which re-creates its bloc and
+  /// re-fires the load event the bloc is created with — so one mechanism
+  /// reloads every screen, rather than each bloc needing a refresh event of
+  /// its own.
+  int _reloadToken = 0;
+
+  bool _reloading = false;
+
+  Future<void> _reload() async {
+    if (_reloading) return;
+
+    // Read before the first await: the context must not be used across an
+    // async gap.
+    final db = context.read<AppDatabase>();
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() => _reloading = true);
+
+    try {
+      await runStartupMaintenance(db);
+      if (mounted) setState(() => _reloadToken++);
+    } catch (error, stack) {
+      // A reload that quietly did nothing is worse than one that says so: the
+      // owner would go on reading a screen they believe is up to date.
+      _log.severe('Reload failed', error, stack);
+      if (mounted) {
+        messenger.showSnackBar(const SnackBar(
+            content: Text('Could not reload. See the Logs screen.')));
+      }
+    } finally {
+      if (mounted) setState(() => _reloading = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final user = context.watch<AuthBloc>().state.user;
@@ -69,15 +113,22 @@ class _AppShellState extends State<AppShell> {
           Expanded(
             child: Column(
               children: [
-                _TopBar(userName: user?.name ?? 'Admin',
-                    userEmail: user?.email ?? ''),
+                _TopBar(
+                  userName: user?.name ?? 'Admin',
+                  userEmail: user?.email ?? '',
+                  onReload: _reload,
+                  reloading: _reloading,
+                ),
                 // Sits under the top bar, above whichever screen is showing,
                 // so it is visible from anywhere without covering anything.
                 const UpdateBanner(),
                 Expanded(
                   child: Container(
                     color: context.palette.surfaceBase,
-                    child: navDestinations[_index].builder(context),
+                    child: KeyedSubtree(
+                      key: ValueKey(_reloadToken),
+                      child: navDestinations[_index].builder(context),
+                    ),
                   ),
                 ),
               ],
@@ -207,10 +258,17 @@ class _Sidebar extends StatelessWidget {
 }
 
 class _TopBar extends StatelessWidget {
-  const _TopBar({required this.userName, required this.userEmail});
+  const _TopBar({
+    required this.userName,
+    required this.userEmail,
+    required this.onReload,
+    required this.reloading,
+  });
 
   final String userName;
   final String userEmail;
+  final VoidCallback onReload;
+  final bool reloading;
 
   @override
   Widget build(BuildContext context) {
@@ -228,6 +286,10 @@ class _TopBar extends StatelessWidget {
       child: Row(
         children: [
           const Spacer(),
+          // Left of Reload: whether this computer is reaching GitHub, and
+          // whether a release is waiting. Both used to look like silence.
+          const ConnectionStatusIcon(),
+          _ReloadButton(onPressed: onReload, busy: reloading),
           const _ThemeToggle(),
           const SizedBox(width: 16),
           Column(
@@ -256,6 +318,44 @@ class _TopBar extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Does what opening the app does, then rebuilds the screen on show.
+///
+/// Deliberately not called Refresh: the Dashboard, Logs and Reminders screens
+/// already carry a Refresh button, and those re-read what is on screen. This
+/// one runs the billing roll first, so a member added at the counter a moment
+/// ago gets the cycle that makes them read DUE — which until now meant quitting
+/// the app and opening it again.
+class _ReloadButton extends StatelessWidget {
+  const _ReloadButton({required this.onPressed, required this.busy});
+
+  final VoidCallback onPressed;
+  final bool busy;
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton(
+      key: appShellReloadKey,
+      // Null while it runs, so a second press cannot start the work again
+      // underneath the first.
+      onPressed: busy ? null : onPressed,
+      tooltip: 'Reload',
+      icon: busy
+          ? SizedBox(
+              height: 20,
+              width: 20,
+              child: Padding(
+                padding: const EdgeInsets.all(2),
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: context.palette.textMuted,
+                ),
+              ),
+            )
+          : Icon(Icons.refresh, size: 20, color: context.palette.textMuted),
     );
   }
 }

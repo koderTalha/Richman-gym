@@ -1,8 +1,10 @@
 import 'package:drift/drift.dart';
 
 import '../domain/member_status.dart';
+import '../domain/money.dart';
 import '../domain/name.dart';
 import 'audit_repository.dart';
+import 'cycle_repricing.dart';
 import 'database.dart';
 import 'membership_queries.dart';
 
@@ -451,7 +453,16 @@ class MemberRepository {
     required int planId,
     int? feeOverrideMinor,
     required DateTime joiningDate,
+    int? actorId,
+    DateTime? now,
   }) async {
+    // Read either side of the edit so the log can say what moved. Resolved
+    // fees, not raw columns: giving a member their own fee, taking it away and
+    // moving them to a dearer plan are three routes to the same event — "what
+    // this member is asked for each month has changed".
+    final feeBefore = await _effectiveFeeFor(id);
+    var repriced = 0;
+
     await db.transaction(() async {
       await (db.update(db.members)..where((m) => m.id.equals(id))).write(
         MembersCompanion(
@@ -477,12 +488,9 @@ class MemberRepository {
                 startDate: joiningDate,
               ),
             );
-        return;
-      }
-
-      // Changing plan closes the current enrolment and opens a new one so the
-      // member's history is preserved rather than rewritten.
-      if (active.planId != planId) {
+      } else if (active.planId != planId) {
+        // Changing plan closes the current enrolment and opens a new one so
+        // the member's history is preserved rather than rewritten.
         await (db.update(db.memberships)..where((m) => m.id.equals(active.id)))
             .write(MembershipsCompanion(endDate: Value(DateTime.now().toUtc())));
 
@@ -499,8 +507,64 @@ class MemberRepository {
             .write(MembershipsCompanion(
                 feeOverrideMinor: Value(feeOverrideMinor)));
       }
+
+      // Only when this save actually moved the fee. Cycles the member has not
+      // paid into are bills nobody has issued, so they follow a fee change —
+      // see `cycle_repricing.dart` — but a cycle can also be carrying a price
+      // that stopped matching for reasons this save knows nothing about: an
+      // import, a release predating re-pricing, a price change interrupted
+      // half way. Re-pricing unconditionally swept those up too, which meant a
+      // phone-number correction could rewrite what a member owes. Worse, it
+      // did it silently: the audit row below is written only when the fee
+      // moved, so the one edit that left no trace was the one nobody expected
+      // to change money at all. Stranded cycles are `billing_reconciliation`'s
+      // to report and the owner's to settle.
+      if (await _effectiveFeeFor(id) != feeBefore) {
+        repriced = await repriceOpenCycles(db, memberId: id, now: now);
+      }
     });
+
+    // Outside the transaction: the money change is already committed, and a
+    // log that cannot be written must not undo it.
+    final feeAfter = await _effectiveFeeFor(id);
+    if (feeBefore != feeAfter) {
+      await _audit.record(
+        category: AuditCategory.billing,
+        action: AuditAction.memberFeeChanged,
+        outcome: AuditOutcome.success,
+        actorId: actorId,
+        memberId: id,
+        memberName: fullName,
+        amountMinor: feeAfter,
+        summary: '$fullName: monthly fee changed from '
+            '${_feeLabel(feeBefore)} to ${_feeLabel(feeAfter)}',
+        detail: [
+          if (repriced > 0)
+            '$repriced unpaid billing ${repriced == 1 ? 'cycle' : 'cycles'} '
+                're-priced'
+          else
+            'No unpaid billing cycle needed re-pricing',
+          'Paid and part-paid months keep the price that was charged',
+        ],
+      );
+    }
   }
+
+  /// What the member is asked for each month right now: their own fee if they
+  /// have one, otherwise the price of the plan they are on.
+  Future<int?> _effectiveFeeFor(int memberId) async {
+    final membership = await openMembershipFor(db, memberId);
+    if (membership == null) return null;
+    if (membership.feeOverrideMinor != null) return membership.feeOverrideMinor;
+
+    final plan = await (db.select(db.membershipPlans)
+          ..where((p) => p.id.equals(membership.planId)))
+        .getSingleOrNull();
+    return plan?.priceMinor;
+  }
+
+  static String _feeLabel(int? minor) =>
+      minor == null ? 'no plan' : formatMinorUnits(minor);
 
   /// Soft deactivation only — payments and receipts must survive.
   Future<void> setActive(int id, bool active, {int? actorId}) async {

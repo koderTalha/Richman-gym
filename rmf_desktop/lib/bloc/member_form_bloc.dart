@@ -247,6 +247,7 @@ class MemberFormBloc extends Bloc<MemberFormEvent, MemberFormState> {
           planId: event.planId,
           feeOverrideMinor: event.feeOverrideMinor,
           joiningDate: joining,
+          actorId: event.actorId,
         );
         emit(state.copyWith(status: MemberFormStatus.saved));
         return;

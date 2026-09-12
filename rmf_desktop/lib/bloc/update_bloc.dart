@@ -51,16 +51,33 @@ class UpdateState extends Equatable {
     this.status = UpdateStatus.idle,
     this.available,
     this.error,
+    this.failureKind,
     this.received = 0,
     this.total = 0,
     this.dismissed = false,
+    this.canInstall = true,
+    this.lastCheckedAt,
   });
 
   final UpdateStatus status;
   final UpdateAvailable? available;
   final String? error;
+
+  /// Why the last check could not answer. Lets the card say what to do about
+  /// it rather than only that something went wrong — a missing checksum and a
+  /// dead connection need completely different things from the owner.
+  final UpdateFailureKind? failureKind;
+
   final int received;
   final int total;
+
+  /// False where an update can be found but not applied — anywhere that is not
+  /// Windows. The card offers the download page instead of an Install button
+  /// that could only fail.
+  final bool canInstall;
+
+  /// When GitHub last actually answered, for the diagnostics line.
+  final DateTime? lastCheckedAt;
 
   /// The owner said "Later" to this version.
   final bool dismissed;
@@ -79,8 +96,17 @@ class UpdateState extends Equatable {
       status == UpdateStatus.launched;
 
   @override
-  List<Object?> get props =>
-      [status, available?.version, error, received, total, dismissed];
+  List<Object?> get props => [
+        status,
+        available?.version,
+        error,
+        failureKind,
+        received,
+        total,
+        dismissed,
+        canInstall,
+        lastCheckedAt,
+      ];
 }
 
 /// Drives the update banner and the Settings card from one state machine, so
@@ -96,12 +122,27 @@ class UpdateBloc extends Bloc<UpdateEvent, UpdateState> {
 
   AppVersion get currentVersion => _service.currentVersion;
 
+  /// The feed being watched, so the diagnostics panel can name it instead of
+  /// leaving the owner to guess which repository this copy follows.
+  String get releasesEndpoint => _service.releasesEndpoint;
+
   Future<void> _onCheck(
     UpdateCheckRequested event,
     Emitter<UpdateState> emit,
   ) async {
     if (state.busy) return;
-    if (!_service.isSupported) return;
+
+    // Every path below this line emits. Returning quietly is what the gym
+    // reported as "it doesn't connect to GitHub": the button was pressed, the
+    // check never ran, and nothing on screen changed — which is exactly what a
+    // dead connection looks like from the outside.
+    //
+    // Note this is `canCheck`, not `canInstall`. A machine that cannot apply
+    // an installer can still be told one is waiting.
+    if (!_service.canCheck) {
+      emit(_failed(await _service.check()));
+      return;
+    }
 
     // The automatic check at startup only goes to the network once a day. What
     // it found, though, is still the answer: reopening the app an hour later
@@ -113,10 +154,26 @@ class UpdateBloc extends Bloc<UpdateEvent, UpdateState> {
       return;
     }
 
-    emit(const UpdateState(status: UpdateStatus.checking));
+    emit(UpdateState(
+      status: UpdateStatus.checking,
+      canInstall: _service.canInstall,
+    ));
 
     await _emitResult(await _service.check(), emit);
   }
+
+  /// A failure that never reached the network, shaped like every other one so
+  /// the card has a single thing to render.
+  UpdateState _failed(UpdateCheckResult result) => switch (result) {
+        UpdateCheckFailed(:final reason, :final kind) => UpdateState(
+            status: UpdateStatus.failed,
+            error: reason,
+            failureKind: kind,
+            canInstall: _service.canInstall,
+          ),
+        _ => UpdateState(status: UpdateStatus.idle,
+            canInstall: _service.canInstall),
+      };
 
   /// Turns a check result into state.
   ///
@@ -138,14 +195,26 @@ class UpdateBloc extends Bloc<UpdateEvent, UpdateState> {
           available: result,
           total: result.sizeBytes,
           dismissed: dismissed == result.version,
+          canInstall: _service.canInstall,
+          lastCheckedAt: await _service.lastCheckedAt(),
         ));
       case AlreadyCurrent():
-        emit(const UpdateState(status: UpdateStatus.upToDate));
-      case UpdateCheckFailed(:final reason):
+        emit(UpdateState(
+          status: UpdateStatus.upToDate,
+          canInstall: _service.canInstall,
+          lastCheckedAt: await _service.lastCheckedAt(),
+        ));
+      case UpdateCheckFailed(:final reason, :final kind):
         if (quietFailures) return;
         // Only surfaced where the owner went looking for it. An offline gym is
         // not a problem the dashboard needs to announce.
-        emit(UpdateState(status: UpdateStatus.failed, error: reason));
+        emit(UpdateState(
+          status: UpdateStatus.failed,
+          error: reason,
+          failureKind: kind,
+          canInstall: _service.canInstall,
+          lastCheckedAt: await _service.lastCheckedAt(),
+        ));
     }
   }
 
@@ -156,10 +225,21 @@ class UpdateBloc extends Bloc<UpdateEvent, UpdateState> {
     final update = state.available;
     if (update == null || state.status == UpdateStatus.installing) return;
 
+    // Carried through every emit below. Neither is a fact about *this*
+    // transition: one is what the machine can do, the other is when GitHub
+    // last answered, and rebuilding the state without them silently restores
+    // the `canInstall: true` default — putting an Install button that can only
+    // fail back on a Mac, and "Never" on a diagnostics line that had just been
+    // filled in.
+    final canInstall = _service.canInstall;
+    final checkedAt = state.lastCheckedAt;
+
     emit(UpdateState(
       status: UpdateStatus.installing,
       available: update,
       total: update.sizeBytes,
+      canInstall: canInstall,
+      lastCheckedAt: checkedAt,
     ));
 
     final result = await _service.install(
@@ -171,18 +251,27 @@ class UpdateBloc extends Bloc<UpdateEvent, UpdateState> {
           available: update,
           received: received,
           total: total,
+          canInstall: canInstall,
+          lastCheckedAt: checkedAt,
         ));
       },
     );
 
     switch (result) {
       case UpdateLaunched():
-        emit(UpdateState(status: UpdateStatus.launched, available: update));
+        emit(UpdateState(
+          status: UpdateStatus.launched,
+          available: update,
+          canInstall: canInstall,
+          lastCheckedAt: checkedAt,
+        ));
       case UpdateInstallFailed(:final message):
         emit(UpdateState(
           status: UpdateStatus.failed,
           available: update,
           error: message,
+          canInstall: canInstall,
+          lastCheckedAt: checkedAt,
         ));
     }
   }
@@ -200,6 +289,8 @@ class UpdateBloc extends Bloc<UpdateEvent, UpdateState> {
       available: update,
       total: update.sizeBytes,
       dismissed: true,
+      canInstall: _service.canInstall,
+      lastCheckedAt: state.lastCheckedAt,
     ));
   }
 }

@@ -217,12 +217,20 @@ void main() {
           reason: 'the gym opens again tomorrow');
     });
 
-    test('does nothing at all off Windows', () async {
+    test('still checks off Windows, but will not install', () async {
+      // Checking is an HTTPS GET against a public endpoint and works
+      // anywhere. Only applying an Inno Setup .exe is Windows-only. Refusing
+      // to even ask elsewhere left the owner pressing a button that did
+      // nothing, and made the feature untestable off the gym's machine.
       final service = serviceWith(serving(), windows: false);
 
-      expect(service.isSupported, isFalse);
-      expect(await service.isDueForCheck(), isFalse);
-      expect(await service.check(), isA<UpdateCheckFailed>());
+      expect(service.canCheck, isTrue);
+      expect(service.canInstall, isFalse);
+      expect(service.isSupported, isFalse,
+          reason: 'the old name means "can apply an update", which is what '
+              'every existing caller used it for');
+      expect(await service.isDueForCheck(), isTrue);
+      expect(await service.check(), isA<UpdateAvailable>());
     });
   });
 

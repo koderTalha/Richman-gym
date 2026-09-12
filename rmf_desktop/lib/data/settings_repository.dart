@@ -1,9 +1,12 @@
 import 'package:bcrypt/bcrypt.dart';
 import 'package:drift/drift.dart';
 
+import '../domain/money.dart';
 import '../services/whatsapp/meta_client.dart';
 import '../services/whatsapp/mock_client.dart';
 import '../services/whatsapp/whatsapp_client.dart';
+import 'audit_repository.dart';
+import 'cycle_repricing.dart';
 import 'database.dart';
 import 'seed.dart';
 
@@ -12,9 +15,11 @@ import 'seed.dart';
 /// WhatsApp credentials live here too rather than in a .env file, because the
 /// gym owner installs a packaged app and has no terminal to edit files in.
 class SettingsRepository {
-  SettingsRepository(this.db);
+  SettingsRepository(this.db, {AuditRepository? audit})
+      : _audit = audit ?? AuditRepository(db);
 
   final AppDatabase db;
+  final AuditRepository _audit;
 
   Future<GymSetting> get() =>
       (db.select(db.gymSettings)..where((s) => s.id.equals(1))).getSingle();
@@ -40,6 +45,8 @@ class SettingsRepository {
     required int durationMonths,
     required int priceMinor,
     required bool isActive,
+    int? actorId,
+    DateTime? now,
   }) async {
     if (id == null) {
       await db.into(db.membershipPlans).insert(
@@ -54,15 +61,100 @@ class SettingsRepository {
       return;
     }
 
-    await (db.update(db.membershipPlans)..where((p) => p.id.equals(id))).write(
-      MembershipPlansCompanion(
-        name: Value(name),
-        description: Value(description),
-        durationMonths: Value(durationMonths),
-        priceMinor: Value(priceMinor),
-        isActive: Value(isActive),
-      ),
-    );
+    // Read before the write: the old price is half of what makes the log
+    // worth keeping, and it is gone the moment the update lands.
+    final previous = await (db.select(db.membershipPlans)
+          ..where((p) => p.id.equals(id)))
+        .getSingleOrNull();
+
+    final priceMoved = previous != null && previous.priceMinor != priceMinor;
+    var repriced = 0;
+
+    // One transaction: a new price live against a roster still carrying the
+    // old one is precisely the split state `cycle_repricing.dart` exists to
+    // prevent, and the loop below can touch every member in the gym. The
+    // member-side path in `MemberRepository.update` makes the same bargain.
+    await db.transaction(() async {
+      await (db.update(db.membershipPlans)..where((p) => p.id.equals(id)))
+          .write(
+        MembershipPlansCompanion(
+          name: Value(name),
+          description: Value(description),
+          durationMonths: Value(durationMonths),
+          priceMinor: Value(priceMinor),
+          isActive: Value(isActive),
+        ),
+      );
+
+      // Only when the price actually moved. Editing the price changes what the
+      // whole roster on this plan is billed, so the cycles they are currently
+      // in follow it; renaming a plan, or flipping it inactive, is
+      // housekeeping and must leave the roster's bills alone. Cycles they have
+      // paid into keep the price they paid — see `cycle_repricing.dart`.
+      if (priceMoved) {
+        repriced = await repriceOpenCyclesForPlan(db, planId: id, now: now);
+      }
+    });
+
+    // Renaming a plan is housekeeping; re-pricing one moves money for every
+    // member on it who has no fee of their own, which is the single most
+    // far-reaching thing this screen can do.
+    if (priceMoved) {
+      await _audit.record(
+        category: AuditCategory.billing,
+        action: AuditAction.planPriceChanged,
+        outcome: AuditOutcome.success,
+        actorId: actorId,
+        amountMinor: priceMinor,
+        summary: '$name: plan price changed from '
+            '${formatMinorUnits(previous.priceMinor)} to '
+            '${formatMinorUnits(priceMinor)}',
+        detail: [
+          if (repriced > 0)
+            '$repriced unpaid billing ${repriced == 1 ? 'cycle' : 'cycles'} '
+                're-priced'
+          else
+            'No unpaid billing cycle needed re-pricing',
+          'Members on their own custom fee are unaffected',
+          'Paid and part-paid months keep the price that was charged',
+        ],
+      );
+    }
+  }
+
+  /// Who a change to [planId]'s price would reach.
+  ///
+  /// Asked by the Settings screen before the owner commits, so the dialog can
+  /// name a number rather than a vague category. Deliberately the same
+  /// question [repriceOpenCyclesForPlan] answers — members enrolled on this
+  /// plan, still active, split by whether they have a fee of their own — so
+  /// the warning and the work cannot drift apart.
+  Future<PlanPricingImpact> planPricingImpact(int planId) async {
+    final enrolled = await (db.select(db.memberships)
+          ..where((m) => m.planId.equals(planId) & m.endDate.isNull()))
+        .get();
+    if (enrolled.isEmpty) return const PlanPricingImpact();
+
+    final active = {
+      for (final m in await (db.select(db.members)
+            ..where((m) =>
+                m.id.isIn(enrolled.map((e) => e.memberId)) &
+                m.deactivatedAt.isNull()))
+          .get())
+        m.id,
+    };
+
+    var following = 0;
+    var custom = 0;
+    for (final membership in enrolled) {
+      if (!active.contains(membership.memberId)) continue;
+      if (membership.feeOverrideMinor == null) {
+        following++;
+      } else {
+        custom++;
+      }
+    }
+    return PlanPricingImpact(followingPlanPrice: following, onCustomFee: custom);
   }
 
   /// Plans are deactivated rather than deleted, because memberships reference
@@ -168,4 +260,22 @@ class SettingsRepository {
         return MockWhatsAppClient(forceFailure: settings.whatsappMockFails);
     }
   }
+}
+
+/// How many members a plan price change would and would not move.
+class PlanPricingImpact {
+  const PlanPricingImpact({
+    this.followingPlanPrice = 0,
+    this.onCustomFee = 0,
+  });
+
+  /// Active members on the plan with no fee of their own. These are the ones
+  /// whose unpaid bills follow the new price.
+  final int followingPlanPrice;
+
+  /// Active members on the plan who have their own fee, which outranks the
+  /// plan's. Nothing about their billing changes.
+  final int onCustomFee;
+
+  bool get isEmpty => followingPlanPrice == 0 && onCustomFee == 0;
 }

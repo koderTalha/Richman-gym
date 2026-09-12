@@ -9,6 +9,7 @@ import '../../domain/money.dart';
 import '../../domain/reminder_schedule.dart';
 import '../../theme/app_theme.dart';
 import 'backup_card.dart';
+import 'plan_price_change_dialog.dart';
 import 'update_card.dart';
 
 class SettingsScreen extends StatelessWidget {
@@ -636,11 +637,36 @@ class _PlansCard extends StatelessWidget {
 
   Future<void> _edit(BuildContext context, {MembershipPlan? plan}) async {
     final bloc = context.read<SettingsBloc>();
+    final repository = context.read<SettingsRepository>();
+    final actorId = context.read<AuthBloc>().state.user?.id;
+
     final result = await showDialog<PlanSaved>(
       context: context,
       builder: (_) => _PlanDialog(plan: plan),
     );
-    if (result != null) bloc.add(result);
+    if (result == null) return;
+
+    // Re-pricing a plan moves the open, unpaid bill of every active member on
+    // it who has no fee of their own. That is the furthest-reaching thing this
+    // screen can do, and it used to happen on the same silent button press as
+    // fixing a typo in a plan's name.
+    if (plan != null && plan.priceMinor != result.priceMinor) {
+      final impact = await repository.planPricingImpact(plan.id);
+      if (!context.mounted) return;
+
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (_) => PlanPriceChangeDialog(
+          planName: result.name,
+          previousPriceMinor: plan.priceMinor,
+          newPriceMinor: result.priceMinor,
+          impact: impact,
+        ),
+      );
+      if (confirmed != true) return;
+    }
+
+    bloc.add(result.by(actorId));
   }
 
   @override

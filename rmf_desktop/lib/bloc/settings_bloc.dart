@@ -162,6 +162,7 @@ class PlanSaved extends SettingsEvent {
     required this.priceMinor,
     required this.isActive,
     this.description,
+    this.actorId,
   });
 
   final int? id;
@@ -171,9 +172,25 @@ class PlanSaved extends SettingsEvent {
   final bool isActive;
   final String? description;
 
+  /// Who is signed in. A plan price change re-prices open bills across the
+  /// roster, so the log has to be able to say who did it.
+  final int? actorId;
+
+  /// The same event, attributed. The dialog that builds it has no access to
+  /// the signed-in user; the screen that shows the dialog does.
+  PlanSaved by(int? actorId) => PlanSaved(
+        id: id,
+        name: name,
+        durationMonths: durationMonths,
+        priceMinor: priceMinor,
+        isActive: isActive,
+        description: description,
+        actorId: actorId,
+      );
+
   @override
   List<Object?> get props =>
-      [id, name, durationMonths, priceMinor, isActive, description];
+      [id, name, durationMonths, priceMinor, isActive, description, actorId];
 }
 
 class PlanActiveToggled extends SettingsEvent {
@@ -363,6 +380,7 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
       durationMonths: event.durationMonths,
       priceMinor: event.priceMinor,
       isActive: event.isActive,
+      actorId: event.actorId,
     );
     await _load(emit, message: 'Plan saved.');
   }
