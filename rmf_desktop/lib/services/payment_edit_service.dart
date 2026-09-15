@@ -159,6 +159,37 @@ class PaymentDeleteRefused extends DeletePaymentResult {
   final String message;
 }
 
+/// What became of a request to wipe a member's whole payment history.
+sealed class ClearPaymentsResult {
+  const ClearPaymentsResult();
+}
+
+class AllPaymentsDeleted extends ClearPaymentsResult {
+  const AllPaymentsDeleted({
+    required this.memberName,
+    required this.deletedCount,
+    required this.totalMinor,
+    this.orphanedFiles = const [],
+  });
+
+  final String memberName;
+  final int deletedCount;
+
+  /// Everything that was recorded against the member, now gone.
+  final int totalMinor;
+
+  /// Receipt files the database no longer references but which could not be
+  /// removed — see [PaymentDeleted.orphanedFiles].
+  final List<String> orphanedFiles;
+
+  bool get hasOrphanedFiles => orphanedFiles.isNotEmpty;
+}
+
+class ClearPaymentsRefused extends ClearPaymentsResult {
+  const ClearPaymentsRefused(this.message);
+  final String message;
+}
+
 /// Correcting and removing payments that are already recorded.
 ///
 /// Separate from [RecordPaymentService] — which is already the longest workflow
@@ -480,6 +511,108 @@ class PaymentEditService {
   }
 
   // --- Deleting ------------------------------------------------------------
+
+  /// Removes every payment recorded against [memberId].
+  ///
+  /// The way back for a member whose history has to be typed up again from the
+  /// paper ledger — most often one left mid-treadmill by a fee rise an older
+  /// release did not carry through, where correcting the months one at a time
+  /// means deleting them all anyway.
+  ///
+  /// Deliberately built on [delete] rather than a bulk `DELETE FROM payments`.
+  /// That one call already knows to take the receipt and its send history with
+  /// the payment, to recompute `settledAt` on **every** cycle a payment
+  /// touched — an advance payment settles several — and to leave a row in the
+  /// log saying what went. Reimplementing any of that here would be a second
+  /// copy of a rule that must not exist; a member's payments are counted in
+  /// tens, so doing it one at a time costs nothing worth having.
+  ///
+  /// Billing cycles themselves are **not** removed. They are what the member
+  /// was billed, which this has no opinion about — they simply read as unpaid
+  /// again, ready for the history to be re-entered against them.
+  ///
+  /// Refused, rather than silently doing nothing, when the member is gone or
+  /// has no payments: the log should not fill up with records of nothing
+  /// happening.
+  Future<ClearPaymentsResult> deleteAllForMember({
+    required int memberId,
+    required int actorId,
+  }) async {
+    final member = await (db.select(db.members)
+          ..where((m) => m.id.equals(memberId)))
+        .getSingleOrNull();
+    if (member == null) {
+      return const ClearPaymentsRefused('That member no longer exists.');
+    }
+
+    // Oldest first, so a run that fails part way leaves the member's recent
+    // history intact rather than a hole in the middle of last year.
+    final recorded = await (db.select(db.payments)
+          ..where((p) => p.memberId.equals(memberId))
+          ..orderBy([(p) => OrderingTerm(expression: p.paymentDate)]))
+        .get();
+
+    if (recorded.isEmpty) {
+      return ClearPaymentsRefused(
+        '${member.fullName} has no payments recorded.',
+      );
+    }
+
+    final settings = await _settings.get();
+    final orphaned = <String>[];
+    var deletedCount = 0;
+    var totalMinor = 0;
+
+    for (final payment in recorded) {
+      final outcome = await delete(paymentId: payment.id, actorId: actorId);
+      switch (outcome) {
+        case PaymentDeleted(:final orphanedFiles):
+          deletedCount++;
+          totalMinor += payment.amountMinor;
+          orphaned.addAll(orphanedFiles);
+        // Another screen got there first. Not a failure of this operation —
+        // the payment is gone either way, which is what was asked for.
+        case PaymentDeleteRefused():
+          break;
+      }
+    }
+
+    if (deletedCount == 0) {
+      return ClearPaymentsRefused(
+        'Nothing was removed for ${member.fullName}.',
+      );
+    }
+
+    await audit.record(
+      category: AuditCategory.payment,
+      action: AuditAction.paymentsCleared,
+      outcome: AuditOutcome.success,
+      actorId: actorId,
+      memberId: member.id,
+      memberName: member.fullName,
+      amountMinor: totalMinor,
+      summary: 'Payment history cleared for ${member.fullName} — '
+          '$deletedCount payment${deletedCount == 1 ? '' : 's'} totalling '
+          '${formatMinorUnits(totalMinor, settings.currency)}',
+      detail: [
+        'Every receipt for this member was deleted with the payments.',
+        'Their billing cycles were kept and now read as due again.',
+        if (orphaned.isNotEmpty)
+          '${orphaned.length} receipt file(s) could not be removed from disk.',
+      ],
+    );
+
+    _log.warning(
+      'Cleared $deletedCount payment(s) for member ${member.id}',
+    );
+
+    return AllPaymentsDeleted(
+      memberName: member.fullName,
+      deletedCount: deletedCount,
+      totalMinor: totalMinor,
+      orphanedFiles: orphaned,
+    );
+  }
 
   Future<DeletePaymentResult> delete({
     required int paymentId,

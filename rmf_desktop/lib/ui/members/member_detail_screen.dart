@@ -9,6 +9,7 @@ import '../../domain/money.dart';
 import '../../services/billing_cycle_service.dart';
 import '../../theme/app_theme.dart';
 import '../payments/advance_payment_dialog.dart';
+import '../payments/clear_payments_action.dart';
 import '../payments/payment_history_table.dart';
 import '../widgets/status_badge.dart';
 import 'billing_day_action.dart';
@@ -335,7 +336,30 @@ class _Body extends StatelessWidget {
             ),
           ],
           const SizedBox(height: 24),
-          Text('PAYMENT HISTORY', style: labelStyleOf(context)),
+          Row(
+            children: [
+              Text('PAYMENT HISTORY', style: labelStyleOf(context)),
+              const Spacer(),
+              if (payments.isNotEmpty)
+                Builder(
+                  builder: (context) => TextButton.icon(
+                    onPressed: () async {
+                      final cleared = await confirmAndClearPayments(
+                        context,
+                        member: row,
+                        payments: payments,
+                      );
+                      if (cleared) onPaymentsChanged();
+                    },
+                    style: TextButton.styleFrom(
+                      foregroundColor: context.palette.expired,
+                    ),
+                    icon: const Icon(Icons.delete_sweep_outlined, size: 16),
+                    label: const Text('Delete all payments'),
+                  ),
+                ),
+            ],
+          ),
           const SizedBox(height: 10),
           PaymentHistoryTable(
             rows: payments,

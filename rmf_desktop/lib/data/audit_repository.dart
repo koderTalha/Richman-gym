@@ -21,6 +21,12 @@ abstract final class AuditAction {
   static const paymentDeleted = 'payment.deleted';
   static const paymentEditRefused = 'payment.edit_refused';
 
+  /// The owner wiped a member's entire payment history in one action, to type
+  /// it up again from the paper ledger. Recorded on top of the per-payment
+  /// rows, not instead of them: those say what was removed, this says it was
+  /// one deliberate act rather than somebody picking rows off a table.
+  static const paymentsCleared = 'payment.cleared';
+
   static const billingMonthBlocked = 'billing.month_blocked';
   static const billingMonthConfirmed = 'billing.month_confirmed';
 
