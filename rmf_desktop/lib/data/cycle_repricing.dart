@@ -151,3 +151,36 @@ Future<Set<int>> _periodsHoldingMoney(
 
   return holding;
 }
+
+/// Re-prices every active member's not-yet-issued cycles to their current fee.
+///
+/// The sweep `runStartupMaintenance` makes, and the thing that stops a stale
+/// price surviving long enough to be paid into.
+///
+/// A fee change made through the app already re-prices as it happens — see
+/// [repriceOpenCycles] from `MemberRepository.update`, and
+/// [repriceOpenCyclesForPlan] from Settings. What neither of those can reach is
+/// a price that moved before this code existed, or under a release that did not
+/// carry it through. Those cycles sit at the old figure until somebody pays the
+/// new one into them, at which point the difference spills forward, opens the
+/// next cycle early and part-pays it — and from then on the member is
+/// permanently one shortfall behind however faithfully they pay. Once that has
+/// happened nothing here can undo it: [repriceOpenCycles] will not touch a
+/// cycle holding money, precisely because a member who part-paid at the old
+/// price must not have the rise backdated onto them. The only place to stop it
+/// is before the money lands.
+///
+/// Every guard [repriceOpenCycles] makes still applies, so this leaves alone
+/// settled cycles, cycles holding any money at all, and cycles that have
+/// already ended — arrears stay at the price they were incurred at.
+Future<int> repriceAllOpenCycles(AppDatabase db, {DateTime? now}) async {
+  final active = await (db.select(db.members)
+        ..where((m) => m.deactivatedAt.isNull()))
+      .get();
+
+  var repriced = 0;
+  for (final member in active) {
+    repriced += await repriceOpenCycles(db, memberId: member.id, now: now);
+  }
+  return repriced;
+}
