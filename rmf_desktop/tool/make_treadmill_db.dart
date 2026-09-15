@@ -25,8 +25,15 @@ import '../test/support/treadmill_fixture.dart';
 ///
 ///     OUT=/tmp/demo.sqlite fvm flutter test tool/make_treadmill_db.dart
 ///
-/// Load it through the app's own Restore (Settings -> Backup & Restore ->
-/// Restore), which validates the file and swaps it in on the next launch.
+/// INSTALL=1 puts it straight where the macOS app reads its database, moving
+/// any existing one aside first, so `flutter run -d macos` opens it directly:
+///
+///     INSTALL=1 fvm flutter test tool/make_treadmill_db.dart
+///
+/// Close the app before doing that — SQLite locks the file while it runs, and
+/// the -wal and -shm files beside it have to go with the database or the app
+/// reads a mix of the two. Otherwise load it through Settings -> Backup &
+/// Restore, which validates the file and swaps it in on the next launch.
 /// Log in as admin@richmanfitness.local / RichMan#2026.
 class _FakeRenderer extends ReceiptRenderer {
   @override
@@ -44,10 +51,36 @@ class _FakeStorage extends ReceiptStorage {
 
 void main() {
   test('writes a database reproducing the fee-rise treadmill', () async {
-    final out = File(
-        Platform.environment['OUT'] ?? 'build/treadmill-demo.sqlite');
+    // Where the sandboxed macOS build keeps its database.
+    final live = File('${Platform.environment['HOME']}/Library/Containers/'
+        'com.richmanfitness.richManFitness/Data/Documents/'
+        'richmanfitness.sqlite');
+
+    final installing = Platform.environment['INSTALL'] == '1';
+    final out = File(Platform.environment['OUT'] ??
+        (installing ? live.path : 'build/treadmill-demo.sqlite'));
     await out.parent.create(recursive: true);
-    if (await out.exists()) await out.delete();
+
+    // Move the existing database aside rather than deleting it: this is the
+    // developer's own gym data, and "reproduce the bug" must never be the
+    // thing that loses it.
+    if (await out.exists()) {
+      final stamp = DateTime.now()
+          .toIso8601String()
+          .replaceAll(':', '-')
+          .split('.')
+          .first;
+      final kept = '${out.path}.before-$stamp';
+      await out.rename(kept);
+      // ignore: avoid_print
+      print('Existing database moved to $kept');
+    }
+    // The write-ahead log belongs to the database that just moved; leaving it
+    // behind would have the app reading half of each.
+    for (final suffix in ['-wal', '-shm']) {
+      final sidecar = File('${out.path}$suffix');
+      if (await sidecar.exists()) await sidecar.delete();
+    }
 
     final db = AppDatabase.forTesting(NativeDatabase(out));
     addTearDown(db.close);
@@ -126,6 +159,7 @@ void main() {
     print('''
 
 Wrote ${out.absolute.path}
+${installing ? '  Installed where the macOS app reads it — just launch the app.' : '  Load it via Settings -> Backup & Restore -> Restore, or re-run with INSTALL=1.'}
   Sign in:  admin@richmanfitness.local / RichMan#2026
   Plan:     Student, Rs. 2,500 (was Rs. 1,500 until April)
 

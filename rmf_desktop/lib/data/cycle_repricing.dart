@@ -80,14 +80,38 @@ Future<int> repriceOpenCycles(
 
   final ids = [for (final period in candidates) period.id];
   final funded = await _periodsHoldingMoney(db, ids);
+  final collected = await collectedByPeriod(db, ids);
 
   var repriced = 0;
   for (final period in candidates) {
-    if (funded.contains(period.id)) continue;
+    // Money against a cycle is the member acting on the price they were
+    // quoted — so a **rise** must not reach it, or the increase is backdated
+    // onto somebody who had already paid what was asked.
+    //
+    // A **cut** is the opposite case and the guard was wrong to catch it. It
+    // can only ever reduce what the member owes, so there is no charge to
+    // backdate; refusing it leaves the gym asking for money the owner has
+    // already agreed to stop charging. That is what stranded forty-three
+    // members at once: each was moved onto a cheaper plan part way through
+    // the month, paid the new, lower fee, and the cycle went on wanting the
+    // old one for ever — because from the moment their money landed nothing
+    // would re-price it again.
+    if (funded.contains(period.id) && feeMinor > period.expectedAmountMinor) {
+      continue;
+    }
+
     await (db.update(db.membershipPeriods)
           ..where((p) => p.id.equals(period.id)))
         .write(MembershipPeriodsCompanion(
-            expectedAmountMinor: Value(feeMinor)));
+          expectedAmountMinor: Value(feeMinor),
+          // Recomputed here rather than left to a later caller: a cut can be
+          // the very thing that closes the cycle, and a stamp that disagreed
+          // with the money behind it is what `refreshSettlement` exists to
+          // prevent everywhere else. Every candidate arrived unsettled, so
+          // this only ever closes one — it cannot reopen anything.
+          settledAt: Value(
+              (collected[period.id] ?? 0) >= feeMinor ? at : null),
+        ));
     repriced++;
   }
 
