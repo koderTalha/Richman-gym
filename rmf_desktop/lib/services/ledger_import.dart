@@ -1,3 +1,5 @@
+import '../data/database.dart';
+import '../domain/name.dart';
 import '../domain/phone.dart';
 
 /// Parsing for the owner's real ledger format.
@@ -28,6 +30,7 @@ class ColumnMapping {
     this.reference,
     this.status,
     this.extra,
+    this.plan,
     this.monthColumns = const {},
   });
 
@@ -38,6 +41,10 @@ class ColumnMapping {
   final int? reference;
   final int? status;
   final int? extra;
+
+  /// The "Plan" column, naming the membership plan each member belongs on.
+  /// Absent from every sheet written before the app grew the column.
+  final int? plan;
 
   /// Month number (1–12) -> column index.
   final Map<int, int> monthColumns;
@@ -68,7 +75,7 @@ class ColumnMapping {
 }
 
 ColumnMapping _mapRow(List<String?> header) {
-  int? memberCode, name, phone, feeSubmit, reference, status, extra;
+  int? memberCode, name, phone, feeSubmit, reference, status, extra, plan;
   final months = <int, int>{};
 
   for (var c = 0; c < header.length; c++) {
@@ -83,7 +90,11 @@ ColumnMapping _mapRow(List<String?> header) {
       continue;
     }
 
-    if (name == null && (raw.contains('name') || raw.contains('customer'))) {
+    // Before the name column: a header reading "Plan Name" names a plan.
+    if (plan == null && raw.contains('plan')) {
+      plan = c;
+    } else if (name == null &&
+        (raw.contains('name') || raw.contains('customer'))) {
       name = c;
     } else if (memberCode == null &&
         (raw.contains('enroll') || raw.contains('sr') || raw == 'id' ||
@@ -116,6 +127,7 @@ ColumnMapping _mapRow(List<String?> header) {
     reference: reference,
     status: status,
     extra: extra,
+    plan: plan,
     monthColumns: months,
   );
 }
@@ -146,6 +158,8 @@ class ParsedMemberRow {
     required this.memberCode,
     required this.reference,
     required this.notes,
+    this.planName,
+    this.planId,
     required this.payments,
     required this.problems,
     required this.warnings,
@@ -158,6 +172,17 @@ class ParsedMemberRow {
   final int? memberCode;
   final String? reference;
   final String? notes;
+
+  /// The plan the sheet names for this member, exactly as written, or null
+  /// where the sheet names none — which is also the default, so a row built by
+  /// hand for a sheet that predates the column needs to say nothing about it.
+  final String? planName;
+
+  /// The configured plan [planName] resolved to. Null where the row names no
+  /// plan, in which case the import falls back to the plan chosen in the
+  /// wizard; a name that matches nothing configured is a problem, not a null.
+  final int? planId;
+
   final List<ParsedMonthPayment> payments;
 
   /// Non-empty means the row cannot be imported at all.
@@ -194,6 +219,12 @@ class ParsedLedger {
   /// Importable rows that still deserve a mention in the preview.
   List<ParsedMemberRow> get withWarnings =>
       rows.where((r) => r.isValid && r.warnings.isNotEmpty).toList();
+
+  /// Whether this sheet carries a "Plan" column at all.
+  bool get namesPlans => mapping.plan != null;
+
+  /// Importable rows naming no plan, which take the plan chosen in the wizard.
+  int get rowsUsingChosenPlan => valid.where((r) => r.planId == null).length;
 
   int get withoutPhone => valid.where((r) => !r.hasPhone).length;
   int get totalPayments =>
@@ -248,12 +279,27 @@ final _hashOnly = RegExp(r'^#+$');
 }
 
 /// Turns raw sheet rows into member records with their historical payments.
+///
+/// [plans] are the plans the gym has configured, and they are the only plans a
+/// sheet can name. A "Plan" cell is looked up among them; one that matches
+/// nothing becomes a problem on that row, so the member is reported rather than
+/// imported onto somebody else's fee, and no plan is ever created from a sheet.
+/// Passing none turns the column off altogether, which is what every caller
+/// reading a sheet written before the column existed wants.
 ParsedLedger parseLedger({
   required List<List<String?>> rows,
   required int headerRow,
   required ColumnMapping mapping,
   required int year,
+  List<MembershipPlan> plans = const [],
 }) {
+  // Oldest plan first, so two plans sharing a name always resolve to the same
+  // one of them whatever order the caller's query returned.
+  final plansByName = <String, int>{};
+  for (final plan in [...plans]..sort((a, b) => a.id.compareTo(b.id))) {
+    plansByName.putIfAbsent(normalizePlanName(plan.name), () => plan.id);
+  }
+
   final parsed = <ParsedMemberRow>[];
 
   for (var r = headerRow + 1; r < rows.length; r++) {
@@ -285,6 +331,18 @@ ParsedLedger parseLedger({
       warnings.add('Unusable phone "$rawPhone" — cannot receive WhatsApp');
     }
 
+    // A blank plan cell is not an error: it means this row says nothing about
+    // which plan the member is on, and the plan chosen in the wizard stands.
+    final planCell = cell(mapping.plan);
+    final planName = isBlankCell(planCell) ? null : planCell;
+    int? planId;
+    if (planName != null && plansByName.isNotEmpty) {
+      planId = plansByName[normalizePlanName(planName)];
+      if (planId == null) {
+        problems.add('No membership plan called "$planName"');
+      }
+    }
+
     final codeText = cell(mapping.memberCode);
     final memberCode =
         codeText == null ? null : int.tryParse(codeText.replaceAll(RegExp(r'[^0-9]'), ''));
@@ -312,6 +370,8 @@ ParsedLedger parseLedger({
       memberCode: memberCode,
       reference: cell(mapping.reference),
       notes: cell(mapping.extra),
+      planName: planName,
+      planId: planId,
       payments: payments,
       problems: problems,
       warnings: warnings,

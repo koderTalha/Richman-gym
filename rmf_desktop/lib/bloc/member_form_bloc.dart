@@ -32,6 +32,7 @@ class MemberFormSubmitted extends MemberFormEvent {
     this.feeOverrideMinor,
     this.confirmSharedPhone = false,
     this.actorId,
+    this.effectiveFrom,
   });
 
   final String fullName;
@@ -43,6 +44,11 @@ class MemberFormSubmitted extends MemberFormEvent {
   final String? address;
   final String? emergencyContact;
   final int? feeOverrideMinor;
+
+  /// When a fee change this save makes takes effect. Null means today — what
+  /// every save meant before the owner could choose otherwise. See
+  /// `_EffectiveFromPicker` and `MemberRepository.update`.
+  final DateTime? effectiveFrom;
 
   /// Set once the operator has been shown who else is on this number and has
   /// said to go ahead anyway.
@@ -248,6 +254,7 @@ class MemberFormBloc extends Bloc<MemberFormEvent, MemberFormState> {
           feeOverrideMinor: event.feeOverrideMinor,
           joiningDate: joining,
           actorId: event.actorId,
+          effectiveFrom: event.effectiveFrom,
         );
         emit(state.copyWith(status: MemberFormStatus.saved));
         return;
@@ -285,7 +292,10 @@ class MemberFormBloc extends Bloc<MemberFormEvent, MemberFormState> {
       if (isClosed) return;
       emit(state.copyWith(
         status: MemberFormStatus.failed,
-        error: 'Could not save: $e',
+        error: e is ArgumentError && e.name == 'effectiveFrom'
+            ? "That date is before the member's current plan started. Choose "
+                'a later date, or leave it as Today.'
+            : 'Could not save: $e',
       ));
     }
   }

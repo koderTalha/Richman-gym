@@ -143,8 +143,11 @@ class _ImportView extends StatelessWidget {
                                     width: 220,
                                     child: DropdownButtonFormField<int>(
                                       initialValue: state.planId,
-                                      decoration: const InputDecoration(
-                                          labelText: 'Assign plan',
+                                      decoration: InputDecoration(
+                                          labelText:
+                                              (state.parsed?.namesPlans ?? false)
+                                                  ? 'Plan if none named'
+                                                  : 'Assign plan',
                                           isDense: true),
                                       items: state.plans
                                           .map((p) => DropdownMenuItem(
@@ -276,6 +279,11 @@ class _Preview extends StatelessWidget {
   Widget build(BuildContext context) {
     final sample = ledger.valid.take(8).toList();
 
+    final fallingBack = ledger.rowsUsingChosenPlan == 0
+        ? ''
+        : '${ledger.rowsUsingChosenPlan} rows name no plan and will use the '
+            'plan chosen above. ';
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -313,6 +321,16 @@ class _Preview extends StatelessWidget {
           'record.',
           style: mutedStyleOf(context),
         ),
+        if (ledger.namesPlans) ...[
+          const SizedBox(height: 6),
+          Text(
+            'Members are enrolled on the plan named in the “Plan” column. A '
+            'name this app has no plan for is skipped, never created — the '
+            'plans on the Settings screen are the only ones there are. '
+            '${fallingBack}Members already on file keep the plan they are on.',
+            style: mutedStyleOf(context),
+          ),
+        ],
         if (ledger.paymentsUsingPlanFee > 0) ...[
           const SizedBox(height: 6),
           Text(

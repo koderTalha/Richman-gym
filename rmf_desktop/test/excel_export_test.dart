@@ -145,7 +145,37 @@ void main() {
 
     expect(ledgerRow[3], '-', reason: 'January unpaid');
     expect(ledgerRow[5], '3000', reason: 'March paid');
-    expect(ledgerRow.last, '3000', reason: 'row total');
+    expect(ledgerRow[15], '3000', reason: 'row total');
+  });
+
+  test('the ledger names the plan each member is enrolled on', () async {
+    final excel = await decode();
+
+    expect(row(excel, 'Ledger 2026', 0).last, 'Plan');
+    expect(row(excel, 'Ledger 2026', 1).last, 'Monthly');
+    expect(row(excel, 'Ledger 2026', 2).last, '-',
+        reason: 'a member with no enrolment names no plan');
+  });
+
+  test('a member exported on a plan imports back onto that same plan', () async {
+    final excel = await decode();
+    final rows = excel.tables['Ledger 2026']!.rows
+        .map((r) => r.map((c) => c?.value?.toString()).toList())
+        .toList();
+
+    final detected = detectMapping(rows)!;
+    final parsed = parseLedger(
+      rows: rows,
+      headerRow: detected.headerRow,
+      mapping: detected.mapping,
+      year: 2026,
+      plans: await db.select(db.membershipPlans).get(),
+    );
+
+    final monthly = await db.select(db.membershipPlans).getSingle();
+    expect(parsed.valid.firstWhere((r) => r.name == 'Ahmed Test One').planId,
+        monthly.id);
+    expect(parsed.invalid, isEmpty, reason: 'we must be able to read our own file');
   });
 
   test('the exported ledger can be read back by our own importer', () async {

@@ -1,5 +1,6 @@
 import 'package:drift/drift.dart';
 
+import '../data/cycle_pricing_log.dart';
 import '../data/database.dart';
 import '../data/membership_queries.dart';
 import '../domain/name.dart';
@@ -127,6 +128,13 @@ class ImportService {
   /// to members by the ladder in [_resolve], and a month the member has already
   /// been billed for is skipped whichever enrolment recorded it.
   ///
+  /// [planId] is the plan chosen in the wizard. It applies to every row the
+  /// sheet does not name a plan for; a row that names one is enrolled on that
+  /// plan instead — see [ParsedMemberRow.planId]. A member already on file
+  /// keeps the enrolment they are on either way, because a sheet recording what
+  /// somebody paid in 2024 is not an instruction to move them off the plan they
+  /// train on now.
+  ///
   /// A member who appears for the first time in a ledger for a year that has
   /// already ended is created **inactive**. A 2023 sheet is a record of who was
   /// a member in 2023, not of who trains here now, and the sheet has no column
@@ -156,9 +164,13 @@ class ImportService {
     final leftAt =
         isHistoricalLedger ? DateTime.utc(ledger.year, 12, 31) : null;
 
-    final plan = await (db.select(db.membershipPlans)
-          ..where((p) => p.id.equals(planId)))
-        .getSingle();
+    // Every plan rather than just the wizard's: with a "Plan" column each row
+    // can name its own, and the fee a ### month falls back to is the price of
+    // the plan that row actually names.
+    final plansById = {
+      for (final plan in await db.select(db.membershipPlans).get())
+        plan.id: plan
+    };
 
     await db.transaction(() async {
       final roster = _Roster(await db.select(db.members).get());
@@ -213,14 +225,18 @@ class ImportService {
           }
         }
 
+        final rowPlan = plansById[row.planId ?? planId]!;
+
         // Reuse the open enrolment if there is one, so re-importing another
-        // year's sheet does not create a second membership.
+        // year's sheet does not create a second membership. This is also why a
+        // "Plan" column cannot move an existing member: their enrolment already
+        // says which plan they are on, and only the owner changes that.
         var membership = await openMembershipFor(db, memberId);
 
         membership ??= await db.into(db.memberships).insertReturning(
               MembershipsCompanion.insert(
                 memberId: memberId,
-                planId: planId,
+                planId: rowPlan.id,
                 startDate: _earliestPeriod(row, ledger.year),
               ),
             );
@@ -230,7 +246,7 @@ class ImportService {
           // figure, so bill it at the member's own rate.
           final amountMinor = payment.amountMinor ??
               membership.feeOverrideMinor ??
-              plan.priceMinor;
+              rowPlan.priceMinor;
 
           final periodStart = DateTime.utc(ledger.year, payment.month, 1);
 
@@ -255,14 +271,28 @@ class ImportService {
             month: periodStart,
           );
 
-          period ??= await db.into(db.membershipPeriods).insertReturning(
-                MembershipPeriodsCompanion.insert(
-                  membershipId: membership.id,
-                  periodStart: periodStart,
-                  periodEnd: periodEnd,
-                  expectedAmountMinor: amountMinor,
-                ),
-              );
+          if (period == null) {
+            period = await db.into(db.membershipPeriods).insertReturning(
+                  MembershipPeriodsCompanion.insert(
+                    membershipId: membership.id,
+                    periodStart: periodStart,
+                    periodEnd: periodEnd,
+                    expectedAmountMinor: amountMinor,
+                  ),
+                );
+            // The ledger's own figure, which is what the member was actually
+            // charged that month and is not derivable from any plan. Saying so
+            // stops a later reader taking it for a plan price that has since
+            // moved.
+            await recordCycleOpened(
+              db,
+              membershipPeriodId: period.id,
+              amountMinor: amountMinor,
+              membership: membership,
+              source: CyclePricingSource.ledgerImport,
+              reason: "Read from the owner's spreadsheet ledger.",
+            );
+          }
 
           if (await paymentForPeriod(db, period.id) != null) {
             paymentsSkipped++;

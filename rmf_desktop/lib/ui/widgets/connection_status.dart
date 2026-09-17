@@ -91,15 +91,51 @@ class ConnectionStatusIcon extends StatelessWidget {
       );
     }
 
-    // The only failure that is actually about the connection.
+    // The only failure that is actually evidence the machine is offline —
+    // the operating system reporting no route anywhere. Every other network
+    // failure below is shown as "connected, but GitHub was not reachable",
+    // because collapsing a DNS or TLS problem into "no internet" sends the
+    // owner to reset a router that was never broken. See
+    // `UpdateFailureKind` and `classifyNetworkError`.
     if (state.failureKind == UpdateFailureKind.offline) {
       return _Look(
         icon: Icons.wifi_off,
         color: palette.expired,
-        message: 'No internet connection — this computer could not reach '
+        message: 'No internet connection — this computer has no route to '
             'GitHub, so it cannot tell whether a new version has been '
             'published.\n\nEverything else in the app works normally.\n\n'
             'Click to try again.',
+      );
+    }
+
+    if (state.failureKind == UpdateFailureKind.dnsFailure) {
+      return _Look(
+        icon: Icons.wifi_find,
+        color: palette.due,
+        message: 'Connected, but this computer could not locate GitHub '
+            '(a DNS problem).\n\nEverything else in the app works '
+            'normally.\n\nClick to try again.',
+      );
+    }
+
+    if (state.failureKind == UpdateFailureKind.tlsFailure) {
+      return _Look(
+        icon: Icons.wifi,
+        color: palette.due,
+        message: 'Connected, but a secure connection to GitHub could not be '
+            'established. This can be caused by antivirus software or '
+            'Windows certificates.\n\nEverything else in the app works '
+            'normally.\n\nClick to try again.',
+      );
+    }
+
+    if (state.failureKind == UpdateFailureKind.proxyFailure) {
+      return _Look(
+        icon: Icons.wifi,
+        color: palette.due,
+        message: 'This computer appears to use a network proxy, but the app '
+            'could not connect through it.\n\nEverything else in the app '
+            'works normally.\n\nClick to try again.',
       );
     }
 

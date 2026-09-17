@@ -218,6 +218,7 @@ class ImportBloc extends Bloc<ImportEvent, ImportState> {
         headerRow: detected.headerRow,
         mapping: detected.mapping,
         year: year,
+        plans: state.plans,
       ),
     ));
   }
@@ -243,6 +244,7 @@ class ImportBloc extends Bloc<ImportEvent, ImportState> {
         headerRow: detected.headerRow,
         mapping: detected.mapping,
         year: event.year,
+        plans: state.plans,
       ),
     ));
   }

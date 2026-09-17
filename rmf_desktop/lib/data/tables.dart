@@ -23,6 +23,47 @@ enum WhatsAppProviderKind { manual, mock, meta }
 /// `domain/reminder_schedule.dart`.
 enum ReminderSendStatus { sent, failed, skipped }
 
+/// Where a billing cycle's `expected_amount_minor` came from.
+///
+/// A cycle used to record only the number, which said *what* was billed and
+/// never *why*. That is precisely the gap the gym fell into: forty-three
+/// cycles sat at 4,000 and nothing in the database could say whether that was
+/// the Basic plan the member was genuinely on, or the Basic plan they had
+/// already been moved off. Recording the reason alongside the figure means the
+/// next such question is answerable without asking a human.
+///
+/// Appended to rather than reordered, like [AuditCategory]: drift stores the
+/// name, so an older row stays readable.
+enum CyclePricingSource {
+  /// The price of the plan the member's enrolment was on.
+  plan,
+
+  /// The member's own fee, which beats the plan's.
+  feeOverride,
+
+  /// A figure read out of the owner's Excel ledger. It is what the member was
+  /// actually charged that month, and is not derivable from any plan.
+  ledgerImport,
+
+  /// A figure typed in for this cycle specifically — the amount named on the
+  /// Record Payment form when it opened the cycle.
+  manual,
+
+  /// An owner-approved correction to a historical bill. See
+  /// `services/historical_pricing_review.dart`.
+  correction,
+
+  /// An owner reviewed a historical bill and left it exactly as it was. Not a
+  /// price change; a decision, recorded so the same cycle is not offered for
+  /// review again every morning.
+  reviewConfirmed,
+
+  /// Recorded before this table existed. Deliberately not guessed at: a cycle
+  /// billed 4,000 under a plan that now costs 2,500 could have been either
+  /// plan price at the time, and inventing the answer is how the gym got here.
+  unknown,
+}
+
 /// What an audit event is about, so the Logs screen can group and filter
 /// without parsing [AuditEvents.action] apart.
 ///
@@ -480,6 +521,111 @@ class MemberNotes extends Table {
   TextColumn get body => text()();
   IntColumn get createdById => integer().references(Users, #id)();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
+}
+
+/// Every pricing decision ever taken about one billing cycle, oldest first.
+///
+/// Append-only. A cycle's `expected_amount_minor` is the *current* answer; this
+/// is the reasoning, and the trail back to every figure it has ever carried.
+/// One row is written when a cycle opens, one more each time a fee change
+/// re-prices it, and one when the owner reviews a historical bill — whether
+/// they correct it or decide it stands.
+///
+/// It is also why a correction can never destroy money quietly. The original
+/// amount is the first row's [amountMinor] and stays there for ever, so
+/// "Rs. 4,000, changed to Rs. 2,500 on 16 September because the member had
+/// been moved to the Student Package on 3 September" is answerable months
+/// later from the database alone.
+///
+/// Deliberately **one** table rather than a provenance table and a corrections
+/// table. Both record the same event — *this cycle's expected amount was set
+/// to X, for reason Y* — and splitting them would mean two places to look and
+/// two chances to disagree.
+class CyclePricings extends Table {
+  IntColumn get id => integer().autoIncrement()();
+
+  /// Cascades with the cycle: a pricing decision about a cycle that no longer
+  /// exists explains nothing. Unlike [AuditEvents], which must outlive its
+  /// subject, this row only has meaning attached to one.
+  IntColumn get membershipPeriodId => integer()
+      .references(MembershipPeriods, #id, onDelete: KeyAction.cascade)();
+
+  /// What [MembershipPeriods.expectedAmountMinor] became. Minor units.
+  IntColumn get amountMinor => integer()();
+
+  /// What it was immediately before. Null marks the row that opened the cycle,
+  /// which is what makes the original bill findable without reading dates.
+  IntColumn get previousAmountMinor => integer().nullable()();
+
+  TextColumn get source => textEnum<CyclePricingSource>()();
+
+  /// The plan the figure was resolved from, and its price at the time. Copied
+  /// rather than referenced, like [AuditEvents]: a plan that is later renamed
+  /// or re-priced must not rewrite the explanation of a bill already issued.
+  IntColumn get planId => integer().nullable()();
+  IntColumn get planPriceMinor => integer().nullable()();
+
+  /// The member's own fee at the time, when they had one.
+  IntColumn get feeOverrideMinor => integer().nullable()();
+
+  /// Free text, for the decisions a number cannot hold — the owner's answer on
+  /// the historical review screen, or which flow re-priced the cycle.
+  TextColumn get reason => text().nullable()();
+
+  /// Who decided, where a person did. Null for the automatic paths.
+  IntColumn get actorId => integer().nullable()();
+
+  DateTimeColumn get recordedAt => dateTime().withDefault(currentDateAndTime)();
+}
+
+/// One immutable row per change to what a member is billed.
+///
+/// `memberships` already preserves enrolment history by closing one row and
+/// opening another, which records the plan but not the two things that turned
+/// out to matter: what the member was being charged *before*, and from when
+/// the new figure was meant to apply.
+///
+/// [effectiveFrom] and [recordedAt] are deliberately separate columns rather
+/// than one timestamp. Equal, they describe an ordinary plan change made on
+/// the day. Apart, they describe a correction — "as of 1 August, entered on
+/// 16 September" — and that difference is the evidence that tells a bill
+/// priced under a superseded plan apart from a debt the member genuinely
+/// incurred. Without it the two are identical rows, which is the whole of open
+/// problem 1.
+///
+/// Nothing here re-prices anything by itself. A back-dated change does not
+/// rewrite a cycle that has already ended — see `cycle_repricing.dart`; it
+/// makes that cycle answerable on the historical review screen.
+class MembershipChanges extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  IntColumn get memberId =>
+      integer().references(Members, #id, onDelete: KeyAction.cascade)();
+
+  /// The enrolment closed and the one opened. Equal when the change was to the
+  /// member's own fee, which does not open a new enrolment. Copied without a
+  /// foreign key so a tidied-up enrolment cannot take the history with it.
+  IntColumn get previousMembershipId => integer().nullable()();
+  IntColumn get membershipId => integer().nullable()();
+
+  IntColumn get previousPlanId => integer().nullable()();
+  TextColumn get previousPlanName => text().nullable()();
+  IntColumn get planId => integer().nullable()();
+  TextColumn get planName => text().nullable()();
+
+  /// `feeOverrideMinor ?? plan.priceMinor` either side of the change — the one
+  /// number the member actually feels. Minor units.
+  IntColumn get previousFeeMinor => integer().nullable()();
+  IntColumn get feeMinor => integer().nullable()();
+
+  /// The day the new fee is meant to apply from, as the owner chose it.
+  DateTimeColumn get effectiveFrom => dateTime()();
+
+  /// When the app was told. See the class comment on why this is not the same
+  /// column as [effectiveFrom].
+  DateTimeColumn get recordedAt => dateTime().withDefault(currentDateAndTime)();
+
+  TextColumn get reason => text().nullable()();
+  IntColumn get actorId => integer().nullable()();
 }
 
 /// One row per meaningful business mutation, written for the owner to read.

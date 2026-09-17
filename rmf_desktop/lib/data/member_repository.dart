@@ -1,11 +1,13 @@
 import 'package:drift/drift.dart';
 
+import '../domain/dates.dart';
 import '../domain/member_status.dart';
 import '../domain/money.dart';
 import '../domain/name.dart';
 import 'audit_repository.dart';
 import 'cycle_repricing.dart';
 import 'database.dart';
+import 'membership_history.dart';
 import 'membership_queries.dart';
 
 /// The outcome of trying to delete a member. Typed, so the UI never has to
@@ -129,6 +131,61 @@ class MemberRepository {
     MemberFilter filter = MemberFilter.all,
     DateTime? now,
   }) async {
+    final at = now?.toUtc() ?? DateTime.now().toUtc();
+    final rows = await _searchedRows(search: search, now: at);
+    return _applyFilter(rows, filter, at);
+  }
+
+  /// How many members each filter chip would show, for the count next to
+  /// every chip on the Members screen.
+  ///
+  /// Scoped to the same search term the screen already has typed in, so the
+  /// numbers agree with what selecting a chip actually reveals — searching
+  /// "ali" and seeing "Due (3)" must mean three matching members are due, not
+  /// the gym-wide total.
+  Future<Map<MemberFilter, int>> filterCounts({
+    String? search,
+    DateTime? now,
+  }) async {
+    final at = now?.toUtc() ?? DateTime.now().toUtc();
+    final rows = await _searchedRows(search: search, now: at);
+    return _countsFor(rows, at);
+  }
+
+  /// [list] and [filterCounts] together, from one search-scoped fetch.
+  ///
+  /// The Members screen wants both on every load — the visible rows and the
+  /// number on every other chip — and `_searchedRows` is the expensive part:
+  /// it joins memberships, cycles and payments for every matching member.
+  /// Calling [list] and [filterCounts] separately would run that join twice
+  /// on every keystroke and every chip tap; this runs it once and filters the
+  /// same in-memory rows both ways.
+  Future<({List<MemberRow> rows, Map<MemberFilter, int> counts})>
+      listWithCounts({
+    String? search,
+    MemberFilter filter = MemberFilter.all,
+    DateTime? now,
+  }) async {
+    final at = now?.toUtc() ?? DateTime.now().toUtc();
+    final searched = await _searchedRows(search: search, now: at);
+    return (
+      rows: _applyFilter(searched, filter, at),
+      counts: _countsFor(searched, at),
+    );
+  }
+
+  Map<MemberFilter, int> _countsFor(List<MemberRow> rows, DateTime at) => {
+        for (final filter in MemberFilter.values)
+          filter: _applyFilter(rows, filter, at).length,
+      };
+
+  /// The status view for every member matching [search], before any single
+  /// filter chip narrows it further. Shared by [list] and [filterCounts] so
+  /// the two can never disagree about who matched the search.
+  Future<List<MemberRow>> _searchedRows({
+    String? search,
+    required DateTime now,
+  }) async {
     final term = search?.trim();
 
     var membersQuery = db.select(db.members)
@@ -146,9 +203,7 @@ class MemberRepository {
             (code != null ? m.memberCode.equals(code) : const Constant(false)));
     }
 
-    final at = now?.toUtc() ?? DateTime.now().toUtc();
-    final rows = await _buildRows(await membersQuery.get(), now: at);
-    return _applyFilter(rows, filter, at);
+    return _buildRows(await membersQuery.get(), now: now);
   }
 
   /// Joins members with their current enrolment, cycles and payment state.
@@ -455,13 +510,25 @@ class MemberRepository {
     required DateTime joiningDate,
     int? actorId,
     DateTime? now,
+    DateTime? effectiveFrom,
+    String? changeReason,
   }) async {
     // Read either side of the edit so the log can say what moved. Resolved
     // fees, not raw columns: giving a member their own fee, taking it away and
     // moving them to a dearer plan are three routes to the same event — "what
     // this member is asked for each month has changed".
     final feeBefore = await _effectiveFeeFor(id);
+    final before = await openMembershipFor(db, id);
+    final planBefore = before == null ? null : await _plan(before.planId);
     var repriced = 0;
+
+    final at = (now ?? DateTime.now()).toUtc();
+    // The owner's answer to "from when?", or today when they were not asked —
+    // which is every caller that predates the choice existing on the form.
+    final appliesFrom = (effectiveFrom ?? at).toUtc();
+
+    /// The enrolment opened by a plan change, if this save makes one.
+    int? newMembershipId;
 
     await db.transaction(() async {
       await (db.update(db.members)..where((m) => m.id.equals(id))).write(
@@ -489,17 +556,46 @@ class MemberRepository {
               ),
             );
       } else if (active.planId != planId) {
+        // A date earlier than the enrolment this closes is not a smaller debt
+        // to worry about — see [applyBillingCorrection] for that — it is a row
+        // with its end before its start, which every other query in this file
+        // assumes cannot happen. Refused outright rather than clamped: a
+        // silent clamp would save a plan change the owner asked to backdate
+        // further than this enrolment goes, and say nothing about why the
+        // date did not stick. Scoped to this branch alone — a fee-override
+        // edit below writes no dates at all, so an unrelated `now` passed
+        // into it (a fixed test clock, an edit made about an old membership)
+        // has nothing here to conflict with.
+        if (appliesFrom.isBefore(active.startDate.toUtc())) {
+          throw ArgumentError.value(
+            effectiveFrom,
+            'effectiveFrom',
+            'cannot be earlier than the current enrolment started '
+                '(${active.startDate})',
+          );
+        }
+
         // Changing plan closes the current enrolment and opens a new one so
         // the member's history is preserved rather than rewritten.
+        //
+        // The new enrolment starts on the date the owner chose rather than on
+        // the clock. That date is the whole point of the choice: it is what
+        // says whether this is an ordinary change made today or the owner
+        // telling the app a fee was always meant to apply from earlier. It
+        // does not by itself move any money — see the re-pricing call below.
         await (db.update(db.memberships)..where((m) => m.id.equals(active.id)))
-            .write(MembershipsCompanion(endDate: Value(DateTime.now().toUtc())));
+            .write(MembershipsCompanion(endDate: Value(appliesFrom)));
 
-        await db.into(db.memberships).insert(
+        newMembershipId = await db.into(db.memberships).insert(
               MembershipsCompanion.insert(
                 memberId: id,
                 planId: planId,
                 feeOverrideMinor: Value(feeOverrideMinor),
-                startDate: DateTime.now().toUtc(),
+                startDate: appliesFrom,
+                // Carried over rather than dropped: a member billed on the 6th
+                // is still billed on the 6th after changing plan, and losing
+                // the anchor here would silently move their due date.
+                billingAnchorDay: Value(active.billingAnchorDay),
               ),
             );
       } else if (active.feeOverrideMinor != feeOverrideMinor) {
@@ -520,13 +616,43 @@ class MemberRepository {
       // to change money at all. Stranded cycles are `billing_reconciliation`'s
       // to report and the owner's to settle.
       if (await _effectiveFeeFor(id) != feeBefore) {
-        repriced = await repriceOpenCycles(db, memberId: id, now: now);
+        repriced = await repriceOpenCycles(
+          db,
+          memberId: id,
+          now: now,
+          // Cycles that started before the new fee was meant to apply keep the
+          // figure they were billed at. A back-dated date does not widen this:
+          // `repriceOpenCycles` still refuses a cycle that has ended, so the
+          // only thing a past date can do here is reach *fewer* cycles, never
+          // more.
+          effectiveFrom: effectiveFrom,
+        );
       }
     });
 
     // Outside the transaction: the money change is already committed, and a
     // log that cannot be written must not undo it.
     final feeAfter = await _effectiveFeeFor(id);
+    if (feeBefore != feeAfter || (before != null && before.planId != planId)) {
+      final planAfter = await _plan(planId);
+      await recordMembershipChange(
+        db,
+        memberId: id,
+        effectiveFrom: appliesFrom,
+        recordedAt: at,
+        previousMembershipId: before?.id,
+        membershipId: newMembershipId ?? before?.id,
+        previousPlanId: before?.planId,
+        previousPlanName: planBefore?.name,
+        planId: planId,
+        planName: planAfter?.name,
+        previousFeeMinor: feeBefore,
+        feeMinor: feeAfter,
+        reason: changeReason,
+        actorId: actorId,
+      );
+    }
+
     if (feeBefore != feeAfter) {
       await _audit.record(
         category: AuditCategory.billing,
@@ -539,12 +665,17 @@ class MemberRepository {
         summary: '$fullName: monthly fee changed from '
             '${_feeLabel(feeBefore)} to ${_feeLabel(feeAfter)}',
         detail: [
+          'Applies from ${formatDayMonthYear(appliesFrom)}',
           if (repriced > 0)
             '$repriced unpaid billing ${repriced == 1 ? 'cycle' : 'cycles'} '
                 're-priced'
           else
             'No unpaid billing cycle needed re-pricing',
           'Paid and part-paid months keep the price that was charged',
+          if (effectiveFrom != null && effectiveFrom.toUtc().isBefore(at))
+            'Months that had already ended were not changed. Settings → '
+                'Historical billing review lists any that this date now '
+                'brings into question.',
         ],
       );
     }
@@ -562,6 +693,10 @@ class MemberRepository {
         .getSingleOrNull();
     return plan?.priceMinor;
   }
+
+  Future<MembershipPlan?> _plan(int planId) =>
+      (db.select(db.membershipPlans)..where((p) => p.id.equals(planId)))
+          .getSingleOrNull();
 
   static String _feeLabel(int? minor) =>
       minor == null ? 'no plan' : formatMinorUnits(minor);

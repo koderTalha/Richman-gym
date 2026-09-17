@@ -38,6 +38,7 @@ class MembersState extends Equatable {
     this.rows = const [],
     this.search = '',
     this.filter = MemberFilter.all,
+    this.filterCounts = const {},
     this.error,
   });
 
@@ -45,6 +46,12 @@ class MembersState extends Equatable {
   final List<MemberRow> rows;
   final String search;
   final MemberFilter filter;
+
+  /// How many members each chip would show for the current search — see
+  /// `MemberRepository.filterCounts`. Empty only before the first load
+  /// completes; every chip reads 0 rather than showing nothing.
+  final Map<MemberFilter, int> filterCounts;
+
   final String? error;
 
   MembersState copyWith({
@@ -52,6 +59,7 @@ class MembersState extends Equatable {
     List<MemberRow>? rows,
     String? search,
     MemberFilter? filter,
+    Map<MemberFilter, int>? filterCounts,
     String? error,
   }) =>
       MembersState(
@@ -59,12 +67,19 @@ class MembersState extends Equatable {
         rows: rows ?? this.rows,
         search: search ?? this.search,
         filter: filter ?? this.filter,
+        filterCounts: filterCounts ?? this.filterCounts,
         error: error,
       );
 
   @override
-  List<Object?> get props =>
-      [status, rows.map((r) => r.id).toList(), search, filter, error];
+  List<Object?> get props => [
+        status,
+        rows.map((r) => r.id).toList(),
+        search,
+        filter,
+        filterCounts,
+        error,
+      ];
 }
 
 class MembersBloc extends Bloc<MembersEvent, MembersState> {
@@ -85,11 +100,19 @@ class MembersBloc extends Bloc<MembersEvent, MembersState> {
   Future<void> _load(Emitter<MembersState> emit) async {
     emit(state.copyWith(status: MembersStatus.loading));
     try {
-      final rows = await _repository.list(
+      // One fetch for both the visible rows and every chip's count — see
+      // `MemberRepository.listWithCounts` — so a chip's number is never one
+      // search behind the list underneath it, and a keystroke does not pay
+      // for the same join twice.
+      final result = await _repository.listWithCounts(
         search: state.search,
         filter: state.filter,
       );
-      emit(state.copyWith(status: MembersStatus.ready, rows: rows));
+      emit(state.copyWith(
+        status: MembersStatus.ready,
+        rows: result.rows,
+        filterCounts: result.counts,
+      ));
     } catch (e, s) {
       _log.severe('Loading members failed', e, s);
       emit(state.copyWith(status: MembersStatus.failed, error: '$e'));
