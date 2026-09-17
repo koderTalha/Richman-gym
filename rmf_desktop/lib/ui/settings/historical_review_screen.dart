@@ -55,9 +55,23 @@ class _HistoricalReviewViewState extends State<_HistoricalReviewView> {
   @override
   Widget build(BuildContext context) {
     return BlocConsumer<HistoricalReviewBloc, HistoricalReviewState>(
-      listenWhen: (a, b) => b.message != null && a.message != b.message,
-      listener: (context, state) => ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(state.message!))),
+      // A refusal is news too. It arrives with the status still `ready` — the
+      // list is intact, only this one decision did not happen — so without
+      // this the owner presses a button that answers nothing and presses it
+      // again. The `failed` status has its own message on screen already.
+      listenWhen: (a, b) =>
+          (b.message != null && a.message != b.message) ||
+          (b.error != null &&
+              a.error != b.error &&
+              b.status != HistoricalReviewStatus.failed),
+      listener: (context, state) {
+        final refusal =
+            state.status == HistoricalReviewStatus.failed ? null : state.error;
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(refusal ?? state.message!),
+          backgroundColor: refusal == null ? null : context.palette.expired,
+        ));
+      },
       builder: (context, state) {
         return Scaffold(
           appBar: AppBar(

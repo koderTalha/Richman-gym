@@ -6,6 +6,7 @@ import 'package:rich_man_fitness/data/cycle_pricing_log.dart';
 import 'package:rich_man_fitness/data/cycle_repricing.dart';
 import 'package:rich_man_fitness/data/database.dart';
 import 'package:rich_man_fitness/data/member_repository.dart';
+import 'package:rich_man_fitness/data/membership_history.dart';
 import 'package:rich_man_fitness/data/membership_queries.dart';
 import 'package:rich_man_fitness/data/seed.dart';
 import 'package:rich_man_fitness/domain/member_status.dart';
@@ -29,6 +30,7 @@ void main() {
   late int adminId;
 
   const basicFee = 400000; // Rs. 4,000
+  const midFee = 300000; // Rs. 3,000
   const studentFee = 250000; // Rs. 2,500
 
   /// Today, for every test here: August has ended, September has not.
@@ -121,6 +123,14 @@ void main() {
       now: on,
       actorId: adminId,
     );
+  }
+
+  /// Drops Basic's own price, which lowers what its members are billed today
+  /// without opening a newer enrolment. That keeps the enrolment-based evidence
+  /// out of the way, so a test can ask what the recorded fee changes alone say.
+  Future<void> cutPlanPriceTo(int priceMinor) async {
+    await (db.update(db.membershipPlans)..where((p) => p.id.equals(basicId)))
+        .write(MembershipPlansCompanion(priceMinor: Value(priceMinor)));
   }
 
   /// The exact shape of the ten: August opened at Basic, the owner moved them
@@ -275,6 +285,92 @@ void main() {
       expect(found.single.period.id, stranded.periodId);
       expect(found.single.outstandingMinor, basicFee - 220000);
       expect(found.single.outstandingAfterMinor, studentFee - 220000);
+    });
+
+    test('a cut the month was already billed at is not evidence', () async {
+      // The owner cut this member from 4,000 to 3,000 from 1 July, and August
+      // opened at exactly that new fee: the cut was honoured. August is above
+      // today's fee only because the price moved again afterwards, so what it
+      // asks for is arrears at the price in force at the time.
+      final memberId = await memberOnBasic(code: 94);
+      await recordMembershipChange(
+        db,
+        memberId: memberId,
+        effectiveFrom: DateTime.utc(2026, 7, 1),
+        previousFeeMinor: basicFee,
+        feeMinor: midFee,
+        recordedAt: DateTime.utc(2026, 7, 1),
+      );
+      await openCycle(memberId,
+          start: augustStart, end: augustEnd, billedMinor: midFee);
+      await cutPlanPriceTo(studentFee);
+
+      expect(await detectHistoricalPricingAnomalies(db, now: today), isEmpty);
+    });
+
+    test('a cut a later rise superseded is not evidence', () async {
+      // Cut to 2,500 from 1 June, then back up to 3,000 from 1 July. August
+      // was billed 3,000 — the fee actually in force when it opened — so the
+      // June cut says nothing about what August should have cost.
+      final memberId = await memberOnBasic(code: 95);
+      await recordMembershipChange(
+        db,
+        memberId: memberId,
+        effectiveFrom: DateTime.utc(2026, 6, 1),
+        previousFeeMinor: basicFee,
+        feeMinor: studentFee,
+        recordedAt: DateTime.utc(2026, 6, 1),
+      );
+      await recordMembershipChange(
+        db,
+        memberId: memberId,
+        effectiveFrom: DateTime.utc(2026, 7, 1),
+        previousFeeMinor: studentFee,
+        feeMinor: midFee,
+        recordedAt: DateTime.utc(2026, 7, 1),
+      );
+      await openCycle(memberId,
+          start: augustStart, end: augustEnd, billedMinor: midFee);
+      await cutPlanPriceTo(studentFee);
+
+      expect(await detectHistoricalPricingAnomalies(db, now: today), isEmpty);
+    });
+
+    test('the latest cut still in force is evidence, superseding an earlier one',
+        () async {
+      // Two back-dated cuts, 4,000 → 3,000 from 1 June and 3,000 → 2,500 from
+      // 1 July. August was billed 4,000, above both, so it is answerable — and
+      // the reason shown is the cut that was actually in force.
+      final memberId = await memberOnBasic(code: 96);
+      await recordMembershipChange(
+        db,
+        memberId: memberId,
+        effectiveFrom: DateTime.utc(2026, 6, 1),
+        previousFeeMinor: basicFee,
+        feeMinor: midFee,
+        recordedAt: DateTime.utc(2026, 9, 10),
+      );
+      await recordMembershipChange(
+        db,
+        memberId: memberId,
+        effectiveFrom: DateTime.utc(2026, 7, 1),
+        previousFeeMinor: midFee,
+        feeMinor: studentFee,
+        recordedAt: DateTime.utc(2026, 9, 10),
+      );
+      await openCycle(memberId,
+          start: augustStart, end: augustEnd, billedMinor: basicFee);
+      await cutPlanPriceTo(studentFee);
+
+      final found = await detectHistoricalPricingAnomalies(db, now: today);
+
+      expect(found, hasLength(1));
+      expect(found.single.evidence.first, contains('from 01 Jul 2026'));
+      expect(
+        found.single.evidence.where((line) => line.contains('01 Jun 2026')),
+        isEmpty,
+        reason: 'the June cut was replaced before August and explains nothing',
+      );
     });
   });
 

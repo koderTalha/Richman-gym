@@ -91,29 +91,58 @@ Future<List<MembershipChange>> membershipChangesFor(
           ]))
         .get();
 
-/// The recorded fee cuts that cover a cycle starting on [periodStart].
+/// The recorded fee cut a cycle starting on [periodStart] was billed in breach
+/// of, if there is one. Null means the record does not accuse this cycle of
+/// anything.
 ///
-/// A change covers the cycle when it was meant to apply from on or before the
-/// cycle's start — the cycle was therefore billed after the new, lower fee was
-/// supposedly already in force — and when it actually lowered the fee.
+/// This is the evidence the historical review reads, and it has to hold up as
+/// evidence, because the only thing a member gets out of it is a bill they no
+/// longer have to pay. Three things must all be true:
 ///
-/// This is the evidence the historical review reads. A cut recorded *after*
-/// the cycle it covers had already been billed is the fingerprint of a cycle
-/// opened under a superseded price; a cut recorded before it is an ordinary
-/// change the cycle should already have followed.
-List<MembershipChange> cutsCovering(
+///   * The change was meant to apply **from on or before** the cycle's start,
+///     so the cycle was billed after the new fee was supposedly in force.
+///   * Nothing **replaced** it by then. The latest change effective by the
+///     cycle's start is the fee that should have been charged; an earlier one
+///     it superseded — including a cut later undone by a rise — says nothing
+///     about what this cycle should have cost.
+///   * The cycle was billed **above** the figure that change lowered to. A
+///     cycle billed at exactly the new fee honoured the cut, and whatever it
+///     asks above today's price is arrears at the price in force at the time,
+///     not a mispricing. Forgiving those is the one mistake this screen must
+///     never make.
+MembershipChange? cutCovering(
   List<MembershipChange> changes, {
   required DateTime periodStart,
+  required int billedMinor,
 }) {
   final start = _midnight(periodStart);
-  return [
-    for (final change in changes)
-      if (change.previousFeeMinor != null &&
-          change.feeMinor != null &&
-          change.feeMinor! < change.previousFeeMinor! &&
-          !_midnight(change.effectiveFrom).isAfter(start))
-        change,
-  ];
+
+  // The fee that should have been in force when the cycle opened: the latest
+  // change effective by then, whether it raised or lowered. Found by comparison
+  // rather than by position, so a caller's ordering cannot change the answer.
+  MembershipChange? governing;
+  for (final change in changes) {
+    final effective = _midnight(change.effectiveFrom);
+    if (effective.isAfter(start)) continue;
+    if (governing == null) {
+      governing = change;
+      continue;
+    }
+    final incumbent = _midnight(governing.effectiveFrom);
+    if (effective.isAfter(incumbent) ||
+        (effective.isAtSameMomentAs(incumbent) && change.id > governing.id)) {
+      governing = change;
+    }
+  }
+
+  if (governing == null) return null;
+
+  final previousFee = governing.previousFeeMinor;
+  final fee = governing.feeMinor;
+  if (previousFee == null || fee == null || fee >= previousFee) return null;
+  if (billedMinor <= fee) return null;
+
+  return governing;
 }
 
 DateTime _midnight(DateTime at) {

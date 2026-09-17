@@ -197,6 +197,28 @@ void main() {
         reason: 'keeping the bill must change nothing');
   });
 
+  testWidgets('a refused correction says so rather than doing nothing visible',
+      (tester) async {
+    await strandedMember();
+    await pump(tester);
+
+    // The month is settled behind the screen's back: a payment recorded in
+    // another window, or the same cycle decided twice before a reload. The
+    // owner is about to press a button that cannot work, and the one thing
+    // the screen must not do is look like it did nothing.
+    await (db.update(db.membershipPeriods)
+          ..where((p) => p.expectedAmountMinor.equals(basicFee)))
+        .write(MembershipPeriodsCompanion(
+            settledAt: Value(DateTime.utc(2026, 9, 10))));
+
+    await tester.tap(find.widgetWithText(FilledButton, 'Correct to Rs. 2,500'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Correct the bill'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('already settled'), findsOneWidget);
+  });
+
   testWidgets('cancelling the reason dialog leaves the candidate untouched',
       (tester) async {
     await strandedMember();

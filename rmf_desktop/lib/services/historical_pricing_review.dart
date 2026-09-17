@@ -202,7 +202,12 @@ Future<List<String>> _evidenceFor(
   // --- 1. A recorded fee cut that was meant to apply by the time this cycle
   //        was billed. The strongest evidence there is, because it is the
   //        owner's own statement about when the new fee began.
-  for (final cut in cutsCovering(changes, periodStart: start)) {
+  final cut = cutCovering(
+    changes,
+    periodStart: start,
+    billedMinor: period.expectedAmountMinor,
+  );
+  if (cut != null) {
     final backdated = cut.recordedAt.toUtc().isAfter(
         DateTime.utc(cut.effectiveFrom.toUtc().year,
             cut.effectiveFrom.toUtc().month, cut.effectiveFrom.toUtc().day));
