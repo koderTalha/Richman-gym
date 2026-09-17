@@ -4920,6 +4920,1570 @@ class MembershipPeriodsCompanion extends UpdateCompanion<MembershipPeriod> {
   }
 }
 
+class $CyclePricingsTable extends CyclePricings
+    with TableInfo<$CyclePricingsTable, CyclePricing> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $CyclePricingsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _membershipPeriodIdMeta =
+      const VerificationMeta('membershipPeriodId');
+  @override
+  late final GeneratedColumn<int> membershipPeriodId = GeneratedColumn<int>(
+    'membership_period_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES membership_periods (id) ON DELETE CASCADE',
+    ),
+  );
+  static const VerificationMeta _amountMinorMeta = const VerificationMeta(
+    'amountMinor',
+  );
+  @override
+  late final GeneratedColumn<int> amountMinor = GeneratedColumn<int>(
+    'amount_minor',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _previousAmountMinorMeta =
+      const VerificationMeta('previousAmountMinor');
+  @override
+  late final GeneratedColumn<int> previousAmountMinor = GeneratedColumn<int>(
+    'previous_amount_minor',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  @override
+  late final GeneratedColumnWithTypeConverter<CyclePricingSource, String>
+  source = GeneratedColumn<String>(
+    'source',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  ).withConverter<CyclePricingSource>($CyclePricingsTable.$convertersource);
+  static const VerificationMeta _planIdMeta = const VerificationMeta('planId');
+  @override
+  late final GeneratedColumn<int> planId = GeneratedColumn<int>(
+    'plan_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _planPriceMinorMeta = const VerificationMeta(
+    'planPriceMinor',
+  );
+  @override
+  late final GeneratedColumn<int> planPriceMinor = GeneratedColumn<int>(
+    'plan_price_minor',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _feeOverrideMinorMeta = const VerificationMeta(
+    'feeOverrideMinor',
+  );
+  @override
+  late final GeneratedColumn<int> feeOverrideMinor = GeneratedColumn<int>(
+    'fee_override_minor',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _reasonMeta = const VerificationMeta('reason');
+  @override
+  late final GeneratedColumn<String> reason = GeneratedColumn<String>(
+    'reason',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _actorIdMeta = const VerificationMeta(
+    'actorId',
+  );
+  @override
+  late final GeneratedColumn<int> actorId = GeneratedColumn<int>(
+    'actor_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _recordedAtMeta = const VerificationMeta(
+    'recordedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> recordedAt = GeneratedColumn<DateTime>(
+    'recorded_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    membershipPeriodId,
+    amountMinor,
+    previousAmountMinor,
+    source,
+    planId,
+    planPriceMinor,
+    feeOverrideMinor,
+    reason,
+    actorId,
+    recordedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'cycle_pricings';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<CyclePricing> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('membership_period_id')) {
+      context.handle(
+        _membershipPeriodIdMeta,
+        membershipPeriodId.isAcceptableOrUnknown(
+          data['membership_period_id']!,
+          _membershipPeriodIdMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_membershipPeriodIdMeta);
+    }
+    if (data.containsKey('amount_minor')) {
+      context.handle(
+        _amountMinorMeta,
+        amountMinor.isAcceptableOrUnknown(
+          data['amount_minor']!,
+          _amountMinorMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_amountMinorMeta);
+    }
+    if (data.containsKey('previous_amount_minor')) {
+      context.handle(
+        _previousAmountMinorMeta,
+        previousAmountMinor.isAcceptableOrUnknown(
+          data['previous_amount_minor']!,
+          _previousAmountMinorMeta,
+        ),
+      );
+    }
+    if (data.containsKey('plan_id')) {
+      context.handle(
+        _planIdMeta,
+        planId.isAcceptableOrUnknown(data['plan_id']!, _planIdMeta),
+      );
+    }
+    if (data.containsKey('plan_price_minor')) {
+      context.handle(
+        _planPriceMinorMeta,
+        planPriceMinor.isAcceptableOrUnknown(
+          data['plan_price_minor']!,
+          _planPriceMinorMeta,
+        ),
+      );
+    }
+    if (data.containsKey('fee_override_minor')) {
+      context.handle(
+        _feeOverrideMinorMeta,
+        feeOverrideMinor.isAcceptableOrUnknown(
+          data['fee_override_minor']!,
+          _feeOverrideMinorMeta,
+        ),
+      );
+    }
+    if (data.containsKey('reason')) {
+      context.handle(
+        _reasonMeta,
+        reason.isAcceptableOrUnknown(data['reason']!, _reasonMeta),
+      );
+    }
+    if (data.containsKey('actor_id')) {
+      context.handle(
+        _actorIdMeta,
+        actorId.isAcceptableOrUnknown(data['actor_id']!, _actorIdMeta),
+      );
+    }
+    if (data.containsKey('recorded_at')) {
+      context.handle(
+        _recordedAtMeta,
+        recordedAt.isAcceptableOrUnknown(data['recorded_at']!, _recordedAtMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  CyclePricing map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return CyclePricing(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      membershipPeriodId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}membership_period_id'],
+      )!,
+      amountMinor: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}amount_minor'],
+      )!,
+      previousAmountMinor: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}previous_amount_minor'],
+      ),
+      source: $CyclePricingsTable.$convertersource.fromSql(
+        attachedDatabase.typeMapping.read(
+          DriftSqlType.string,
+          data['${effectivePrefix}source'],
+        )!,
+      ),
+      planId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}plan_id'],
+      ),
+      planPriceMinor: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}plan_price_minor'],
+      ),
+      feeOverrideMinor: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}fee_override_minor'],
+      ),
+      reason: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}reason'],
+      ),
+      actorId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}actor_id'],
+      ),
+      recordedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}recorded_at'],
+      )!,
+    );
+  }
+
+  @override
+  $CyclePricingsTable createAlias(String alias) {
+    return $CyclePricingsTable(attachedDatabase, alias);
+  }
+
+  static JsonTypeConverter2<CyclePricingSource, String, String>
+  $convertersource = const EnumNameConverter<CyclePricingSource>(
+    CyclePricingSource.values,
+  );
+}
+
+class CyclePricing extends DataClass implements Insertable<CyclePricing> {
+  final int id;
+
+  /// Cascades with the cycle: a pricing decision about a cycle that no longer
+  /// exists explains nothing. Unlike [AuditEvents], which must outlive its
+  /// subject, this row only has meaning attached to one.
+  final int membershipPeriodId;
+
+  /// What [MembershipPeriods.expectedAmountMinor] became. Minor units.
+  final int amountMinor;
+
+  /// What it was immediately before. Null marks the row that opened the cycle,
+  /// which is what makes the original bill findable without reading dates.
+  final int? previousAmountMinor;
+  final CyclePricingSource source;
+
+  /// The plan the figure was resolved from, and its price at the time. Copied
+  /// rather than referenced, like [AuditEvents]: a plan that is later renamed
+  /// or re-priced must not rewrite the explanation of a bill already issued.
+  final int? planId;
+  final int? planPriceMinor;
+
+  /// The member's own fee at the time, when they had one.
+  final int? feeOverrideMinor;
+
+  /// Free text, for the decisions a number cannot hold — the owner's answer on
+  /// the historical review screen, or which flow re-priced the cycle.
+  final String? reason;
+
+  /// Who decided, where a person did. Null for the automatic paths.
+  final int? actorId;
+  final DateTime recordedAt;
+  const CyclePricing({
+    required this.id,
+    required this.membershipPeriodId,
+    required this.amountMinor,
+    this.previousAmountMinor,
+    required this.source,
+    this.planId,
+    this.planPriceMinor,
+    this.feeOverrideMinor,
+    this.reason,
+    this.actorId,
+    required this.recordedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['membership_period_id'] = Variable<int>(membershipPeriodId);
+    map['amount_minor'] = Variable<int>(amountMinor);
+    if (!nullToAbsent || previousAmountMinor != null) {
+      map['previous_amount_minor'] = Variable<int>(previousAmountMinor);
+    }
+    {
+      map['source'] = Variable<String>(
+        $CyclePricingsTable.$convertersource.toSql(source),
+      );
+    }
+    if (!nullToAbsent || planId != null) {
+      map['plan_id'] = Variable<int>(planId);
+    }
+    if (!nullToAbsent || planPriceMinor != null) {
+      map['plan_price_minor'] = Variable<int>(planPriceMinor);
+    }
+    if (!nullToAbsent || feeOverrideMinor != null) {
+      map['fee_override_minor'] = Variable<int>(feeOverrideMinor);
+    }
+    if (!nullToAbsent || reason != null) {
+      map['reason'] = Variable<String>(reason);
+    }
+    if (!nullToAbsent || actorId != null) {
+      map['actor_id'] = Variable<int>(actorId);
+    }
+    map['recorded_at'] = Variable<DateTime>(recordedAt);
+    return map;
+  }
+
+  CyclePricingsCompanion toCompanion(bool nullToAbsent) {
+    return CyclePricingsCompanion(
+      id: Value(id),
+      membershipPeriodId: Value(membershipPeriodId),
+      amountMinor: Value(amountMinor),
+      previousAmountMinor: previousAmountMinor == null && nullToAbsent
+          ? const Value.absent()
+          : Value(previousAmountMinor),
+      source: Value(source),
+      planId: planId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(planId),
+      planPriceMinor: planPriceMinor == null && nullToAbsent
+          ? const Value.absent()
+          : Value(planPriceMinor),
+      feeOverrideMinor: feeOverrideMinor == null && nullToAbsent
+          ? const Value.absent()
+          : Value(feeOverrideMinor),
+      reason: reason == null && nullToAbsent
+          ? const Value.absent()
+          : Value(reason),
+      actorId: actorId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(actorId),
+      recordedAt: Value(recordedAt),
+    );
+  }
+
+  factory CyclePricing.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return CyclePricing(
+      id: serializer.fromJson<int>(json['id']),
+      membershipPeriodId: serializer.fromJson<int>(json['membershipPeriodId']),
+      amountMinor: serializer.fromJson<int>(json['amountMinor']),
+      previousAmountMinor: serializer.fromJson<int?>(
+        json['previousAmountMinor'],
+      ),
+      source: $CyclePricingsTable.$convertersource.fromJson(
+        serializer.fromJson<String>(json['source']),
+      ),
+      planId: serializer.fromJson<int?>(json['planId']),
+      planPriceMinor: serializer.fromJson<int?>(json['planPriceMinor']),
+      feeOverrideMinor: serializer.fromJson<int?>(json['feeOverrideMinor']),
+      reason: serializer.fromJson<String?>(json['reason']),
+      actorId: serializer.fromJson<int?>(json['actorId']),
+      recordedAt: serializer.fromJson<DateTime>(json['recordedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'membershipPeriodId': serializer.toJson<int>(membershipPeriodId),
+      'amountMinor': serializer.toJson<int>(amountMinor),
+      'previousAmountMinor': serializer.toJson<int?>(previousAmountMinor),
+      'source': serializer.toJson<String>(
+        $CyclePricingsTable.$convertersource.toJson(source),
+      ),
+      'planId': serializer.toJson<int?>(planId),
+      'planPriceMinor': serializer.toJson<int?>(planPriceMinor),
+      'feeOverrideMinor': serializer.toJson<int?>(feeOverrideMinor),
+      'reason': serializer.toJson<String?>(reason),
+      'actorId': serializer.toJson<int?>(actorId),
+      'recordedAt': serializer.toJson<DateTime>(recordedAt),
+    };
+  }
+
+  CyclePricing copyWith({
+    int? id,
+    int? membershipPeriodId,
+    int? amountMinor,
+    Value<int?> previousAmountMinor = const Value.absent(),
+    CyclePricingSource? source,
+    Value<int?> planId = const Value.absent(),
+    Value<int?> planPriceMinor = const Value.absent(),
+    Value<int?> feeOverrideMinor = const Value.absent(),
+    Value<String?> reason = const Value.absent(),
+    Value<int?> actorId = const Value.absent(),
+    DateTime? recordedAt,
+  }) => CyclePricing(
+    id: id ?? this.id,
+    membershipPeriodId: membershipPeriodId ?? this.membershipPeriodId,
+    amountMinor: amountMinor ?? this.amountMinor,
+    previousAmountMinor: previousAmountMinor.present
+        ? previousAmountMinor.value
+        : this.previousAmountMinor,
+    source: source ?? this.source,
+    planId: planId.present ? planId.value : this.planId,
+    planPriceMinor: planPriceMinor.present
+        ? planPriceMinor.value
+        : this.planPriceMinor,
+    feeOverrideMinor: feeOverrideMinor.present
+        ? feeOverrideMinor.value
+        : this.feeOverrideMinor,
+    reason: reason.present ? reason.value : this.reason,
+    actorId: actorId.present ? actorId.value : this.actorId,
+    recordedAt: recordedAt ?? this.recordedAt,
+  );
+  CyclePricing copyWithCompanion(CyclePricingsCompanion data) {
+    return CyclePricing(
+      id: data.id.present ? data.id.value : this.id,
+      membershipPeriodId: data.membershipPeriodId.present
+          ? data.membershipPeriodId.value
+          : this.membershipPeriodId,
+      amountMinor: data.amountMinor.present
+          ? data.amountMinor.value
+          : this.amountMinor,
+      previousAmountMinor: data.previousAmountMinor.present
+          ? data.previousAmountMinor.value
+          : this.previousAmountMinor,
+      source: data.source.present ? data.source.value : this.source,
+      planId: data.planId.present ? data.planId.value : this.planId,
+      planPriceMinor: data.planPriceMinor.present
+          ? data.planPriceMinor.value
+          : this.planPriceMinor,
+      feeOverrideMinor: data.feeOverrideMinor.present
+          ? data.feeOverrideMinor.value
+          : this.feeOverrideMinor,
+      reason: data.reason.present ? data.reason.value : this.reason,
+      actorId: data.actorId.present ? data.actorId.value : this.actorId,
+      recordedAt: data.recordedAt.present
+          ? data.recordedAt.value
+          : this.recordedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('CyclePricing(')
+          ..write('id: $id, ')
+          ..write('membershipPeriodId: $membershipPeriodId, ')
+          ..write('amountMinor: $amountMinor, ')
+          ..write('previousAmountMinor: $previousAmountMinor, ')
+          ..write('source: $source, ')
+          ..write('planId: $planId, ')
+          ..write('planPriceMinor: $planPriceMinor, ')
+          ..write('feeOverrideMinor: $feeOverrideMinor, ')
+          ..write('reason: $reason, ')
+          ..write('actorId: $actorId, ')
+          ..write('recordedAt: $recordedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    membershipPeriodId,
+    amountMinor,
+    previousAmountMinor,
+    source,
+    planId,
+    planPriceMinor,
+    feeOverrideMinor,
+    reason,
+    actorId,
+    recordedAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is CyclePricing &&
+          other.id == this.id &&
+          other.membershipPeriodId == this.membershipPeriodId &&
+          other.amountMinor == this.amountMinor &&
+          other.previousAmountMinor == this.previousAmountMinor &&
+          other.source == this.source &&
+          other.planId == this.planId &&
+          other.planPriceMinor == this.planPriceMinor &&
+          other.feeOverrideMinor == this.feeOverrideMinor &&
+          other.reason == this.reason &&
+          other.actorId == this.actorId &&
+          other.recordedAt == this.recordedAt);
+}
+
+class CyclePricingsCompanion extends UpdateCompanion<CyclePricing> {
+  final Value<int> id;
+  final Value<int> membershipPeriodId;
+  final Value<int> amountMinor;
+  final Value<int?> previousAmountMinor;
+  final Value<CyclePricingSource> source;
+  final Value<int?> planId;
+  final Value<int?> planPriceMinor;
+  final Value<int?> feeOverrideMinor;
+  final Value<String?> reason;
+  final Value<int?> actorId;
+  final Value<DateTime> recordedAt;
+  const CyclePricingsCompanion({
+    this.id = const Value.absent(),
+    this.membershipPeriodId = const Value.absent(),
+    this.amountMinor = const Value.absent(),
+    this.previousAmountMinor = const Value.absent(),
+    this.source = const Value.absent(),
+    this.planId = const Value.absent(),
+    this.planPriceMinor = const Value.absent(),
+    this.feeOverrideMinor = const Value.absent(),
+    this.reason = const Value.absent(),
+    this.actorId = const Value.absent(),
+    this.recordedAt = const Value.absent(),
+  });
+  CyclePricingsCompanion.insert({
+    this.id = const Value.absent(),
+    required int membershipPeriodId,
+    required int amountMinor,
+    this.previousAmountMinor = const Value.absent(),
+    required CyclePricingSource source,
+    this.planId = const Value.absent(),
+    this.planPriceMinor = const Value.absent(),
+    this.feeOverrideMinor = const Value.absent(),
+    this.reason = const Value.absent(),
+    this.actorId = const Value.absent(),
+    this.recordedAt = const Value.absent(),
+  }) : membershipPeriodId = Value(membershipPeriodId),
+       amountMinor = Value(amountMinor),
+       source = Value(source);
+  static Insertable<CyclePricing> custom({
+    Expression<int>? id,
+    Expression<int>? membershipPeriodId,
+    Expression<int>? amountMinor,
+    Expression<int>? previousAmountMinor,
+    Expression<String>? source,
+    Expression<int>? planId,
+    Expression<int>? planPriceMinor,
+    Expression<int>? feeOverrideMinor,
+    Expression<String>? reason,
+    Expression<int>? actorId,
+    Expression<DateTime>? recordedAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (membershipPeriodId != null)
+        'membership_period_id': membershipPeriodId,
+      if (amountMinor != null) 'amount_minor': amountMinor,
+      if (previousAmountMinor != null)
+        'previous_amount_minor': previousAmountMinor,
+      if (source != null) 'source': source,
+      if (planId != null) 'plan_id': planId,
+      if (planPriceMinor != null) 'plan_price_minor': planPriceMinor,
+      if (feeOverrideMinor != null) 'fee_override_minor': feeOverrideMinor,
+      if (reason != null) 'reason': reason,
+      if (actorId != null) 'actor_id': actorId,
+      if (recordedAt != null) 'recorded_at': recordedAt,
+    });
+  }
+
+  CyclePricingsCompanion copyWith({
+    Value<int>? id,
+    Value<int>? membershipPeriodId,
+    Value<int>? amountMinor,
+    Value<int?>? previousAmountMinor,
+    Value<CyclePricingSource>? source,
+    Value<int?>? planId,
+    Value<int?>? planPriceMinor,
+    Value<int?>? feeOverrideMinor,
+    Value<String?>? reason,
+    Value<int?>? actorId,
+    Value<DateTime>? recordedAt,
+  }) {
+    return CyclePricingsCompanion(
+      id: id ?? this.id,
+      membershipPeriodId: membershipPeriodId ?? this.membershipPeriodId,
+      amountMinor: amountMinor ?? this.amountMinor,
+      previousAmountMinor: previousAmountMinor ?? this.previousAmountMinor,
+      source: source ?? this.source,
+      planId: planId ?? this.planId,
+      planPriceMinor: planPriceMinor ?? this.planPriceMinor,
+      feeOverrideMinor: feeOverrideMinor ?? this.feeOverrideMinor,
+      reason: reason ?? this.reason,
+      actorId: actorId ?? this.actorId,
+      recordedAt: recordedAt ?? this.recordedAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (membershipPeriodId.present) {
+      map['membership_period_id'] = Variable<int>(membershipPeriodId.value);
+    }
+    if (amountMinor.present) {
+      map['amount_minor'] = Variable<int>(amountMinor.value);
+    }
+    if (previousAmountMinor.present) {
+      map['previous_amount_minor'] = Variable<int>(previousAmountMinor.value);
+    }
+    if (source.present) {
+      map['source'] = Variable<String>(
+        $CyclePricingsTable.$convertersource.toSql(source.value),
+      );
+    }
+    if (planId.present) {
+      map['plan_id'] = Variable<int>(planId.value);
+    }
+    if (planPriceMinor.present) {
+      map['plan_price_minor'] = Variable<int>(planPriceMinor.value);
+    }
+    if (feeOverrideMinor.present) {
+      map['fee_override_minor'] = Variable<int>(feeOverrideMinor.value);
+    }
+    if (reason.present) {
+      map['reason'] = Variable<String>(reason.value);
+    }
+    if (actorId.present) {
+      map['actor_id'] = Variable<int>(actorId.value);
+    }
+    if (recordedAt.present) {
+      map['recorded_at'] = Variable<DateTime>(recordedAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('CyclePricingsCompanion(')
+          ..write('id: $id, ')
+          ..write('membershipPeriodId: $membershipPeriodId, ')
+          ..write('amountMinor: $amountMinor, ')
+          ..write('previousAmountMinor: $previousAmountMinor, ')
+          ..write('source: $source, ')
+          ..write('planId: $planId, ')
+          ..write('planPriceMinor: $planPriceMinor, ')
+          ..write('feeOverrideMinor: $feeOverrideMinor, ')
+          ..write('reason: $reason, ')
+          ..write('actorId: $actorId, ')
+          ..write('recordedAt: $recordedAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $MembershipChangesTable extends MembershipChanges
+    with TableInfo<$MembershipChangesTable, MembershipChange> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $MembershipChangesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _memberIdMeta = const VerificationMeta(
+    'memberId',
+  );
+  @override
+  late final GeneratedColumn<int> memberId = GeneratedColumn<int>(
+    'member_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES members (id) ON DELETE CASCADE',
+    ),
+  );
+  static const VerificationMeta _previousMembershipIdMeta =
+      const VerificationMeta('previousMembershipId');
+  @override
+  late final GeneratedColumn<int> previousMembershipId = GeneratedColumn<int>(
+    'previous_membership_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _membershipIdMeta = const VerificationMeta(
+    'membershipId',
+  );
+  @override
+  late final GeneratedColumn<int> membershipId = GeneratedColumn<int>(
+    'membership_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _previousPlanIdMeta = const VerificationMeta(
+    'previousPlanId',
+  );
+  @override
+  late final GeneratedColumn<int> previousPlanId = GeneratedColumn<int>(
+    'previous_plan_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _previousPlanNameMeta = const VerificationMeta(
+    'previousPlanName',
+  );
+  @override
+  late final GeneratedColumn<String> previousPlanName = GeneratedColumn<String>(
+    'previous_plan_name',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _planIdMeta = const VerificationMeta('planId');
+  @override
+  late final GeneratedColumn<int> planId = GeneratedColumn<int>(
+    'plan_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _planNameMeta = const VerificationMeta(
+    'planName',
+  );
+  @override
+  late final GeneratedColumn<String> planName = GeneratedColumn<String>(
+    'plan_name',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _previousFeeMinorMeta = const VerificationMeta(
+    'previousFeeMinor',
+  );
+  @override
+  late final GeneratedColumn<int> previousFeeMinor = GeneratedColumn<int>(
+    'previous_fee_minor',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _feeMinorMeta = const VerificationMeta(
+    'feeMinor',
+  );
+  @override
+  late final GeneratedColumn<int> feeMinor = GeneratedColumn<int>(
+    'fee_minor',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _effectiveFromMeta = const VerificationMeta(
+    'effectiveFrom',
+  );
+  @override
+  late final GeneratedColumn<DateTime> effectiveFrom =
+      GeneratedColumn<DateTime>(
+        'effective_from',
+        aliasedName,
+        false,
+        type: DriftSqlType.dateTime,
+        requiredDuringInsert: true,
+      );
+  static const VerificationMeta _recordedAtMeta = const VerificationMeta(
+    'recordedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> recordedAt = GeneratedColumn<DateTime>(
+    'recorded_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  static const VerificationMeta _reasonMeta = const VerificationMeta('reason');
+  @override
+  late final GeneratedColumn<String> reason = GeneratedColumn<String>(
+    'reason',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _actorIdMeta = const VerificationMeta(
+    'actorId',
+  );
+  @override
+  late final GeneratedColumn<int> actorId = GeneratedColumn<int>(
+    'actor_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    memberId,
+    previousMembershipId,
+    membershipId,
+    previousPlanId,
+    previousPlanName,
+    planId,
+    planName,
+    previousFeeMinor,
+    feeMinor,
+    effectiveFrom,
+    recordedAt,
+    reason,
+    actorId,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'membership_changes';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<MembershipChange> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('member_id')) {
+      context.handle(
+        _memberIdMeta,
+        memberId.isAcceptableOrUnknown(data['member_id']!, _memberIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_memberIdMeta);
+    }
+    if (data.containsKey('previous_membership_id')) {
+      context.handle(
+        _previousMembershipIdMeta,
+        previousMembershipId.isAcceptableOrUnknown(
+          data['previous_membership_id']!,
+          _previousMembershipIdMeta,
+        ),
+      );
+    }
+    if (data.containsKey('membership_id')) {
+      context.handle(
+        _membershipIdMeta,
+        membershipId.isAcceptableOrUnknown(
+          data['membership_id']!,
+          _membershipIdMeta,
+        ),
+      );
+    }
+    if (data.containsKey('previous_plan_id')) {
+      context.handle(
+        _previousPlanIdMeta,
+        previousPlanId.isAcceptableOrUnknown(
+          data['previous_plan_id']!,
+          _previousPlanIdMeta,
+        ),
+      );
+    }
+    if (data.containsKey('previous_plan_name')) {
+      context.handle(
+        _previousPlanNameMeta,
+        previousPlanName.isAcceptableOrUnknown(
+          data['previous_plan_name']!,
+          _previousPlanNameMeta,
+        ),
+      );
+    }
+    if (data.containsKey('plan_id')) {
+      context.handle(
+        _planIdMeta,
+        planId.isAcceptableOrUnknown(data['plan_id']!, _planIdMeta),
+      );
+    }
+    if (data.containsKey('plan_name')) {
+      context.handle(
+        _planNameMeta,
+        planName.isAcceptableOrUnknown(data['plan_name']!, _planNameMeta),
+      );
+    }
+    if (data.containsKey('previous_fee_minor')) {
+      context.handle(
+        _previousFeeMinorMeta,
+        previousFeeMinor.isAcceptableOrUnknown(
+          data['previous_fee_minor']!,
+          _previousFeeMinorMeta,
+        ),
+      );
+    }
+    if (data.containsKey('fee_minor')) {
+      context.handle(
+        _feeMinorMeta,
+        feeMinor.isAcceptableOrUnknown(data['fee_minor']!, _feeMinorMeta),
+      );
+    }
+    if (data.containsKey('effective_from')) {
+      context.handle(
+        _effectiveFromMeta,
+        effectiveFrom.isAcceptableOrUnknown(
+          data['effective_from']!,
+          _effectiveFromMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_effectiveFromMeta);
+    }
+    if (data.containsKey('recorded_at')) {
+      context.handle(
+        _recordedAtMeta,
+        recordedAt.isAcceptableOrUnknown(data['recorded_at']!, _recordedAtMeta),
+      );
+    }
+    if (data.containsKey('reason')) {
+      context.handle(
+        _reasonMeta,
+        reason.isAcceptableOrUnknown(data['reason']!, _reasonMeta),
+      );
+    }
+    if (data.containsKey('actor_id')) {
+      context.handle(
+        _actorIdMeta,
+        actorId.isAcceptableOrUnknown(data['actor_id']!, _actorIdMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  MembershipChange map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return MembershipChange(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      memberId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}member_id'],
+      )!,
+      previousMembershipId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}previous_membership_id'],
+      ),
+      membershipId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}membership_id'],
+      ),
+      previousPlanId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}previous_plan_id'],
+      ),
+      previousPlanName: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}previous_plan_name'],
+      ),
+      planId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}plan_id'],
+      ),
+      planName: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}plan_name'],
+      ),
+      previousFeeMinor: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}previous_fee_minor'],
+      ),
+      feeMinor: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}fee_minor'],
+      ),
+      effectiveFrom: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}effective_from'],
+      )!,
+      recordedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}recorded_at'],
+      )!,
+      reason: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}reason'],
+      ),
+      actorId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}actor_id'],
+      ),
+    );
+  }
+
+  @override
+  $MembershipChangesTable createAlias(String alias) {
+    return $MembershipChangesTable(attachedDatabase, alias);
+  }
+}
+
+class MembershipChange extends DataClass
+    implements Insertable<MembershipChange> {
+  final int id;
+  final int memberId;
+
+  /// The enrolment closed and the one opened. Equal when the change was to the
+  /// member's own fee, which does not open a new enrolment. Copied without a
+  /// foreign key so a tidied-up enrolment cannot take the history with it.
+  final int? previousMembershipId;
+  final int? membershipId;
+  final int? previousPlanId;
+  final String? previousPlanName;
+  final int? planId;
+  final String? planName;
+
+  /// `feeOverrideMinor ?? plan.priceMinor` either side of the change — the one
+  /// number the member actually feels. Minor units.
+  final int? previousFeeMinor;
+  final int? feeMinor;
+
+  /// The day the new fee is meant to apply from, as the owner chose it.
+  final DateTime effectiveFrom;
+
+  /// When the app was told. See the class comment on why this is not the same
+  /// column as [effectiveFrom].
+  final DateTime recordedAt;
+  final String? reason;
+  final int? actorId;
+  const MembershipChange({
+    required this.id,
+    required this.memberId,
+    this.previousMembershipId,
+    this.membershipId,
+    this.previousPlanId,
+    this.previousPlanName,
+    this.planId,
+    this.planName,
+    this.previousFeeMinor,
+    this.feeMinor,
+    required this.effectiveFrom,
+    required this.recordedAt,
+    this.reason,
+    this.actorId,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['member_id'] = Variable<int>(memberId);
+    if (!nullToAbsent || previousMembershipId != null) {
+      map['previous_membership_id'] = Variable<int>(previousMembershipId);
+    }
+    if (!nullToAbsent || membershipId != null) {
+      map['membership_id'] = Variable<int>(membershipId);
+    }
+    if (!nullToAbsent || previousPlanId != null) {
+      map['previous_plan_id'] = Variable<int>(previousPlanId);
+    }
+    if (!nullToAbsent || previousPlanName != null) {
+      map['previous_plan_name'] = Variable<String>(previousPlanName);
+    }
+    if (!nullToAbsent || planId != null) {
+      map['plan_id'] = Variable<int>(planId);
+    }
+    if (!nullToAbsent || planName != null) {
+      map['plan_name'] = Variable<String>(planName);
+    }
+    if (!nullToAbsent || previousFeeMinor != null) {
+      map['previous_fee_minor'] = Variable<int>(previousFeeMinor);
+    }
+    if (!nullToAbsent || feeMinor != null) {
+      map['fee_minor'] = Variable<int>(feeMinor);
+    }
+    map['effective_from'] = Variable<DateTime>(effectiveFrom);
+    map['recorded_at'] = Variable<DateTime>(recordedAt);
+    if (!nullToAbsent || reason != null) {
+      map['reason'] = Variable<String>(reason);
+    }
+    if (!nullToAbsent || actorId != null) {
+      map['actor_id'] = Variable<int>(actorId);
+    }
+    return map;
+  }
+
+  MembershipChangesCompanion toCompanion(bool nullToAbsent) {
+    return MembershipChangesCompanion(
+      id: Value(id),
+      memberId: Value(memberId),
+      previousMembershipId: previousMembershipId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(previousMembershipId),
+      membershipId: membershipId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(membershipId),
+      previousPlanId: previousPlanId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(previousPlanId),
+      previousPlanName: previousPlanName == null && nullToAbsent
+          ? const Value.absent()
+          : Value(previousPlanName),
+      planId: planId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(planId),
+      planName: planName == null && nullToAbsent
+          ? const Value.absent()
+          : Value(planName),
+      previousFeeMinor: previousFeeMinor == null && nullToAbsent
+          ? const Value.absent()
+          : Value(previousFeeMinor),
+      feeMinor: feeMinor == null && nullToAbsent
+          ? const Value.absent()
+          : Value(feeMinor),
+      effectiveFrom: Value(effectiveFrom),
+      recordedAt: Value(recordedAt),
+      reason: reason == null && nullToAbsent
+          ? const Value.absent()
+          : Value(reason),
+      actorId: actorId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(actorId),
+    );
+  }
+
+  factory MembershipChange.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return MembershipChange(
+      id: serializer.fromJson<int>(json['id']),
+      memberId: serializer.fromJson<int>(json['memberId']),
+      previousMembershipId: serializer.fromJson<int?>(
+        json['previousMembershipId'],
+      ),
+      membershipId: serializer.fromJson<int?>(json['membershipId']),
+      previousPlanId: serializer.fromJson<int?>(json['previousPlanId']),
+      previousPlanName: serializer.fromJson<String?>(json['previousPlanName']),
+      planId: serializer.fromJson<int?>(json['planId']),
+      planName: serializer.fromJson<String?>(json['planName']),
+      previousFeeMinor: serializer.fromJson<int?>(json['previousFeeMinor']),
+      feeMinor: serializer.fromJson<int?>(json['feeMinor']),
+      effectiveFrom: serializer.fromJson<DateTime>(json['effectiveFrom']),
+      recordedAt: serializer.fromJson<DateTime>(json['recordedAt']),
+      reason: serializer.fromJson<String?>(json['reason']),
+      actorId: serializer.fromJson<int?>(json['actorId']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'memberId': serializer.toJson<int>(memberId),
+      'previousMembershipId': serializer.toJson<int?>(previousMembershipId),
+      'membershipId': serializer.toJson<int?>(membershipId),
+      'previousPlanId': serializer.toJson<int?>(previousPlanId),
+      'previousPlanName': serializer.toJson<String?>(previousPlanName),
+      'planId': serializer.toJson<int?>(planId),
+      'planName': serializer.toJson<String?>(planName),
+      'previousFeeMinor': serializer.toJson<int?>(previousFeeMinor),
+      'feeMinor': serializer.toJson<int?>(feeMinor),
+      'effectiveFrom': serializer.toJson<DateTime>(effectiveFrom),
+      'recordedAt': serializer.toJson<DateTime>(recordedAt),
+      'reason': serializer.toJson<String?>(reason),
+      'actorId': serializer.toJson<int?>(actorId),
+    };
+  }
+
+  MembershipChange copyWith({
+    int? id,
+    int? memberId,
+    Value<int?> previousMembershipId = const Value.absent(),
+    Value<int?> membershipId = const Value.absent(),
+    Value<int?> previousPlanId = const Value.absent(),
+    Value<String?> previousPlanName = const Value.absent(),
+    Value<int?> planId = const Value.absent(),
+    Value<String?> planName = const Value.absent(),
+    Value<int?> previousFeeMinor = const Value.absent(),
+    Value<int?> feeMinor = const Value.absent(),
+    DateTime? effectiveFrom,
+    DateTime? recordedAt,
+    Value<String?> reason = const Value.absent(),
+    Value<int?> actorId = const Value.absent(),
+  }) => MembershipChange(
+    id: id ?? this.id,
+    memberId: memberId ?? this.memberId,
+    previousMembershipId: previousMembershipId.present
+        ? previousMembershipId.value
+        : this.previousMembershipId,
+    membershipId: membershipId.present ? membershipId.value : this.membershipId,
+    previousPlanId: previousPlanId.present
+        ? previousPlanId.value
+        : this.previousPlanId,
+    previousPlanName: previousPlanName.present
+        ? previousPlanName.value
+        : this.previousPlanName,
+    planId: planId.present ? planId.value : this.planId,
+    planName: planName.present ? planName.value : this.planName,
+    previousFeeMinor: previousFeeMinor.present
+        ? previousFeeMinor.value
+        : this.previousFeeMinor,
+    feeMinor: feeMinor.present ? feeMinor.value : this.feeMinor,
+    effectiveFrom: effectiveFrom ?? this.effectiveFrom,
+    recordedAt: recordedAt ?? this.recordedAt,
+    reason: reason.present ? reason.value : this.reason,
+    actorId: actorId.present ? actorId.value : this.actorId,
+  );
+  MembershipChange copyWithCompanion(MembershipChangesCompanion data) {
+    return MembershipChange(
+      id: data.id.present ? data.id.value : this.id,
+      memberId: data.memberId.present ? data.memberId.value : this.memberId,
+      previousMembershipId: data.previousMembershipId.present
+          ? data.previousMembershipId.value
+          : this.previousMembershipId,
+      membershipId: data.membershipId.present
+          ? data.membershipId.value
+          : this.membershipId,
+      previousPlanId: data.previousPlanId.present
+          ? data.previousPlanId.value
+          : this.previousPlanId,
+      previousPlanName: data.previousPlanName.present
+          ? data.previousPlanName.value
+          : this.previousPlanName,
+      planId: data.planId.present ? data.planId.value : this.planId,
+      planName: data.planName.present ? data.planName.value : this.planName,
+      previousFeeMinor: data.previousFeeMinor.present
+          ? data.previousFeeMinor.value
+          : this.previousFeeMinor,
+      feeMinor: data.feeMinor.present ? data.feeMinor.value : this.feeMinor,
+      effectiveFrom: data.effectiveFrom.present
+          ? data.effectiveFrom.value
+          : this.effectiveFrom,
+      recordedAt: data.recordedAt.present
+          ? data.recordedAt.value
+          : this.recordedAt,
+      reason: data.reason.present ? data.reason.value : this.reason,
+      actorId: data.actorId.present ? data.actorId.value : this.actorId,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('MembershipChange(')
+          ..write('id: $id, ')
+          ..write('memberId: $memberId, ')
+          ..write('previousMembershipId: $previousMembershipId, ')
+          ..write('membershipId: $membershipId, ')
+          ..write('previousPlanId: $previousPlanId, ')
+          ..write('previousPlanName: $previousPlanName, ')
+          ..write('planId: $planId, ')
+          ..write('planName: $planName, ')
+          ..write('previousFeeMinor: $previousFeeMinor, ')
+          ..write('feeMinor: $feeMinor, ')
+          ..write('effectiveFrom: $effectiveFrom, ')
+          ..write('recordedAt: $recordedAt, ')
+          ..write('reason: $reason, ')
+          ..write('actorId: $actorId')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    memberId,
+    previousMembershipId,
+    membershipId,
+    previousPlanId,
+    previousPlanName,
+    planId,
+    planName,
+    previousFeeMinor,
+    feeMinor,
+    effectiveFrom,
+    recordedAt,
+    reason,
+    actorId,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is MembershipChange &&
+          other.id == this.id &&
+          other.memberId == this.memberId &&
+          other.previousMembershipId == this.previousMembershipId &&
+          other.membershipId == this.membershipId &&
+          other.previousPlanId == this.previousPlanId &&
+          other.previousPlanName == this.previousPlanName &&
+          other.planId == this.planId &&
+          other.planName == this.planName &&
+          other.previousFeeMinor == this.previousFeeMinor &&
+          other.feeMinor == this.feeMinor &&
+          other.effectiveFrom == this.effectiveFrom &&
+          other.recordedAt == this.recordedAt &&
+          other.reason == this.reason &&
+          other.actorId == this.actorId);
+}
+
+class MembershipChangesCompanion extends UpdateCompanion<MembershipChange> {
+  final Value<int> id;
+  final Value<int> memberId;
+  final Value<int?> previousMembershipId;
+  final Value<int?> membershipId;
+  final Value<int?> previousPlanId;
+  final Value<String?> previousPlanName;
+  final Value<int?> planId;
+  final Value<String?> planName;
+  final Value<int?> previousFeeMinor;
+  final Value<int?> feeMinor;
+  final Value<DateTime> effectiveFrom;
+  final Value<DateTime> recordedAt;
+  final Value<String?> reason;
+  final Value<int?> actorId;
+  const MembershipChangesCompanion({
+    this.id = const Value.absent(),
+    this.memberId = const Value.absent(),
+    this.previousMembershipId = const Value.absent(),
+    this.membershipId = const Value.absent(),
+    this.previousPlanId = const Value.absent(),
+    this.previousPlanName = const Value.absent(),
+    this.planId = const Value.absent(),
+    this.planName = const Value.absent(),
+    this.previousFeeMinor = const Value.absent(),
+    this.feeMinor = const Value.absent(),
+    this.effectiveFrom = const Value.absent(),
+    this.recordedAt = const Value.absent(),
+    this.reason = const Value.absent(),
+    this.actorId = const Value.absent(),
+  });
+  MembershipChangesCompanion.insert({
+    this.id = const Value.absent(),
+    required int memberId,
+    this.previousMembershipId = const Value.absent(),
+    this.membershipId = const Value.absent(),
+    this.previousPlanId = const Value.absent(),
+    this.previousPlanName = const Value.absent(),
+    this.planId = const Value.absent(),
+    this.planName = const Value.absent(),
+    this.previousFeeMinor = const Value.absent(),
+    this.feeMinor = const Value.absent(),
+    required DateTime effectiveFrom,
+    this.recordedAt = const Value.absent(),
+    this.reason = const Value.absent(),
+    this.actorId = const Value.absent(),
+  }) : memberId = Value(memberId),
+       effectiveFrom = Value(effectiveFrom);
+  static Insertable<MembershipChange> custom({
+    Expression<int>? id,
+    Expression<int>? memberId,
+    Expression<int>? previousMembershipId,
+    Expression<int>? membershipId,
+    Expression<int>? previousPlanId,
+    Expression<String>? previousPlanName,
+    Expression<int>? planId,
+    Expression<String>? planName,
+    Expression<int>? previousFeeMinor,
+    Expression<int>? feeMinor,
+    Expression<DateTime>? effectiveFrom,
+    Expression<DateTime>? recordedAt,
+    Expression<String>? reason,
+    Expression<int>? actorId,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (memberId != null) 'member_id': memberId,
+      if (previousMembershipId != null)
+        'previous_membership_id': previousMembershipId,
+      if (membershipId != null) 'membership_id': membershipId,
+      if (previousPlanId != null) 'previous_plan_id': previousPlanId,
+      if (previousPlanName != null) 'previous_plan_name': previousPlanName,
+      if (planId != null) 'plan_id': planId,
+      if (planName != null) 'plan_name': planName,
+      if (previousFeeMinor != null) 'previous_fee_minor': previousFeeMinor,
+      if (feeMinor != null) 'fee_minor': feeMinor,
+      if (effectiveFrom != null) 'effective_from': effectiveFrom,
+      if (recordedAt != null) 'recorded_at': recordedAt,
+      if (reason != null) 'reason': reason,
+      if (actorId != null) 'actor_id': actorId,
+    });
+  }
+
+  MembershipChangesCompanion copyWith({
+    Value<int>? id,
+    Value<int>? memberId,
+    Value<int?>? previousMembershipId,
+    Value<int?>? membershipId,
+    Value<int?>? previousPlanId,
+    Value<String?>? previousPlanName,
+    Value<int?>? planId,
+    Value<String?>? planName,
+    Value<int?>? previousFeeMinor,
+    Value<int?>? feeMinor,
+    Value<DateTime>? effectiveFrom,
+    Value<DateTime>? recordedAt,
+    Value<String?>? reason,
+    Value<int?>? actorId,
+  }) {
+    return MembershipChangesCompanion(
+      id: id ?? this.id,
+      memberId: memberId ?? this.memberId,
+      previousMembershipId: previousMembershipId ?? this.previousMembershipId,
+      membershipId: membershipId ?? this.membershipId,
+      previousPlanId: previousPlanId ?? this.previousPlanId,
+      previousPlanName: previousPlanName ?? this.previousPlanName,
+      planId: planId ?? this.planId,
+      planName: planName ?? this.planName,
+      previousFeeMinor: previousFeeMinor ?? this.previousFeeMinor,
+      feeMinor: feeMinor ?? this.feeMinor,
+      effectiveFrom: effectiveFrom ?? this.effectiveFrom,
+      recordedAt: recordedAt ?? this.recordedAt,
+      reason: reason ?? this.reason,
+      actorId: actorId ?? this.actorId,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (memberId.present) {
+      map['member_id'] = Variable<int>(memberId.value);
+    }
+    if (previousMembershipId.present) {
+      map['previous_membership_id'] = Variable<int>(previousMembershipId.value);
+    }
+    if (membershipId.present) {
+      map['membership_id'] = Variable<int>(membershipId.value);
+    }
+    if (previousPlanId.present) {
+      map['previous_plan_id'] = Variable<int>(previousPlanId.value);
+    }
+    if (previousPlanName.present) {
+      map['previous_plan_name'] = Variable<String>(previousPlanName.value);
+    }
+    if (planId.present) {
+      map['plan_id'] = Variable<int>(planId.value);
+    }
+    if (planName.present) {
+      map['plan_name'] = Variable<String>(planName.value);
+    }
+    if (previousFeeMinor.present) {
+      map['previous_fee_minor'] = Variable<int>(previousFeeMinor.value);
+    }
+    if (feeMinor.present) {
+      map['fee_minor'] = Variable<int>(feeMinor.value);
+    }
+    if (effectiveFrom.present) {
+      map['effective_from'] = Variable<DateTime>(effectiveFrom.value);
+    }
+    if (recordedAt.present) {
+      map['recorded_at'] = Variable<DateTime>(recordedAt.value);
+    }
+    if (reason.present) {
+      map['reason'] = Variable<String>(reason.value);
+    }
+    if (actorId.present) {
+      map['actor_id'] = Variable<int>(actorId.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('MembershipChangesCompanion(')
+          ..write('id: $id, ')
+          ..write('memberId: $memberId, ')
+          ..write('previousMembershipId: $previousMembershipId, ')
+          ..write('membershipId: $membershipId, ')
+          ..write('previousPlanId: $previousPlanId, ')
+          ..write('previousPlanName: $previousPlanName, ')
+          ..write('planId: $planId, ')
+          ..write('planName: $planName, ')
+          ..write('previousFeeMinor: $previousFeeMinor, ')
+          ..write('feeMinor: $feeMinor, ')
+          ..write('effectiveFrom: $effectiveFrom, ')
+          ..write('recordedAt: $recordedAt, ')
+          ..write('reason: $reason, ')
+          ..write('actorId: $actorId')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class $PaymentsTable extends Payments with TableInfo<$PaymentsTable, Payment> {
   @override
   final GeneratedDatabase attachedDatabase;
@@ -9672,6 +11236,9 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $MembershipsTable memberships = $MembershipsTable(this);
   late final $MembershipPeriodsTable membershipPeriods =
       $MembershipPeriodsTable(this);
+  late final $CyclePricingsTable cyclePricings = $CyclePricingsTable(this);
+  late final $MembershipChangesTable membershipChanges =
+      $MembershipChangesTable(this);
   late final $PaymentsTable payments = $PaymentsTable(this);
   late final $PaymentAllocationsTable paymentAllocations =
       $PaymentAllocationsTable(this);
@@ -9699,6 +11266,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     members,
     memberships,
     membershipPeriods,
+    cyclePricings,
+    membershipChanges,
     payments,
     paymentAllocations,
     paymentReminders,
@@ -9716,6 +11285,20 @@ abstract class _$AppDatabase extends GeneratedDatabase {
         limitUpdateKind: UpdateKind.delete,
       ),
       result: [TableUpdate('app_sessions', kind: UpdateKind.delete)],
+    ),
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'membership_periods',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [TableUpdate('cycle_pricings', kind: UpdateKind.delete)],
+    ),
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'members',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [TableUpdate('membership_changes', kind: UpdateKind.delete)],
     ),
     WritePropagation(
       on: TableUpdateQuery.onTableName(
@@ -11640,6 +13223,27 @@ final class $$MembersTableReferences
     );
   }
 
+  static MultiTypedResultKey<$MembershipChangesTable, List<MembershipChange>>
+  _membershipChangesRefsTable(_$AppDatabase db) =>
+      MultiTypedResultKey.fromTable(
+        db.membershipChanges,
+        aliasName: 'members__id__membership_changes__member_id',
+      );
+
+  $$MembershipChangesTableProcessedTableManager get membershipChangesRefs {
+    final manager = $$MembershipChangesTableTableManager(
+      $_db,
+      $_db.membershipChanges,
+    ).filter((f) => f.memberId.id.sqlEquals($_itemColumn<int>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(
+      _membershipChangesRefsTable($_db),
+    );
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+
   static MultiTypedResultKey<$PaymentsTable, List<Payment>> _paymentsRefsTable(
     _$AppDatabase db,
   ) => MultiTypedResultKey.fromTable(
@@ -11808,6 +13412,31 @@ class $$MembersTableFilterComposer
           }) => $$MembershipsTableFilterComposer(
             $db: $db,
             $table: $db.memberships,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<bool> membershipChangesRefs(
+    Expression<bool> Function($$MembershipChangesTableFilterComposer f) f,
+  ) {
+    final $$MembershipChangesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.membershipChanges,
+      getReferencedColumn: (t) => t.memberId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$MembershipChangesTableFilterComposer(
+            $db: $db,
+            $table: $db.membershipChanges,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -12076,6 +13705,32 @@ class $$MembersTableAnnotationComposer
     return f(composer);
   }
 
+  Expression<T> membershipChangesRefs<T extends Object>(
+    Expression<T> Function($$MembershipChangesTableAnnotationComposer a) f,
+  ) {
+    final $$MembershipChangesTableAnnotationComposer composer =
+        $composerBuilder(
+          composer: this,
+          getCurrentColumn: (t) => t.id,
+          referencedTable: $db.membershipChanges,
+          getReferencedColumn: (t) => t.memberId,
+          builder:
+              (
+                joinBuilder, {
+                $addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer,
+              }) => $$MembershipChangesTableAnnotationComposer(
+                $db: $db,
+                $table: $db.membershipChanges,
+                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+                joinBuilder: joinBuilder,
+                $removeJoinBuilderFromRootComposer:
+                    $removeJoinBuilderFromRootComposer,
+              ),
+        );
+    return f(composer);
+  }
+
   Expression<T> paymentsRefs<T extends Object>(
     Expression<T> Function($$PaymentsTableAnnotationComposer a) f,
   ) {
@@ -12192,6 +13847,7 @@ class $$MembersTableTableManager
           Member,
           PrefetchHooks Function({
             bool membershipsRefs,
+            bool membershipChangesRefs,
             bool paymentsRefs,
             bool paymentRemindersRefs,
             bool whatsAppMessagesRefs,
@@ -12280,6 +13936,7 @@ class $$MembersTableTableManager
           prefetchHooksCallback:
               ({
                 membershipsRefs = false,
+                membershipChangesRefs = false,
                 paymentsRefs = false,
                 paymentRemindersRefs = false,
                 whatsAppMessagesRefs = false,
@@ -12289,6 +13946,7 @@ class $$MembersTableTableManager
                   db: db,
                   explicitlyWatchedTables: [
                     if (membershipsRefs) db.memberships,
+                    if (membershipChangesRefs) db.membershipChanges,
                     if (paymentsRefs) db.payments,
                     if (paymentRemindersRefs) db.paymentReminders,
                     if (whatsAppMessagesRefs) db.whatsAppMessages,
@@ -12312,6 +13970,27 @@ class $$MembersTableTableManager
                                 table,
                                 p0,
                               ).membershipsRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.memberId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
+                      if (membershipChangesRefs)
+                        await $_getPrefetchedData<
+                          Member,
+                          $MembersTable,
+                          MembershipChange
+                        >(
+                          currentTable: table,
+                          referencedTable: $$MembersTableReferences
+                              ._membershipChangesRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$MembersTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).membershipChangesRefs,
                           referencedItemsForCurrentItem:
                               (item, referencedItems) => referencedItems.where(
                                 (e) => e.memberId == item.id,
@@ -12424,6 +14103,7 @@ typedef $$MembersTableProcessedTableManager =
       Member,
       PrefetchHooks Function({
         bool membershipsRefs,
+        bool membershipChangesRefs,
         bool paymentsRefs,
         bool paymentRemindersRefs,
         bool whatsAppMessagesRefs,
@@ -13033,6 +14713,24 @@ final class $$MembershipPeriodsTableReferences
     );
   }
 
+  static MultiTypedResultKey<$CyclePricingsTable, List<CyclePricing>>
+  _cyclePricingsRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
+    db.cyclePricings,
+    aliasName: 'membership_periods__id__cycle_pricings__membership_period_id',
+  );
+
+  $$CyclePricingsTableProcessedTableManager get cyclePricingsRefs {
+    final manager = $$CyclePricingsTableTableManager($_db, $_db.cyclePricings)
+        .filter(
+          (f) => f.membershipPeriodId.id.sqlEquals($_itemColumn<int>('id')!),
+        );
+
+    final cache = $_typedResult.readTableOrNull(_cyclePricingsRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+
   static MultiTypedResultKey<$PaymentsTable, List<Payment>> _paymentsRefsTable(
     _$AppDatabase db,
   ) => MultiTypedResultKey.fromTable(
@@ -13153,6 +14851,31 @@ class $$MembershipPeriodsTableFilterComposer
           ),
     );
     return composer;
+  }
+
+  Expression<bool> cyclePricingsRefs(
+    Expression<bool> Function($$CyclePricingsTableFilterComposer f) f,
+  ) {
+    final $$CyclePricingsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.cyclePricings,
+      getReferencedColumn: (t) => t.membershipPeriodId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$CyclePricingsTableFilterComposer(
+            $db: $db,
+            $table: $db.cyclePricings,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
   }
 
   Expression<bool> paymentsRefs(
@@ -13340,6 +15063,31 @@ class $$MembershipPeriodsTableAnnotationComposer
     return composer;
   }
 
+  Expression<T> cyclePricingsRefs<T extends Object>(
+    Expression<T> Function($$CyclePricingsTableAnnotationComposer a) f,
+  ) {
+    final $$CyclePricingsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.cyclePricings,
+      getReferencedColumn: (t) => t.membershipPeriodId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$CyclePricingsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.cyclePricings,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
   Expression<T> paymentsRefs<T extends Object>(
     Expression<T> Function($$PaymentsTableAnnotationComposer a) f,
   ) {
@@ -13432,6 +15180,7 @@ class $$MembershipPeriodsTableTableManager
           MembershipPeriod,
           PrefetchHooks Function({
             bool membershipId,
+            bool cyclePricingsRefs,
             bool paymentsRefs,
             bool paymentAllocationsRefs,
             bool paymentRemindersRefs,
@@ -13496,6 +15245,7 @@ class $$MembershipPeriodsTableTableManager
           prefetchHooksCallback:
               ({
                 membershipId = false,
+                cyclePricingsRefs = false,
                 paymentsRefs = false,
                 paymentAllocationsRefs = false,
                 paymentRemindersRefs = false,
@@ -13503,6 +15253,7 @@ class $$MembershipPeriodsTableTableManager
                 return PrefetchHooks(
                   db: db,
                   explicitlyWatchedTables: [
+                    if (cyclePricingsRefs) db.cyclePricings,
                     if (paymentsRefs) db.payments,
                     if (paymentAllocationsRefs) db.paymentAllocations,
                     if (paymentRemindersRefs) db.paymentReminders,
@@ -13543,6 +15294,27 @@ class $$MembershipPeriodsTableTableManager
                       },
                   getPrefetchedDataCallback: (items) async {
                     return [
+                      if (cyclePricingsRefs)
+                        await $_getPrefetchedData<
+                          MembershipPeriod,
+                          $MembershipPeriodsTable,
+                          CyclePricing
+                        >(
+                          currentTable: table,
+                          referencedTable: $$MembershipPeriodsTableReferences
+                              ._cyclePricingsRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$MembershipPeriodsTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).cyclePricingsRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.membershipPeriodId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
                       if (paymentsRefs)
                         await $_getPrefetchedData<
                           MembershipPeriod,
@@ -13628,10 +15400,966 @@ typedef $$MembershipPeriodsTableProcessedTableManager =
       MembershipPeriod,
       PrefetchHooks Function({
         bool membershipId,
+        bool cyclePricingsRefs,
         bool paymentsRefs,
         bool paymentAllocationsRefs,
         bool paymentRemindersRefs,
       })
+    >;
+typedef $$CyclePricingsTableCreateCompanionBuilder =
+    CyclePricingsCompanion Function({
+      Value<int> id,
+      required int membershipPeriodId,
+      required int amountMinor,
+      Value<int?> previousAmountMinor,
+      required CyclePricingSource source,
+      Value<int?> planId,
+      Value<int?> planPriceMinor,
+      Value<int?> feeOverrideMinor,
+      Value<String?> reason,
+      Value<int?> actorId,
+      Value<DateTime> recordedAt,
+    });
+typedef $$CyclePricingsTableUpdateCompanionBuilder =
+    CyclePricingsCompanion Function({
+      Value<int> id,
+      Value<int> membershipPeriodId,
+      Value<int> amountMinor,
+      Value<int?> previousAmountMinor,
+      Value<CyclePricingSource> source,
+      Value<int?> planId,
+      Value<int?> planPriceMinor,
+      Value<int?> feeOverrideMinor,
+      Value<String?> reason,
+      Value<int?> actorId,
+      Value<DateTime> recordedAt,
+    });
+
+final class $$CyclePricingsTableReferences
+    extends BaseReferences<_$AppDatabase, $CyclePricingsTable, CyclePricing> {
+  $$CyclePricingsTableReferences(
+    super.$_db,
+    super.$_table,
+    super.$_typedResult,
+  );
+
+  static $MembershipPeriodsTable _membershipPeriodIdTable(_$AppDatabase db) =>
+      db.membershipPeriods.createAlias(
+        'cycle_pricings__membership_period_id__membership_periods__id',
+      );
+
+  $$MembershipPeriodsTableProcessedTableManager get membershipPeriodId {
+    final $_column = $_itemColumn<int>('membership_period_id')!;
+
+    final manager = $$MembershipPeriodsTableTableManager(
+      $_db,
+      $_db.membershipPeriods,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_membershipPeriodIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$CyclePricingsTableFilterComposer
+    extends Composer<_$AppDatabase, $CyclePricingsTable> {
+  $$CyclePricingsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get amountMinor => $composableBuilder(
+    column: $table.amountMinor,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get previousAmountMinor => $composableBuilder(
+    column: $table.previousAmountMinor,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnWithTypeConverterFilters<CyclePricingSource, CyclePricingSource, String>
+  get source => $composableBuilder(
+    column: $table.source,
+    builder: (column) => ColumnWithTypeConverterFilters(column),
+  );
+
+  ColumnFilters<int> get planId => $composableBuilder(
+    column: $table.planId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get planPriceMinor => $composableBuilder(
+    column: $table.planPriceMinor,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get feeOverrideMinor => $composableBuilder(
+    column: $table.feeOverrideMinor,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get reason => $composableBuilder(
+    column: $table.reason,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get actorId => $composableBuilder(
+    column: $table.actorId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get recordedAt => $composableBuilder(
+    column: $table.recordedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$MembershipPeriodsTableFilterComposer get membershipPeriodId {
+    final $$MembershipPeriodsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.membershipPeriodId,
+      referencedTable: $db.membershipPeriods,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$MembershipPeriodsTableFilterComposer(
+            $db: $db,
+            $table: $db.membershipPeriods,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$CyclePricingsTableOrderingComposer
+    extends Composer<_$AppDatabase, $CyclePricingsTable> {
+  $$CyclePricingsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get amountMinor => $composableBuilder(
+    column: $table.amountMinor,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get previousAmountMinor => $composableBuilder(
+    column: $table.previousAmountMinor,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get source => $composableBuilder(
+    column: $table.source,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get planId => $composableBuilder(
+    column: $table.planId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get planPriceMinor => $composableBuilder(
+    column: $table.planPriceMinor,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get feeOverrideMinor => $composableBuilder(
+    column: $table.feeOverrideMinor,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get reason => $composableBuilder(
+    column: $table.reason,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get actorId => $composableBuilder(
+    column: $table.actorId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get recordedAt => $composableBuilder(
+    column: $table.recordedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$MembershipPeriodsTableOrderingComposer get membershipPeriodId {
+    final $$MembershipPeriodsTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.membershipPeriodId,
+      referencedTable: $db.membershipPeriods,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$MembershipPeriodsTableOrderingComposer(
+            $db: $db,
+            $table: $db.membershipPeriods,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$CyclePricingsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $CyclePricingsTable> {
+  $$CyclePricingsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<int> get amountMinor => $composableBuilder(
+    column: $table.amountMinor,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get previousAmountMinor => $composableBuilder(
+    column: $table.previousAmountMinor,
+    builder: (column) => column,
+  );
+
+  GeneratedColumnWithTypeConverter<CyclePricingSource, String> get source =>
+      $composableBuilder(column: $table.source, builder: (column) => column);
+
+  GeneratedColumn<int> get planId =>
+      $composableBuilder(column: $table.planId, builder: (column) => column);
+
+  GeneratedColumn<int> get planPriceMinor => $composableBuilder(
+    column: $table.planPriceMinor,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get feeOverrideMinor => $composableBuilder(
+    column: $table.feeOverrideMinor,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get reason =>
+      $composableBuilder(column: $table.reason, builder: (column) => column);
+
+  GeneratedColumn<int> get actorId =>
+      $composableBuilder(column: $table.actorId, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get recordedAt => $composableBuilder(
+    column: $table.recordedAt,
+    builder: (column) => column,
+  );
+
+  $$MembershipPeriodsTableAnnotationComposer get membershipPeriodId {
+    final $$MembershipPeriodsTableAnnotationComposer composer =
+        $composerBuilder(
+          composer: this,
+          getCurrentColumn: (t) => t.membershipPeriodId,
+          referencedTable: $db.membershipPeriods,
+          getReferencedColumn: (t) => t.id,
+          builder:
+              (
+                joinBuilder, {
+                $addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer,
+              }) => $$MembershipPeriodsTableAnnotationComposer(
+                $db: $db,
+                $table: $db.membershipPeriods,
+                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+                joinBuilder: joinBuilder,
+                $removeJoinBuilderFromRootComposer:
+                    $removeJoinBuilderFromRootComposer,
+              ),
+        );
+    return composer;
+  }
+}
+
+class $$CyclePricingsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $CyclePricingsTable,
+          CyclePricing,
+          $$CyclePricingsTableFilterComposer,
+          $$CyclePricingsTableOrderingComposer,
+          $$CyclePricingsTableAnnotationComposer,
+          $$CyclePricingsTableCreateCompanionBuilder,
+          $$CyclePricingsTableUpdateCompanionBuilder,
+          (CyclePricing, $$CyclePricingsTableReferences),
+          CyclePricing,
+          PrefetchHooks Function({bool membershipPeriodId})
+        > {
+  $$CyclePricingsTableTableManager(_$AppDatabase db, $CyclePricingsTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$CyclePricingsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$CyclePricingsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$CyclePricingsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<int> membershipPeriodId = const Value.absent(),
+                Value<int> amountMinor = const Value.absent(),
+                Value<int?> previousAmountMinor = const Value.absent(),
+                Value<CyclePricingSource> source = const Value.absent(),
+                Value<int?> planId = const Value.absent(),
+                Value<int?> planPriceMinor = const Value.absent(),
+                Value<int?> feeOverrideMinor = const Value.absent(),
+                Value<String?> reason = const Value.absent(),
+                Value<int?> actorId = const Value.absent(),
+                Value<DateTime> recordedAt = const Value.absent(),
+              }) => CyclePricingsCompanion(
+                id: id,
+                membershipPeriodId: membershipPeriodId,
+                amountMinor: amountMinor,
+                previousAmountMinor: previousAmountMinor,
+                source: source,
+                planId: planId,
+                planPriceMinor: planPriceMinor,
+                feeOverrideMinor: feeOverrideMinor,
+                reason: reason,
+                actorId: actorId,
+                recordedAt: recordedAt,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required int membershipPeriodId,
+                required int amountMinor,
+                Value<int?> previousAmountMinor = const Value.absent(),
+                required CyclePricingSource source,
+                Value<int?> planId = const Value.absent(),
+                Value<int?> planPriceMinor = const Value.absent(),
+                Value<int?> feeOverrideMinor = const Value.absent(),
+                Value<String?> reason = const Value.absent(),
+                Value<int?> actorId = const Value.absent(),
+                Value<DateTime> recordedAt = const Value.absent(),
+              }) => CyclePricingsCompanion.insert(
+                id: id,
+                membershipPeriodId: membershipPeriodId,
+                amountMinor: amountMinor,
+                previousAmountMinor: previousAmountMinor,
+                source: source,
+                planId: planId,
+                planPriceMinor: planPriceMinor,
+                feeOverrideMinor: feeOverrideMinor,
+                reason: reason,
+                actorId: actorId,
+                recordedAt: recordedAt,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$CyclePricingsTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({membershipPeriodId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (membershipPeriodId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.membershipPeriodId,
+                                referencedTable: $$CyclePricingsTableReferences
+                                    ._membershipPeriodIdTable(db),
+                                referencedColumn: $$CyclePricingsTableReferences
+                                    ._membershipPeriodIdTable(db)
+                                    .id,
+                              )
+                              as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$CyclePricingsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $CyclePricingsTable,
+      CyclePricing,
+      $$CyclePricingsTableFilterComposer,
+      $$CyclePricingsTableOrderingComposer,
+      $$CyclePricingsTableAnnotationComposer,
+      $$CyclePricingsTableCreateCompanionBuilder,
+      $$CyclePricingsTableUpdateCompanionBuilder,
+      (CyclePricing, $$CyclePricingsTableReferences),
+      CyclePricing,
+      PrefetchHooks Function({bool membershipPeriodId})
+    >;
+typedef $$MembershipChangesTableCreateCompanionBuilder =
+    MembershipChangesCompanion Function({
+      Value<int> id,
+      required int memberId,
+      Value<int?> previousMembershipId,
+      Value<int?> membershipId,
+      Value<int?> previousPlanId,
+      Value<String?> previousPlanName,
+      Value<int?> planId,
+      Value<String?> planName,
+      Value<int?> previousFeeMinor,
+      Value<int?> feeMinor,
+      required DateTime effectiveFrom,
+      Value<DateTime> recordedAt,
+      Value<String?> reason,
+      Value<int?> actorId,
+    });
+typedef $$MembershipChangesTableUpdateCompanionBuilder =
+    MembershipChangesCompanion Function({
+      Value<int> id,
+      Value<int> memberId,
+      Value<int?> previousMembershipId,
+      Value<int?> membershipId,
+      Value<int?> previousPlanId,
+      Value<String?> previousPlanName,
+      Value<int?> planId,
+      Value<String?> planName,
+      Value<int?> previousFeeMinor,
+      Value<int?> feeMinor,
+      Value<DateTime> effectiveFrom,
+      Value<DateTime> recordedAt,
+      Value<String?> reason,
+      Value<int?> actorId,
+    });
+
+final class $$MembershipChangesTableReferences
+    extends
+        BaseReferences<
+          _$AppDatabase,
+          $MembershipChangesTable,
+          MembershipChange
+        > {
+  $$MembershipChangesTableReferences(
+    super.$_db,
+    super.$_table,
+    super.$_typedResult,
+  );
+
+  static $MembersTable _memberIdTable(_$AppDatabase db) =>
+      db.members.createAlias('membership_changes__member_id__members__id');
+
+  $$MembersTableProcessedTableManager get memberId {
+    final $_column = $_itemColumn<int>('member_id')!;
+
+    final manager = $$MembersTableTableManager(
+      $_db,
+      $_db.members,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_memberIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$MembershipChangesTableFilterComposer
+    extends Composer<_$AppDatabase, $MembershipChangesTable> {
+  $$MembershipChangesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get previousMembershipId => $composableBuilder(
+    column: $table.previousMembershipId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get membershipId => $composableBuilder(
+    column: $table.membershipId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get previousPlanId => $composableBuilder(
+    column: $table.previousPlanId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get previousPlanName => $composableBuilder(
+    column: $table.previousPlanName,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get planId => $composableBuilder(
+    column: $table.planId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get planName => $composableBuilder(
+    column: $table.planName,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get previousFeeMinor => $composableBuilder(
+    column: $table.previousFeeMinor,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get feeMinor => $composableBuilder(
+    column: $table.feeMinor,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get effectiveFrom => $composableBuilder(
+    column: $table.effectiveFrom,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get recordedAt => $composableBuilder(
+    column: $table.recordedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get reason => $composableBuilder(
+    column: $table.reason,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get actorId => $composableBuilder(
+    column: $table.actorId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$MembersTableFilterComposer get memberId {
+    final $$MembersTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.memberId,
+      referencedTable: $db.members,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$MembersTableFilterComposer(
+            $db: $db,
+            $table: $db.members,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$MembershipChangesTableOrderingComposer
+    extends Composer<_$AppDatabase, $MembershipChangesTable> {
+  $$MembershipChangesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get previousMembershipId => $composableBuilder(
+    column: $table.previousMembershipId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get membershipId => $composableBuilder(
+    column: $table.membershipId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get previousPlanId => $composableBuilder(
+    column: $table.previousPlanId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get previousPlanName => $composableBuilder(
+    column: $table.previousPlanName,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get planId => $composableBuilder(
+    column: $table.planId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get planName => $composableBuilder(
+    column: $table.planName,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get previousFeeMinor => $composableBuilder(
+    column: $table.previousFeeMinor,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get feeMinor => $composableBuilder(
+    column: $table.feeMinor,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get effectiveFrom => $composableBuilder(
+    column: $table.effectiveFrom,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get recordedAt => $composableBuilder(
+    column: $table.recordedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get reason => $composableBuilder(
+    column: $table.reason,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get actorId => $composableBuilder(
+    column: $table.actorId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$MembersTableOrderingComposer get memberId {
+    final $$MembersTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.memberId,
+      referencedTable: $db.members,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$MembersTableOrderingComposer(
+            $db: $db,
+            $table: $db.members,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$MembershipChangesTableAnnotationComposer
+    extends Composer<_$AppDatabase, $MembershipChangesTable> {
+  $$MembershipChangesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<int> get previousMembershipId => $composableBuilder(
+    column: $table.previousMembershipId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get membershipId => $composableBuilder(
+    column: $table.membershipId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get previousPlanId => $composableBuilder(
+    column: $table.previousPlanId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get previousPlanName => $composableBuilder(
+    column: $table.previousPlanName,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get planId =>
+      $composableBuilder(column: $table.planId, builder: (column) => column);
+
+  GeneratedColumn<String> get planName =>
+      $composableBuilder(column: $table.planName, builder: (column) => column);
+
+  GeneratedColumn<int> get previousFeeMinor => $composableBuilder(
+    column: $table.previousFeeMinor,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get feeMinor =>
+      $composableBuilder(column: $table.feeMinor, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get effectiveFrom => $composableBuilder(
+    column: $table.effectiveFrom,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get recordedAt => $composableBuilder(
+    column: $table.recordedAt,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get reason =>
+      $composableBuilder(column: $table.reason, builder: (column) => column);
+
+  GeneratedColumn<int> get actorId =>
+      $composableBuilder(column: $table.actorId, builder: (column) => column);
+
+  $$MembersTableAnnotationComposer get memberId {
+    final $$MembersTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.memberId,
+      referencedTable: $db.members,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$MembersTableAnnotationComposer(
+            $db: $db,
+            $table: $db.members,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$MembershipChangesTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $MembershipChangesTable,
+          MembershipChange,
+          $$MembershipChangesTableFilterComposer,
+          $$MembershipChangesTableOrderingComposer,
+          $$MembershipChangesTableAnnotationComposer,
+          $$MembershipChangesTableCreateCompanionBuilder,
+          $$MembershipChangesTableUpdateCompanionBuilder,
+          (MembershipChange, $$MembershipChangesTableReferences),
+          MembershipChange,
+          PrefetchHooks Function({bool memberId})
+        > {
+  $$MembershipChangesTableTableManager(
+    _$AppDatabase db,
+    $MembershipChangesTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$MembershipChangesTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$MembershipChangesTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$MembershipChangesTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<int> memberId = const Value.absent(),
+                Value<int?> previousMembershipId = const Value.absent(),
+                Value<int?> membershipId = const Value.absent(),
+                Value<int?> previousPlanId = const Value.absent(),
+                Value<String?> previousPlanName = const Value.absent(),
+                Value<int?> planId = const Value.absent(),
+                Value<String?> planName = const Value.absent(),
+                Value<int?> previousFeeMinor = const Value.absent(),
+                Value<int?> feeMinor = const Value.absent(),
+                Value<DateTime> effectiveFrom = const Value.absent(),
+                Value<DateTime> recordedAt = const Value.absent(),
+                Value<String?> reason = const Value.absent(),
+                Value<int?> actorId = const Value.absent(),
+              }) => MembershipChangesCompanion(
+                id: id,
+                memberId: memberId,
+                previousMembershipId: previousMembershipId,
+                membershipId: membershipId,
+                previousPlanId: previousPlanId,
+                previousPlanName: previousPlanName,
+                planId: planId,
+                planName: planName,
+                previousFeeMinor: previousFeeMinor,
+                feeMinor: feeMinor,
+                effectiveFrom: effectiveFrom,
+                recordedAt: recordedAt,
+                reason: reason,
+                actorId: actorId,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required int memberId,
+                Value<int?> previousMembershipId = const Value.absent(),
+                Value<int?> membershipId = const Value.absent(),
+                Value<int?> previousPlanId = const Value.absent(),
+                Value<String?> previousPlanName = const Value.absent(),
+                Value<int?> planId = const Value.absent(),
+                Value<String?> planName = const Value.absent(),
+                Value<int?> previousFeeMinor = const Value.absent(),
+                Value<int?> feeMinor = const Value.absent(),
+                required DateTime effectiveFrom,
+                Value<DateTime> recordedAt = const Value.absent(),
+                Value<String?> reason = const Value.absent(),
+                Value<int?> actorId = const Value.absent(),
+              }) => MembershipChangesCompanion.insert(
+                id: id,
+                memberId: memberId,
+                previousMembershipId: previousMembershipId,
+                membershipId: membershipId,
+                previousPlanId: previousPlanId,
+                previousPlanName: previousPlanName,
+                planId: planId,
+                planName: planName,
+                previousFeeMinor: previousFeeMinor,
+                feeMinor: feeMinor,
+                effectiveFrom: effectiveFrom,
+                recordedAt: recordedAt,
+                reason: reason,
+                actorId: actorId,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$MembershipChangesTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({memberId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (memberId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.memberId,
+                                referencedTable:
+                                    $$MembershipChangesTableReferences
+                                        ._memberIdTable(db),
+                                referencedColumn:
+                                    $$MembershipChangesTableReferences
+                                        ._memberIdTable(db)
+                                        .id,
+                              )
+                              as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$MembershipChangesTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $MembershipChangesTable,
+      MembershipChange,
+      $$MembershipChangesTableFilterComposer,
+      $$MembershipChangesTableOrderingComposer,
+      $$MembershipChangesTableAnnotationComposer,
+      $$MembershipChangesTableCreateCompanionBuilder,
+      $$MembershipChangesTableUpdateCompanionBuilder,
+      (MembershipChange, $$MembershipChangesTableReferences),
+      MembershipChange,
+      PrefetchHooks Function({bool memberId})
     >;
 typedef $$PaymentsTableCreateCompanionBuilder =
     PaymentsCompanion Function({
@@ -17555,6 +20283,10 @@ class $AppDatabaseManager {
       $$MembershipsTableTableManager(_db, _db.memberships);
   $$MembershipPeriodsTableTableManager get membershipPeriods =>
       $$MembershipPeriodsTableTableManager(_db, _db.membershipPeriods);
+  $$CyclePricingsTableTableManager get cyclePricings =>
+      $$CyclePricingsTableTableManager(_db, _db.cyclePricings);
+  $$MembershipChangesTableTableManager get membershipChanges =>
+      $$MembershipChangesTableTableManager(_db, _db.membershipChanges);
   $$PaymentsTableTableManager get payments =>
       $$PaymentsTableTableManager(_db, _db.payments);
   $$PaymentAllocationsTableTableManager get paymentAllocations =>

@@ -2,6 +2,7 @@ import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../domain/app_version.dart';
+import '../services/update/connection_diagnostics.dart';
 import '../services/update/update_service.dart';
 
 sealed class UpdateEvent extends Equatable {
@@ -125,6 +126,12 @@ class UpdateBloc extends Bloc<UpdateEvent, UpdateState> {
   /// The feed being watched, so the diagnostics panel can name it instead of
   /// leaving the owner to guess which repository this copy follows.
   String get releasesEndpoint => _service.releasesEndpoint;
+
+  /// Runs the layered "Test Connection" diagnostic. A read-only side channel
+  /// from the bloc's own state machine — it never emits — because its result
+  /// belongs to whichever dialog asked for it, not to the update banner or
+  /// the Settings card's everyday status line.
+  Future<ConnectionTestReport> testConnection() => _service.testConnection();
 
   Future<void> _onCheck(
     UpdateCheckRequested event,

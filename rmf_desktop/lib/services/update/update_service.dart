@@ -14,7 +14,9 @@ import '../../data/database.dart';
 import '../../data/settings_repository.dart';
 import '../../domain/app_version.dart';
 import '../backup_service.dart';
+import 'connection_diagnostics.dart';
 import 'update_cache.dart';
+import 'windows_update_client.dart';
 
 final _log = Logger('update');
 
@@ -54,6 +56,15 @@ const _retryInterval = Duration(minutes: 30);
 
 /// Why a check could not answer the question. The message is for the owner;
 /// this is for the code and the log.
+///
+/// Everything from [dnsFailure] through [unknownNetworkError] used to be one
+/// kind — [offline] — because the request either answered or it did not.
+/// That is what left the owner reading "No internet connection" on a machine
+/// whose browser worked perfectly: a stale certificate, an antivirus
+/// intercepting TLS, and a genuinely dead connection all throw before
+/// `package:http` ever gets a status code to report, and collapsing them into
+/// one message sent the owner to reset a router that was never the problem.
+/// See [classifyNetworkError].
 enum UpdateFailureKind {
   /// Not Windows: there is no installer this app could apply.
   unsupported,
@@ -62,8 +73,39 @@ enum UpdateFailureKind {
   /// a release against.
   unknownCurrentVersion,
 
-  /// The request never got an answer — no connection, DNS, or a timeout.
+  /// This computer could not resolve github.com to an address. Distinct from
+  /// [offline]: a router with no DNS configured, or a network that blocks the
+  /// domain by name, still has a working connection to everywhere else.
+  dnsFailure,
+
+  /// A connection to GitHub was attempted and it did not answer within the
+  /// time this app allows it.
+  connectionTimeout,
+
+  /// Something between this computer and GitHub actively refused the
+  /// connection — a firewall or a proxy answering on the port and saying no,
+  /// rather than the request going unanswered.
+  connectionRefused,
+
+  /// A connection reached GitHub but a secure channel could not be built on
+  /// top of it. The common causes are outside this app entirely: a stale
+  /// Windows root certificate store, or antivirus software intercepting TLS.
+  /// Never treated as a reason to skip verification — see
+  /// [UpdateService.install].
+  tlsFailure,
+
+  /// This network appears to route through a proxy, and the connection
+  /// through it failed. Raised only by a platform client that actually
+  /// resolved a proxy and tried it — see `WindowsUpdateClient`.
+  proxyFailure,
+
+  /// The strongest evidence available: the operating system reports no route
+  /// to anywhere, which is what "no internet connection" is allowed to mean.
   offline,
+
+  /// A network failure this app can see happened but cannot name more
+  /// precisely than that.
+  unknownNetworkError,
 
   /// GitHub's unauthenticated hourly limit is used up.
   rateLimited,
@@ -81,6 +123,101 @@ enum UpdateFailureKind {
   /// that is not a version, or missing its installer or checksum.
   unusableRelease,
 }
+
+/// Raised by a platform networking client — currently only the Windows one —
+/// when it resolved a system proxy and the connection made through it is what
+/// failed, as opposed to a failure reaching GitHub directly. Wrapping the
+/// original error rather than discarding it keeps the real cause in the log.
+class ProxyConnectionException implements Exception {
+  const ProxyConnectionException(this.message, {this.cause});
+  final String message;
+  final Object? cause;
+
+  @override
+  String toString() => 'ProxyConnectionException: $message'
+      '${cause == null ? '' : ' (caused by $cause)'}';
+}
+
+/// Turns whatever `package:http` threw into a [UpdateFailureKind], so the
+/// owner reads a specific cause instead of "offline" for everything that is
+/// not an HTTP status code.
+///
+/// Reading `SocketException.message` and `.osError` for a substring is
+/// inherently platform-dependent — the OS, not this app, writes those
+/// strings — so this errs toward [UpdateFailureKind.unknownNetworkError] over
+/// guessing. A wrong guess would put a misleading, over-specific message in
+/// front of a non-technical owner; "could not check for updates" is honest
+/// where "your DNS is broken" would not be.
+UpdateFailureKind classifyNetworkError(Object error) {
+  if (error is ProxyConnectionException) {
+    return UpdateFailureKind.proxyFailure;
+  }
+  if (error is TimeoutException) {
+    return UpdateFailureKind.connectionTimeout;
+  }
+  if (error is HandshakeException || error is CertificateException) {
+    return UpdateFailureKind.tlsFailure;
+  }
+  if (error is SocketException) {
+    return _classifySocketException(error);
+  }
+  return UpdateFailureKind.unknownNetworkError;
+}
+
+UpdateFailureKind _classifySocketException(SocketException error) {
+  final text =
+      '${error.message} ${error.osError?.message ?? ''}'.toLowerCase();
+  bool has(List<String> needles) => needles.any(text.contains);
+
+  // DNS resolution failing is the one Dart names almost identically on every
+  // platform, which is what makes it safe to match on text at all.
+  if (has(const [
+    'failed host lookup',
+    'nodename nor servname',
+    'no address associated with hostname',
+    'temporary failure in name resolution',
+    'name or service not known',
+  ])) {
+    return UpdateFailureKind.dnsFailure;
+  }
+  if (has(const ['connection refused', 'actively refused'])) {
+    return UpdateFailureKind.connectionRefused;
+  }
+  if (has(const ['timed out', 'timeout'])) {
+    return UpdateFailureKind.connectionTimeout;
+  }
+  // The one pattern strong enough to call genuinely offline: the operating
+  // system itself has nowhere to send the packet.
+  if (has(const [
+    'no route to host',
+    'network is unreachable',
+    'no route',
+    'network unreachable',
+  ])) {
+    return UpdateFailureKind.offline;
+  }
+  return UpdateFailureKind.unknownNetworkError;
+}
+
+/// The line written to [UpdateCheckFailed.reason] for a network failure.
+/// Technical enough for the log and the Settings diagnostics panel; the
+/// friendlier copy a non-technical owner reads lives in `update_card.dart`
+/// and `connection_status.dart`, keyed off [kind] rather than this string.
+String _networkFailureReason(UpdateFailureKind kind) => switch (kind) {
+      UpdateFailureKind.dnsFailure =>
+        'Could not reach GitHub: this computer could not resolve '
+            'github.com to an address.',
+      UpdateFailureKind.connectionTimeout =>
+        'Could not reach GitHub: the connection timed out.',
+      UpdateFailureKind.connectionRefused =>
+        'Could not reach GitHub: the connection was refused.',
+      UpdateFailureKind.tlsFailure =>
+        'Could not reach GitHub: a secure connection could not be '
+            'established.',
+      UpdateFailureKind.proxyFailure =>
+        'Could not reach GitHub through this network\'s proxy.',
+      _ => 'Could not reach GitHub to check for updates.',
+    };
 
 sealed class UpdateCheckResult {
   const UpdateCheckResult();
@@ -176,7 +313,10 @@ class UpdateService {
         startProcess,
     bool? windows,
   })  : _windows = windows ?? Platform.isWindows,
-        _http = httpClient ?? http.Client(),
+        // Windows routes through whatever proxy WinHTTP resolves for the
+        // machine; every other platform is untouched. See
+        // `windows_update_client.dart`.
+        _http = httpClient ?? createUpdateHttpClient(),
         _settings = settings ?? SettingsRepository(db),
         _backups = backups ?? BackupService(db),
         _supportDirectory = supportDirectory ?? getApplicationSupportDirectory,
@@ -273,6 +413,19 @@ class UpdateService {
   /// than leaving the owner guessing which repository this copy watches.
   String get releasesEndpoint => _releasesEndpoint;
 
+  /// Runs the layered "Test Connection" diagnostic against the same host and
+  /// the same HTTP client [check] uses — Windows proxy routing included — so
+  /// a pass here is a genuine promise that [check] would also succeed.
+  ///
+  /// Unlike [check], this makes a real TCP connection and TLS handshake of
+  /// its own to tell those two layers apart, which is worth the extra moment
+  /// only because a human pressed a button and is waiting for the answer. See
+  /// `connection_diagnostics.dart`.
+  Future<ConnectionTestReport> testConnection() => ConnectionDiagnostics(
+        httpClient: _http,
+        endpoint: Uri.parse(_releasesEndpoint),
+      ).run();
+
   /// The version the owner chose to skip, if any.
   Future<AppVersion?> dismissedVersion() async =>
       AppVersion.tryParse((await _settings.get()).dismissedUpdateVersion);
@@ -336,13 +489,12 @@ class UpdateService {
         },
       ).timeout(_requestTimeout);
     } catch (error, stack) {
-      // An offline till is not a broken till.
-      _log.info('Update check could not be completed: $error');
+      // An offline till is not a broken till — and, as often as not, it is
+      // not even offline. See [classifyNetworkError].
+      final kind = classifyNetworkError(error);
+      _log.info('Update check could not be completed ($kind): $error');
       _log.finer('Update check stack', error, stack);
-      return const UpdateCheckFailed(
-        'Could not reach GitHub to check for updates.',
-        kind: UpdateFailureKind.offline,
-      );
+      return UpdateCheckFailed(_networkFailureReason(kind), kind: kind);
     }
 
     // Nothing has been released since the copy already on disk.

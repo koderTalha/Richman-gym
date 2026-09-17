@@ -1,5 +1,6 @@
 import 'package:drift/drift.dart';
 
+import 'cycle_pricing_log.dart';
 import 'database.dart';
 import 'membership_queries.dart';
 
@@ -41,10 +42,24 @@ import 'membership_queries.dart';
 ///
 /// Returns how many cycles changed, which is zero for the overwhelmingly
 /// common case of a fee that has not moved.
+///
+/// [effectiveFrom] limits the change to cycles *starting* on or after that
+/// day, which is what the owner is choosing on the member form when they say a
+/// new plan applies "from today" rather than from the start of the month. A
+/// cycle is billed on its start, so one that began before the new fee was
+/// meant to apply keeps the figure it was billed at. Null — the default, and
+/// what the startup sweep passes — means every cycle the guards below allow,
+/// which is the behaviour this function has always had.
+///
+/// A back-dated [effectiveFrom] does **not** widen what may be touched. Guard
+/// (c) still refuses a cycle that has ended, whatever date is passed here, so
+/// this can never become a way to rewrite history quietly — see
+/// `services/historical_pricing_review.dart` for the reviewed path that can.
 Future<int> repriceOpenCycles(
   AppDatabase db, {
   required int memberId,
   DateTime? now,
+  DateTime? effectiveFrom,
 }) async {
   final member = await (db.select(db.members)
         ..where((m) => m.id.equals(memberId)))
@@ -69,11 +84,17 @@ Future<int> repriceOpenCycles(
   // reads as the last day of the month before.
   final today = DateTime.utc(at.year, at.month, at.day);
 
+  final from = effectiveFrom == null
+      ? null
+      : DateTime.utc(effectiveFrom.toUtc().year, effectiveFrom.toUtc().month,
+          effectiveFrom.toUtc().day);
+
   final candidates = [
     for (final period in await periodsForMember(db, memberId))
       if (period.settledAt == null &&
           period.expectedAmountMinor != feeMinor &&
-          period.periodEnd.toUtc().isAfter(today))
+          period.periodEnd.toUtc().isAfter(today) &&
+          (from == null || !period.periodStart.toUtc().isBefore(from)))
         period,
   ];
   if (candidates.isEmpty) return 0;
@@ -112,6 +133,25 @@ Future<int> repriceOpenCycles(
           settledAt: Value(
               (collected[period.id] ?? 0) >= feeMinor ? at : null),
         ));
+
+    // What moved the figure, recorded beside the figure. A cycle that has been
+    // re-priced twice is otherwise indistinguishable from one opened at the
+    // final number, and telling those apart is exactly what nobody could do
+    // when forty-three members were found stranded.
+    await recordCyclePricing(
+      db,
+      membershipPeriodId: period.id,
+      amountMinor: feeMinor,
+      previousAmountMinor: period.expectedAmountMinor,
+      source: sourceFor(membership),
+      planId: membership.planId,
+      planPriceMinor: plan.priceMinor,
+      feeOverrideMinor: membership.feeOverrideMinor,
+      reason: feeMinor < period.expectedAmountMinor
+          ? 'Re-priced down to the fee the member is on now.'
+          : 'Re-priced to the fee the member is on now.',
+      at: at,
+    );
     repriced++;
   }
 

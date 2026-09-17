@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:async';
 import 'dart:io';
 
 import 'package:drift/native.dart';
@@ -181,7 +182,78 @@ void main() {
       await bloc.stream.firstWhere((s) => !s.busy);
 
       expect(bloc.state.status, UpdateStatus.failed);
+      // Not `offline`: a bare `SocketException('down')` carries none of the
+      // evidence — "no route to host", "connection refused" and so on — that
+      // would justify telling the owner this machine has no internet. See
+      // `classifyNetworkError`.
+      expect(bloc.state.failureKind, UpdateFailureKind.unknownNetworkError);
+      expect(bloc.state.error, isNotNull);
+    });
+
+    test('a machine with no route anywhere is told plainly', () async {
+      final bloc = UpdateBloc(serviceWith(
+        client: MockClient(
+            (_) async => throw const SocketException('no route to host')),
+      ));
+      addTearDown(bloc.close);
+
+      bloc.add(const UpdateCheckRequested(force: true));
+      await bloc.stream.firstWhere((s) => !s.busy);
+
+      expect(bloc.state.status, UpdateStatus.failed);
       expect(bloc.state.failureKind, UpdateFailureKind.offline);
+    });
+
+    test('a DNS failure is named, not called offline', () async {
+      final bloc = UpdateBloc(serviceWith(
+        client: MockClient((_) async => throw const SocketException(
+            "Failed host lookup: 'api.github.com'")),
+      ));
+      addTearDown(bloc.close);
+
+      bloc.add(const UpdateCheckRequested(force: true));
+      await bloc.stream.firstWhere((s) => !s.busy);
+
+      expect(bloc.state.failureKind, UpdateFailureKind.dnsFailure);
+    });
+
+    test('a TLS handshake failure is named, not called offline', () async {
+      final bloc = UpdateBloc(serviceWith(
+        client: MockClient((_) async =>
+            throw const HandshakeException('certificate verify failed')),
+      ));
+      addTearDown(bloc.close);
+
+      bloc.add(const UpdateCheckRequested(force: true));
+      await bloc.stream.firstWhere((s) => !s.busy);
+
+      expect(bloc.state.failureKind, UpdateFailureKind.tlsFailure);
+    });
+
+    test('a connection timeout is named, not called offline', () async {
+      final bloc = UpdateBloc(serviceWith(
+        client: MockClient((_) async =>
+            throw TimeoutException('The request took too long')),
+      ));
+      addTearDown(bloc.close);
+
+      bloc.add(const UpdateCheckRequested(force: true));
+      await bloc.stream.firstWhere((s) => !s.busy);
+
+      expect(bloc.state.failureKind, UpdateFailureKind.connectionTimeout);
+    });
+
+    test('a refused connection is named, not called offline', () async {
+      final bloc = UpdateBloc(serviceWith(
+        client: MockClient((_) async =>
+            throw const SocketException('Connection refused')),
+      ));
+      addTearDown(bloc.close);
+
+      bloc.add(const UpdateCheckRequested(force: true));
+      await bloc.stream.firstWhere((s) => !s.busy);
+
+      expect(bloc.state.failureKind, UpdateFailureKind.connectionRefused);
     });
 
     test('a release with no checksum says so rather than "up to date"',

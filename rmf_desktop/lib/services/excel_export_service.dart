@@ -71,6 +71,7 @@ class ExcelExportService {
     _writeLedgerSheets(
       excel,
       members: members,
+      plans: plans,
       memberships: memberships,
       periods: periods,
       payments: payments,
@@ -225,6 +226,7 @@ class ExcelExportService {
   void _writeLedgerSheets(
     Excel excel, {
     required List<Member> members,
+    required Map<int, MembershipPlan> plans,
     required List<Membership> memberships,
     required List<MembershipPeriod> periods,
     required List<Payment> payments,
@@ -240,6 +242,7 @@ class ExcelExportService {
     };
 
     final periodsByMember = _periodsByMember(memberships, periods);
+    final openByMember = _openMembershipByMember(memberships);
     final sortedMembers = _sorted(members);
 
     for (final year in years) {
@@ -250,6 +253,10 @@ class ExcelExportService {
         TextCellValue('Contact Detail'),
         ..._monthLabels.map(TextCellValue.new),
         TextCellValue('Total'),
+        // Named, not numbered: the importer resolves this back to the plan of
+        // that name, so a ledger exported here can be read in again without the
+        // whole roster landing on whichever plan the wizard happened to offer.
+        TextCellValue('Plan'),
       ]);
 
       for (final member in sortedMembers) {
@@ -270,12 +277,17 @@ class ExcelExportService {
           totalMinor += payment.amountMinor;
         }
 
+        final membership = openByMember[member.id];
+        final planName =
+            membership == null ? null : plans[membership.planId]?.name;
+
         sheet.appendRow([
           IntCellValue(member.memberCode),
           TextCellValue(member.fullName),
           TextCellValue(member.phone.isEmpty ? '-' : member.phone),
           ...cells,
           TextCellValue(totalMinor == 0 ? '-' : _amount(totalMinor)),
+          TextCellValue(planName ?? '-'),
         ]);
       }
     }

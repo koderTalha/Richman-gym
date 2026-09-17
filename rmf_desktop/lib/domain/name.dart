@@ -2,6 +2,7 @@
 /// member and once per row inside the importer's loops.
 final _dropped = RegExp(r"""[.,'’`"()\[\]]""");
 final _separators = RegExp(r'[\s\-–—_/\\]+');
+final _whitespace = RegExp(r'\s+');
 
 /// Collapses a member's name to a comparable form: lower case, without the
 /// punctuation hand-typed sheets sprinkle around, and with runs of whitespace
@@ -27,6 +28,19 @@ String normalizeName(String value) => value
 /// the ledger importer both go through here, so the two can never drift into
 /// disagreeing about who is already on file.
 bool namesMatch(String a, String b) => normalizeName(a) == normalizeName(b);
+
+/// Collapses a membership plan's name to a comparable form: lower case, with
+/// surrounding and repeated whitespace reduced to single spaces.
+///
+/// Deliberately gentler than [normalizeName]. A plan name is not a person's
+/// name — it is a label the owner typed once on the Settings screen and types
+/// again in a spreadsheet, so "PLATINUM" and "platinum" are one plan and
+/// "Student  Package" is a slip of the space bar. Nothing else is folded:
+/// hyphens and digits carry meaning here. "GOLD-PT" is not "Gold" and
+/// "6 Months" is not "Months", and matching a plan the sheet did not name would
+/// put a member on the wrong fee for as long as nobody noticed.
+String normalizePlanName(String value) =>
+    value.trim().toLowerCase().replaceAll(_whitespace, ' ');
 
 /// Escapes the wildcards SQLite's LIKE treats specially, so searching for "50%"
 /// finds the member whose name contains it rather than matching everybody.

@@ -56,6 +56,20 @@ class _MemberFormViewState extends State<_MemberFormView> {
   DateTime _joiningDate = DateTime.now();
   bool _prefilled = false;
 
+  /// When the fee this save is about to change takes effect. Null means
+  /// today, which is what every edit meant before this existed and is still
+  /// what the overwhelming majority of edits mean now.
+  ///
+  /// The one reason to set it: telling the app a fee change was agreed on an
+  /// earlier date than the one it is being entered on — an owner catching up
+  /// on paperwork days later, not backdating on a whim. A date in the past
+  /// here does not rewrite anything by itself; see
+  /// `MemberRepository.update` and `historical_pricing_review.dart`. It only
+  /// changes which not-yet-issued cycles a downward re-price can reach, and
+  /// gives the historical review screen something to reason from if a cycle
+  /// it reaches back over turns out to need a human's attention.
+  DateTime? _effectiveFrom;
+
   @override
   void dispose() {
     for (final c in [_name, _phone, _email, _address, _emergency, _fee]) {
@@ -108,16 +122,34 @@ class _MemberFormViewState extends State<_MemberFormView> {
       builder: (context, value, _) {
         final typed = value.text.trim();
         final parsed = typed.isEmpty ? null : double.tryParse(typed);
+        final effectiveFee =
+            (parsed == null || parsed <= 0) ? plan.priceMinor : toMinorUnits(parsed);
+        final billedNow = state.existing?.feeMinor;
+        final isChanging = widget.isEditing &&
+            billedNow != null &&
+            billedNow != effectiveFee;
 
         return Padding(
           padding: const EdgeInsets.only(bottom: 14),
-          child: PricingSummary(
-            planPriceMinor: plan.priceMinor,
-            customFeeMinor:
-                (parsed == null || parsed <= 0) ? null : toMinorUnits(parsed),
-            // What they are billed today, so the warning can name both
-            // numbers. Null for a new member, who has no bill to move.
-            billedNowMinor: state.existing?.feeMinor,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              PricingSummary(
+                planPriceMinor: plan.priceMinor,
+                customFeeMinor:
+                    (parsed == null || parsed <= 0) ? null : toMinorUnits(parsed),
+                // What they are billed today, so the warning can name both
+                // numbers. Null for a new member, who has no bill to move.
+                billedNowMinor: billedNow,
+              ),
+              if (isChanging) ...[
+                const SizedBox(height: 10),
+                _EffectiveFromPicker(
+                  value: _effectiveFrom,
+                  onChanged: (v) => setState(() => _effectiveFrom = v),
+                ),
+              ],
+            ],
           ),
         );
       },
@@ -153,6 +185,7 @@ class _MemberFormViewState extends State<_MemberFormView> {
                 feeText.isEmpty ? null : toMinorUnits(double.parse(feeText)),
             confirmSharedPhone: confirmSharedPhone,
             actorId: context.read<AuthBloc>().state.user?.id,
+            effectiveFrom: _effectiveFrom,
           ),
         );
   }
@@ -430,6 +463,61 @@ class _MemberFormViewState extends State<_MemberFormView> {
                 ),
         );
       },
+    );
+  }
+}
+
+/// When a fee change this save is about to make takes effect.
+///
+/// Shown only once [PricingSummary] already warns that saving moves the
+/// bill — there is nothing to date otherwise. "Today" needs no explanation
+/// and is the default; "Custom date" exists for the one case that does:
+/// entering, after the fact, that a change was agreed earlier than today. See
+/// `_MemberFormViewState._effectiveFrom`.
+class _EffectiveFromPicker extends StatelessWidget {
+  const _EffectiveFromPicker({required this.value, required this.onChanged});
+
+  /// Null means today.
+  final DateTime? value;
+  final ValueChanged<DateTime?> onChanged;
+
+  Future<void> _pickCustomDate(BuildContext context) async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: value ?? DateTime.now(),
+      firstDate: DateTime(2015),
+      lastDate: DateTime.now(),
+      helpText: 'Effective from',
+    );
+    if (picked != null) onChanged(picked);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.palette;
+    final isCustom = value != null;
+
+    return Row(
+      children: [
+        Text('Effective from:',
+            style: TextStyle(fontSize: 12.5, color: palette.textMuted)),
+        const SizedBox(width: 10),
+        ChoiceChip(
+          label: const Text('Today'),
+          selected: !isCustom,
+          onSelected: (_) => onChanged(null),
+        ),
+        const SizedBox(width: 8),
+        ChoiceChip(
+          label: Text(isCustom
+              ? '${value!.day.toString().padLeft(2, '0')}/'
+                  '${value!.month.toString().padLeft(2, '0')}/'
+                  '${value!.year}'
+              : 'Custom date'),
+          selected: isCustom,
+          onSelected: (_) => _pickCustomDate(context),
+        ),
+      ],
     );
   }
 }

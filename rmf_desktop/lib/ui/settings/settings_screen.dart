@@ -7,8 +7,11 @@ import '../../data/database.dart';
 import '../../data/settings_repository.dart';
 import '../../domain/money.dart';
 import '../../domain/reminder_schedule.dart';
+import '../../services/historical_pricing_review.dart';
 import '../../theme/app_theme.dart';
 import 'backup_card.dart';
+import 'delete_members_card.dart';
+import 'historical_review_screen.dart';
 import 'plan_price_change_dialog.dart';
 import 'update_card.dart';
 
@@ -61,12 +64,25 @@ class _SettingsView extends StatelessWidget {
                 const SizedBox(height: 16),
                 _PlansCard(plans: state.plans),
                 const SizedBox(height: 16),
+                _HistoricalReviewCard(
+                  card: ({required title, subtitle, required child}) =>
+                      _Card(title: title, subtitle: subtitle, child: child),
+                ),
+                const SizedBox(height: 16),
                 BackupCard(
                   card: ({required title, subtitle, required child}) =>
                       _Card(title: title, subtitle: subtitle, child: child),
                 ),
                 const SizedBox(height: 16),
                 UpdateCard(
+                  card: ({required title, subtitle, required child}) =>
+                      _Card(title: title, subtitle: subtitle, child: child),
+                ),
+                const SizedBox(height: 16),
+                // Last on the page on purpose: nothing below it to scroll to,
+                // so it is never the thing under the cursor on the way to
+                // somewhere else.
+                DeleteMembersCard(
                   card: ({required title, subtitle, required child}) =>
                       _Card(title: title, subtitle: subtitle, child: child),
                 ),
@@ -623,6 +639,69 @@ class _AccountCardState extends State<_AccountCard> {
                 ),
               ],
             ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// The entry point to `HistoricalReviewScreen`: how many months are waiting
+/// for a decision, without the owner having to open the screen to find out.
+///
+/// Reads its count fresh every time this card builds, the same way
+/// `billing_reconciliation.dart`'s startup report does — cheap enough for a
+/// once-per-visit read, and correct even the moment after a correction is
+/// made elsewhere and this settings screen happens to rebuild.
+class _HistoricalReviewCard extends StatelessWidget {
+  const _HistoricalReviewCard({required this.card});
+
+  final Widget Function({
+    required String title,
+    String? subtitle,
+    required Widget child,
+  }) card;
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<List<HistoricalPricingCandidate>>(
+      future: detectHistoricalPricingAnomalies(context.read<AppDatabase>()),
+      builder: (context, snapshot) {
+        final candidates = snapshot.data;
+        final count = candidates?.length ?? 0;
+
+        return card(
+          title: 'Historical billing review',
+          subtitle: 'Months that ended still billing a price the member had, '
+              'by then, been moved off. Nothing here is ever changed '
+              'automatically.',
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  !snapshot.hasData
+                      ? 'Checking…'
+                      : count == 0
+                          ? 'Nothing needs review right now.'
+                          : '$count ${count == 1 ? 'month needs' : 'months need'} '
+                              'a decision.',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: count > 0
+                        ? context.palette.due
+                        : context.palette.textSecondary,
+                  ),
+                ),
+              ),
+              OutlinedButton(
+                onPressed: snapshot.hasData
+                    ? () => Navigator.of(context).push(MaterialPageRoute(
+                          builder: (_) => const HistoricalReviewScreen(),
+                        ))
+                    : null,
+                child: const Text('Open Review'),
+              ),
+            ],
           ),
         );
       },

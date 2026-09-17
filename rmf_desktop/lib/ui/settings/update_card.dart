@@ -7,6 +7,7 @@ import '../../bloc/update_bloc.dart';
 import '../../domain/dates.dart';
 import '../../services/update/update_service.dart';
 import '../../theme/app_theme.dart';
+import 'connection_test_dialog.dart';
 
 /// Where the owner can see which version they are on and reach for an update
 /// deliberately, rather than waiting for the banner to appear.
@@ -128,6 +129,19 @@ class UpdateCard extends StatelessWidget {
                 ),
               ],
               const SizedBox(height: 14),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  onPressed: () => showDialog<void>(
+                    context: context,
+                    builder: (_) =>
+                        ConnectionTestDialog(run: bloc.testConnection),
+                  ),
+                  icon: const Icon(Icons.network_check, size: 18),
+                  label: const Text('Having trouble? Test Connection'),
+                ),
+              ),
+              const SizedBox(height: 4),
               _Diagnostics(state: state, endpoint: bloc.releasesEndpoint),
               if (update?.notes != null && update!.notes!.isNotEmpty) ...[
                 const SizedBox(height: 14),
@@ -183,9 +197,27 @@ class UpdateCard extends StatelessWidget {
   /// saying so plainly stops a working till being treated as a broken one.
   static String? _hintFor(UpdateFailureKind? kind) => switch (kind) {
         UpdateFailureKind.offline =>
-          'The app could not reach github.com. Check this computer\'s internet '
-              'connection, or any firewall that might be blocking it. Nothing '
-              'else about the app is affected.',
+          'This computer has no route to the internet right now. Check its '
+              'network connection. Nothing else about the app is affected.',
+        UpdateFailureKind.dnsFailure =>
+          'We couldn\'t find the update service. Your internet appears to be '
+              'working, but this computer could not locate GitHub.',
+        UpdateFailureKind.connectionTimeout =>
+          'GitHub did not answer in time. This is usually a slow or '
+              'overloaded connection — try again in a moment.',
+        UpdateFailureKind.connectionRefused =>
+          'The connection to GitHub was refused, usually by a firewall or '
+              'security software on this network.',
+        UpdateFailureKind.tlsFailure =>
+          'We reached the update service, but this computer could not '
+              'establish a secure connection. This can be caused by antivirus '
+              'software, Windows certificates, or network security settings.',
+        UpdateFailureKind.proxyFailure =>
+          'This computer appears to use a network proxy, but the app could '
+              'not connect through it.',
+        UpdateFailureKind.unknownNetworkError =>
+          'We couldn\'t check for updates right now. The gym application will '
+              'continue working normally — try again later.',
         UpdateFailureKind.rateLimited =>
           'This is GitHub limiting how often it answers, not a fault here. It '
               'clears by itself — try again later.',
@@ -205,8 +237,8 @@ class UpdateCard extends StatelessWidget {
           'Updates can only be installed on Windows.',
         UpdateFailureKind.serverError ||
         UpdateFailureKind.malformedResponse =>
-          'GitHub answered, but not with something the app could use. This is '
-              'usually temporary.',
+          'The update service is temporarily unavailable. Your internet '
+              'connection appears to be working — please try again later.',
         null => null,
       };
 }
@@ -268,7 +300,14 @@ class _Diagnostics extends StatelessWidget {
   static String _kindLabel(UpdateFailureKind kind) => switch (kind) {
         UpdateFailureKind.unsupported => 'Not supported on this platform',
         UpdateFailureKind.unknownCurrentVersion => 'Installed version unreadable',
-        UpdateFailureKind.offline => 'Could not reach GitHub',
+        UpdateFailureKind.dnsFailure => 'Could not resolve github.com',
+        UpdateFailureKind.connectionTimeout => 'Connection to GitHub timed out',
+        UpdateFailureKind.connectionRefused => 'Connection to GitHub refused',
+        UpdateFailureKind.tlsFailure => 'Secure connection to GitHub failed',
+        UpdateFailureKind.proxyFailure => 'Could not connect through this '
+            'network\'s proxy',
+        UpdateFailureKind.offline => 'No route to the internet',
+        UpdateFailureKind.unknownNetworkError => 'Network error reaching GitHub',
         UpdateFailureKind.rateLimited => 'Rate limited by GitHub',
         UpdateFailureKind.noReleases => 'No published release',
         UpdateFailureKind.serverError => 'GitHub returned an error',

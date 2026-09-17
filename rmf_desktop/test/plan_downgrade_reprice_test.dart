@@ -1,6 +1,7 @@
 import 'package:drift/drift.dart' hide isNull, isNotNull;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:rich_man_fitness/data/cycle_pricing_log.dart';
 import 'package:rich_man_fitness/data/cycle_repricing.dart';
 import 'package:rich_man_fitness/data/database.dart';
 import 'package:rich_man_fitness/data/member_repository.dart';
@@ -251,5 +252,125 @@ void main() {
     expect(repriced, 1);
     expect((await members.byId(memberId, now: DateTime.utc(2026, 9, 15)))!.status,
         MemberStatus.paid);
+  });
+
+  group('edge cases the sweep must get right', () {
+    test('an overpaid cycle stays settled and never goes negative', () async {
+      final memberId = await memberOnBasic();
+      await openCycle(memberId,
+          start: DateTime.utc(2026, 9, 1),
+          end: DateTime.utc(2026, 10, 1),
+          billedMinor: basicFee,
+          paidMinor: 300000); // Rs. 3,000 against a Rs. 4,000 bill — overpaid
+                              // relative to the Rs. 2,500 it is about to become.
+
+      await moveToStudent(memberId, DateTime.utc(2026, 9, 3));
+
+      final september = await cycleAt(memberId, DateTime.utc(2026, 9, 1));
+      expect(september.expectedAmountMinor, studentFee);
+      expect(september.settledAt, isNotNull);
+      // Settled means no cycle is left owing at all, so the member's
+      // outstanding figure reads as "nothing owed" rather than a negative
+      // credit — there is no such thing as owing less than zero.
+      expect((await members.byId(memberId, now: DateTime.utc(2026, 9, 15)))!
+          .outstandingMinor, isNull,
+          reason: 'an overpaid, now-settled cycle leaves nothing owing, never '
+              'a negative balance');
+      expect((await members.byId(memberId, now: DateTime.utc(2026, 9, 15)))!
+          .status, MemberStatus.paid);
+    });
+
+    test('sums every allocation against the cycle, not just the latest '
+        'payment', () async {
+      final memberId = await memberOnBasic();
+      final periodId = await openCycle(memberId,
+          start: DateTime.utc(2026, 9, 1),
+          end: DateTime.utc(2026, 10, 1),
+          billedMinor: basicFee,
+          paidMinor: 100000); // First instalment: Rs. 1,000.
+
+      // A second instalment, as its own payment and allocation — the shape a
+      // member paying in two visits actually leaves.
+      final secondPaymentId = await db.into(db.payments).insert(
+            PaymentsCompanion.insert(
+              memberId: memberId,
+              membershipPeriodId: Value(periodId),
+              amountMinor: 100000,
+              method: PaymentMethod.cash,
+              paymentDate: DateTime.utc(2026, 9, 10),
+              recordedById: (await db.select(db.users).getSingle()).id,
+              idempotencyKey: 'second-instalment-$periodId',
+            ),
+          );
+      await db.into(db.paymentAllocations).insert(
+            PaymentAllocationsCompanion.insert(
+              paymentId: secondPaymentId,
+              membershipPeriodId: periodId,
+              amountMinor: 100000,
+            ),
+          );
+
+      await moveToStudent(memberId, DateTime.utc(2026, 9, 15));
+
+      final september = await cycleAt(memberId, DateTime.utc(2026, 9, 1));
+      expect(september.expectedAmountMinor, studentFee,
+          reason: 'the cut must reach the cycle regardless of how many '
+              'allocations it holds');
+      expect(september.settledAt, isNull,
+          reason: 'Rs. 2,000 collected across two allocations is still short '
+              'of the Rs. 2,500 it now expects');
+      expect((await members.byId(memberId, now: DateTime.utc(2026, 9, 20)))!
+          .outstandingMinor, 50000,
+          reason: 'Rs. 2,500 less the Rs. 2,000 actually collected, summed '
+              'across both allocations');
+    });
+
+    test('running the sweep twice changes nothing the first run did not',
+        () async {
+      final memberId = await memberOnBasic();
+      await openCycle(memberId,
+          start: DateTime.utc(2026, 9, 1),
+          end: DateTime.utc(2026, 10, 1),
+          billedMinor: basicFee,
+          paidMinor: studentFee);
+      await (db.update(db.memberships)
+            ..where((m) => m.memberId.equals(memberId)))
+          .write(MembershipsCompanion(planId: Value(studentId)));
+
+      final first = await repriceAllOpenCycles(db, now: DateTime.utc(2026, 9, 15));
+      expect(first, 1);
+
+      final before = await cycleAt(memberId, DateTime.utc(2026, 9, 1));
+
+      final second =
+          await repriceAllOpenCycles(db, now: DateTime.utc(2026, 9, 16));
+      expect(second, 0,
+          reason: 'the fee has not moved since the first run; there is '
+              'nothing left to re-price');
+
+      final after = await cycleAt(memberId, DateTime.utc(2026, 9, 1));
+      expect(after.expectedAmountMinor, before.expectedAmountMinor);
+      expect(after.settledAt, before.settledAt,
+          reason: 'a second run must not so much as re-stamp settlement');
+    });
+
+    test('re-pricing the same cycle twice at the same fee writes one '
+        'provenance row, not two', () async {
+      final memberId = await memberOnBasic();
+      final periodId = await openCycle(memberId,
+          start: DateTime.utc(2026, 9, 1),
+          end: DateTime.utc(2026, 10, 1),
+          billedMinor: basicFee,
+          paidMinor: studentFee);
+
+      await moveToStudent(memberId, DateTime.utc(2026, 9, 3));
+      final afterFirst = await pricingHistoryFor(db, periodId);
+
+      await repriceOpenCycles(db, memberId: memberId, now: DateTime.utc(2026, 9, 20));
+      final afterSecond = await pricingHistoryFor(db, periodId);
+
+      expect(afterSecond.length, afterFirst.length,
+          reason: 'a call that changed nothing must record nothing');
+    });
   });
 }

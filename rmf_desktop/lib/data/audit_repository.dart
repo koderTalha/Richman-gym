@@ -17,6 +17,13 @@ abstract final class AuditAction {
   static const memberDeactivated = 'member.deactivated';
   static const memberReactivated = 'member.reactivated';
 
+  /// The owner emptied the members domain from Settings — every member, and
+  /// everything that existed only because of one. Recorded as counts and a
+  /// total only: the members it describes no longer exist, and naming them here
+  /// would keep on screen exactly what was asked to be removed. See
+  /// `services/member_purge_service.dart`.
+  static const memberDataPurged = 'member.data_purged';
+
   static const paymentEdited = 'payment.edited';
   static const paymentDeleted = 'payment.deleted';
   static const paymentEditRefused = 'payment.edit_refused';
@@ -51,6 +58,17 @@ abstract final class AuditAction {
   /// behind. Recorded rather than corrected, because the rows are identical to
   /// a genuine arrears payment. See `services/billing_reconciliation.dart`.
   static const billingDiscrepancyFound = 'billing.discrepancy_found';
+
+  /// The owner reviewed a month that had already ended and lowered its bill to
+  /// the fee the member had by then been moved onto. The one action in the app
+  /// that changes a historical figure, and the reason it is never taken
+  /// automatically. See `services/historical_pricing_review.dart`.
+  static const billingHistoricalCorrection = 'billing.historical_correction';
+
+  /// The owner reviewed the same kind of month and decided the bill stands.
+  /// Recorded because "checked, and it was right" is an answer, and one the
+  /// review screen needs so it stops asking.
+  static const billingHistoricalKept = 'billing.historical_kept';
 
   static const reminderSent = 'reminder.sent';
   static const reminderFailed = 'reminder.failed';

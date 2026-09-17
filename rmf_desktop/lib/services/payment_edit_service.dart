@@ -2,6 +2,7 @@ import 'package:drift/drift.dart';
 import 'package:logging/logging.dart';
 
 import '../data/audit_repository.dart';
+import '../data/cycle_pricing_log.dart';
 import '../data/database.dart';
 import '../data/membership_queries.dart';
 import '../data/settings_repository.dart';
@@ -414,15 +415,24 @@ class PaymentEditService {
         }
         final bounds =
             periodBounds(input.billingMonth, check.durationMonths);
+        final expected = open.feeOverrideMinor ?? check.plan!.priceMinor;
         period = await db.into(db.membershipPeriods).insertReturning(
               MembershipPeriodsCompanion.insert(
                 membershipId: open.id,
                 periodStart: bounds.periodStart,
                 periodEnd: bounds.periodEnd,
-                expectedAmountMinor:
-                    open.feeOverrideMinor ?? check.plan!.priceMinor,
+                expectedAmountMinor: expected,
               ),
             );
+        await recordCycleOpened(
+          db,
+          membershipPeriodId: period.id,
+          amountMinor: expected,
+          membership: open,
+          plan: check.plan,
+          reason: 'Opened by a payment moved onto this month.',
+          actorId: input.editedById,
+        );
       }
       newPeriodId = period.id;
 

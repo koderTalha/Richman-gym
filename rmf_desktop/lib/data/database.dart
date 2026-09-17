@@ -21,6 +21,8 @@ final _log = Logger('database');
     Members,
     Memberships,
     MembershipPeriods,
+    CyclePricings,
+    MembershipChanges,
     Payments,
     PaymentAllocations,
     PaymentReminders,
@@ -38,7 +40,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 11;
+  int get schemaVersion => 12;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -146,6 +148,25 @@ class AppDatabase extends _$AppDatabase {
             await m.addColumn(
                 gymSettings, gymSettings.whatsappWelcomeTemplateLanguage);
           }
+
+          // v12 records *why* a billing cycle was priced as it was, and what
+          // a member was billed before a plan change — the two things the
+          // database could not answer when forty-three cycles were found
+          // stranded at a plan price the members had been moved off.
+          //
+          // Additive and non-destructive. No existing row is read, altered or
+          // deleted: both tables start empty and every cycle already recorded
+          // is backfilled with `unknown` rather than a guess. A cycle billed
+          // 4,000 under a plan that today costs 2,500 could have been either
+          // plan's price at the time, and there is nothing in this database
+          // that distinguishes them — inventing the answer is how the gym got
+          // here. `unknown` says so honestly, and the historical review screen
+          // is where a human supplies what the data cannot.
+          if (from < 12) {
+            await m.createTable(cyclePricings);
+            await m.createTable(membershipChanges);
+            await _backfillUnknownCyclePricing();
+          }
         },
         beforeOpen: (details) async {
           // Enforce the foreign keys declared in tables.dart; SQLite ignores
@@ -181,6 +202,33 @@ class AppDatabase extends _$AppDatabase {
       'WHERE settled_at IS NULL AND EXISTS ('
       '  SELECT 1 FROM payments p'
       '  WHERE p.membership_period_id = membership_periods.id'
+      ')',
+    );
+  }
+
+  /// Gives every cycle recorded before v12 a pricing row saying `unknown`.
+  ///
+  /// The honest answer, and the only safe one. Reconstructing provenance would
+  /// mean comparing each cycle's amount against today's plan prices and
+  /// declaring a match to be the reason — which is exactly the reasoning that
+  /// would have labelled forty-three stranded cycles as correctly priced under
+  /// Basic. Nothing here reads a plan or a fee.
+  ///
+  /// Idempotent through the `NOT EXISTS` guard, so re-running it — on a
+  /// restore, or a second upgrade over the same file — adds nothing.
+  Future<void> _backfillUnknownCyclePricing() async {
+    await customStatement(
+      'INSERT INTO cycle_pricings '
+      '  (membership_period_id, amount_minor, previous_amount_minor, '
+      '   source, reason, recorded_at) '
+      "SELECT mp.id, mp.expected_amount_minor, NULL, 'unknown', "
+      "  'Recorded before the app kept pricing history.', "
+      // Drift stores a DateTime as unix *seconds*, matching the helpers above.
+      "  strftime('%s', 'now') "
+      'FROM membership_periods mp '
+      'WHERE NOT EXISTS ('
+      '  SELECT 1 FROM cycle_pricings c'
+      '  WHERE c.membership_period_id = mp.id'
       ')',
     );
   }
@@ -248,6 +296,13 @@ class AppDatabase extends _$AppDatabase {
           'ON membership_periods (period_start)',
       // The Logs screen always reads newest-first, and pages with a limit.
       'CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_events (created_at)',
+      // The historical review asks "what has already been decided about this
+      // cycle?" once per candidate, and the original bill is read back through
+      // the same index.
+      'CREATE INDEX IF NOT EXISTS idx_cycle_pricings_period '
+          'ON cycle_pricings (membership_period_id)',
+      'CREATE INDEX IF NOT EXISTS idx_membership_changes_member '
+          'ON membership_changes (member_id)',
     ];
     for (final statement in indexes) {
       await customStatement(statement);

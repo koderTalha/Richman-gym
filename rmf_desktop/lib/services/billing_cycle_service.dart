@@ -2,6 +2,7 @@ import 'package:drift/drift.dart';
 import 'package:logging/logging.dart';
 
 import '../data/audit_repository.dart';
+import '../data/cycle_pricing_log.dart';
 import '../data/database.dart';
 import '../data/membership_queries.dart';
 import '../domain/billing_cycle.dart';
@@ -168,7 +169,7 @@ class BillingCycleService {
     );
     if (existing != null) return existing;
 
-    return db.into(db.membershipPeriods).insertReturning(
+    final opened = await db.into(db.membershipPeriods).insertReturning(
           MembershipPeriodsCompanion.insert(
             membershipId: membershipId,
             periodStart: cycle.start,
@@ -176,6 +177,20 @@ class BillingCycleService {
             expectedAmountMinor: cycle.expectedMinor,
           ),
         );
+
+    final plan = await (db.select(db.membershipPlans)
+          ..where((p) => p.id.equals(membership.planId)))
+        .getSingleOrNull();
+    await recordCycleOpened(
+      db,
+      membershipPeriodId: opened.id,
+      amountMinor: cycle.expectedMinor,
+      membership: membership,
+      plan: plan,
+      reason: 'Opened by a payment that reached past the cycle before it.',
+    );
+
+    return opened;
   }
 
   /// Recomputes whether [periodId] is settled from the allocations against it.

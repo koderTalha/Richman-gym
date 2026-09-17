@@ -92,7 +92,8 @@ class _MembersViewState extends State<_MembersView> {
           ),
           const SizedBox(height: 18),
           BlocBuilder<MembersBloc, MembersState>(
-            buildWhen: (a, b) => a.filter != b.filter,
+            buildWhen: (a, b) =>
+                a.filter != b.filter || a.filterCounts != b.filterCounts,
             builder: (context, state) => Row(
               children: [
                 SizedBox(
@@ -116,8 +117,10 @@ class _MembersViewState extends State<_MembersView> {
                     runSpacing: 8,
                     children: MemberFilter.values.map((f) {
                       final selected = f == state.filter;
+                      final count = state.filterCounts[f];
                       return ChoiceChip(
-                        label: Text(f.label),
+                        label: Text(
+                            count == null ? f.label : '${f.label} ($count)'),
                         selected: selected,
                         showCheckmark: false,
                         backgroundColor: Colors.transparent,

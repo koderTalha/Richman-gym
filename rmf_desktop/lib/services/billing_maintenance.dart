@@ -1,5 +1,6 @@
 import 'package:drift/drift.dart';
 
+import '../data/cycle_pricing_log.dart';
 import '../data/database.dart';
 import '../domain/billing_cycle.dart';
 
@@ -106,15 +107,27 @@ class BillingMaintenance {
         );
         if (cycle == null) continue;
 
-        await db.into(db.membershipPeriods).insert(
-              MembershipPeriodsCompanion.insert(
-                membershipId: membership.id,
-                periodStart: cycle.start,
-                periodEnd: cycle.end,
-                expectedAmountMinor:
-                    membership.feeOverrideMinor ?? plan?.priceMinor ?? 0,
-              ),
-            );
+        final expected = membership.feeOverrideMinor ?? plan?.priceMinor ?? 0;
+        final opened =
+            await db.into(db.membershipPeriods).insertReturning(
+                  MembershipPeriodsCompanion.insert(
+                    membershipId: membership.id,
+                    periodStart: cycle.start,
+                    periodEnd: cycle.end,
+                    expectedAmountMinor: expected,
+                  ),
+                );
+        // Why this cycle carries this figure, recorded beside the figure
+        // itself. See `data/cycle_pricing_log.dart`.
+        await recordCycleOpened(
+          db,
+          membershipPeriodId: opened.id,
+          amountMinor: expected,
+          membership: membership,
+          plan: plan,
+          reason: 'Opened by the startup roll to cover today.',
+          at: at,
+        );
         created++;
       }
     });

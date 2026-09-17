@@ -576,7 +576,7 @@ void main() {
           .getSingle();
 
       expect(version, db.schemaVersion);
-      expect(db.schemaVersion, 11);
+      expect(db.schemaVersion, 12);
     });
 
     test('keeps the members, payments and receipts', () async {
@@ -779,6 +779,88 @@ void main() {
       addTearDown(db.close);
 
       expect((await db.select(db.paymentAllocations).get()), hasLength(1));
+    });
+  });
+
+  group('upgrading to pricing history (v12)', () {
+    test('backfills every pre-existing cycle as unknown', () async {
+      await buildOldDatabase(7);
+      final db = await openWithCurrentCode();
+      addTearDown(db.close);
+
+      final period = await db.select(db.membershipPeriods).getSingle();
+      final history = await db.select(db.cyclePricings).getSingle();
+
+      expect(history.membershipPeriodId, period.id);
+      expect(history.amountMinor, period.expectedAmountMinor,
+          reason: "the backfill records what the cycle already carries, "
+              "never a guessed figure");
+      expect(history.previousAmountMinor, isNull);
+      expect(history.source, CyclePricingSource.unknown,
+          reason: 'a cycle billed before this table existed could have been '
+              'priced for either of two reasons the database cannot '
+              'distinguish, so it is marked unknown rather than guessed at');
+    });
+
+    test('invents nothing: no plan or fee is read to explain the backfill',
+        () async {
+      // The plan in the fixture is priced differently from what the cycle
+      // actually charged. If the backfill were reasoning from today's plan
+      // price rather than reading the cycle, this would catch it.
+      await buildOldDatabase(7);
+      final db = await openWithCurrentCode();
+      addTearDown(db.close);
+
+      final history = await db.select(db.cyclePricings).getSingle();
+      expect(history.planId, isNull);
+      expect(history.planPriceMinor, isNull);
+      expect(history.feeOverrideMinor, isNull);
+    });
+
+    test('running the upgrade twice adds nothing a second time', () async {
+      await buildOldDatabase(7);
+
+      final first = await openWithCurrentCode();
+      await first.close();
+
+      final db = await openWithCurrentCode();
+      addTearDown(db.close);
+
+      expect(await db.select(db.cyclePricings).get(), hasLength(1));
+    });
+
+    test('the membership-changes table starts empty', () async {
+      await buildOldDatabase(7);
+      final db = await openWithCurrentCode();
+      addTearDown(db.close);
+
+      expect(await db.select(db.membershipChanges).get(), isEmpty,
+          reason: 'nothing in a pre-v12 database says when a fee change was '
+              'meant to take effect, so nothing is invented on its behalf');
+    });
+
+    test('the new tables are writable after the upgrade', () async {
+      await buildOldDatabase(7);
+      final db = await openWithCurrentCode();
+      addTearDown(db.close);
+
+      final period = await db.select(db.membershipPeriods).getSingle();
+      final member = await db.select(db.members).getSingle();
+
+      await db.into(db.cyclePricings).insert(CyclePricingsCompanion.insert(
+            membershipPeriodId: period.id,
+            amountMinor: 250000,
+            source: CyclePricingSource.correction,
+          ));
+      await db.into(db.membershipChanges).insert(
+            MembershipChangesCompanion.insert(
+              memberId: member.id,
+              effectiveFrom: DateTime.utc(2026, 8, 1),
+            ),
+          );
+
+      expect(await db.select(db.cyclePricings).get(), hasLength(2));
+      expect(await db.select(db.membershipChanges).get(), hasLength(1));
     });
   });
 
