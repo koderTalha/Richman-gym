@@ -292,11 +292,17 @@ class _Preview extends StatelessWidget {
           runSpacing: 8,
           children: [
             _Stat(label: 'Members to import', value: '${ledger.valid.length}'),
-            _Stat(label: 'Payments to create', value: '${ledger.totalPayments}'),
+            _Stat(
+                label: 'Months of history', value: '${ledger.totalPayments}'),
             _Stat(
               label: 'Without a phone',
               value: '${ledger.withoutPhone}',
               tone: ledger.withoutPhone == 0 ? null : context.palette.due,
+            ),
+            _Stat(
+              label: 'Stopped coming',
+              value: '${ledger.lapsed.length}',
+              tone: ledger.lapsed.isEmpty ? null : context.palette.due,
             ),
             _Stat(
               label: 'Rows skipped',
@@ -307,6 +313,31 @@ class _Preview extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 12),
+        Text(
+          'Nobody is imported owing money. The months in the sheet are kept as '
+          'each member’s history and count towards the revenue of the month '
+          'they were paid for, but no unpaid month is carried over as a debt — '
+          'the sheet cannot say who had left and who simply had not paid. '
+          'Billing starts fresh: each member falls due on the day of the month '
+          'they last paid, from next month onwards.',
+          style: mutedStyleOf(context),
+        ),
+        if (ledger.lapsed.isNotEmpty) ...[
+          const SizedBox(height: 6),
+          Text(
+            '${ledger.lapsed.length} of them have not paid for '
+            '$lapsedAfterUnpaidMonths months or more running, so the sheet '
+            'has them leaving rather than falling behind. They come in '
+            'deactivated, keeping their history but staying out of the '
+            'payments-due list and off WhatsApp. Reinstate anyone still '
+            'training from the Members screen: '
+            '${ledger.lapsed.take(4).map((r) => r.name).join(', ')}'
+            '${ledger.lapsed.length > 4 ? ' and '
+                '${ledger.lapsed.length - 4} more' : ''}.',
+            style: TextStyle(fontSize: 12, color: context.palette.due),
+          ),
+        ],
+        const SizedBox(height: 6),
         Text(
           'Historical payments are imported without sending any WhatsApp '
           'receipts. Importing the same sheet again recognises the members and '
@@ -334,10 +365,12 @@ class _Preview extends StatelessWidget {
         if (ledger.paymentsUsingPlanFee > 0) ...[
           const SizedBox(height: 6),
           Text(
-            '${ledger.paymentsUsingPlanFee} paid months show ### instead of a '
-            'figure (the Excel column is too narrow). These will be recorded at '
-            'the plan fee. Widen those columns in Excel first if the amounts '
-            'differ from the standard fee.',
+            '${ledger.paymentsUsingPlanFee} paid months carry the text "###" '
+            'rather than a figure, so this file has lost those amounts — a '
+            'column merely being too narrow does not, since the number is '
+            'still in the cell and is read from there. They will be recorded '
+            'at the plan fee and counted as revenue at that price. Import the '
+            'original ledger instead if you have it.',
             style: TextStyle(fontSize: 12, color: context.palette.due),
           ),
         ],
@@ -482,12 +515,22 @@ class _SummaryCard extends StatelessWidget {
                 '${summary.membersMergedByName} rows matched on name alone — '
                 'check these are the same people, not namesakes',
                 tone: context.palette.due),
-          if (summary.membersAddedAsInactive > 0)
+          if (summary.membersLapsed > 0)
             _line(
                 context,
-                '${summary.membersAddedAsInactive} were added as inactive '
-                'because this sheet covers a year that has ended — reactivate '
-                'the ones still training here',
+                '${summary.membersLapsed} were added as inactive because the '
+                'sheet shows them going $lapsedAfterUnpaidMonths months or '
+                'more without paying — reactivate the ones still training here',
+                tone: context.palette.due),
+          // The whole-sheet reason, which is a different one: everybody in a
+          // ledger for a year that has ended comes in inactive whatever their
+          // own months say.
+          if (summary.membersAddedAsInactive - summary.membersLapsed > 0)
+            _line(
+                context,
+                '${summary.membersAddedAsInactive - summary.membersLapsed} '
+                'were added as inactive because this sheet covers a year that '
+                'has ended — reactivate the ones still training here',
                 tone: context.palette.due),
           if (summary.rowsNeedingAttention > 0)
             _line(context, '${summary.rowsNeedingAttention} rows skipped, need attention',

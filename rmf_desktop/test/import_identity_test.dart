@@ -273,15 +273,22 @@ void main() {
       );
 
       final cycles = await db.select(db.membershipPeriods).get();
-      expect(cycles.length, 2);
+      final sorted = cycles.toList()
+        ..sort((a, b) => a.periodStart.compareTo(b.periodStart));
+
+      // The months the ledger itself paid for. The import also leaves a
+      // zero-cost cycle covering the member up to their first bill under the
+      // app — see `import_clean_slate_test.dart` — which is not one of them.
+      final fromLedger =
+          sorted.where((c) => c.expectedAmountMinor > 0).toList();
+      expect(fromLedger.length, 2);
 
       // Stretching each ledger column to the plan's length made January run to
       // April and February to May: two cycles covering the same days, after
       // which status, billing maintenance and the export all disagreed.
-      final sorted = cycles.toList()
-        ..sort((a, b) => a.periodStart.compareTo(b.periodStart));
-      expect(sorted.first.periodEnd.toUtc(), DateTime.utc(2026, 2, 1));
-      expect(sorted.last.periodStart.toUtc(), DateTime.utc(2026, 2, 1));
+      expect(fromLedger.first.periodEnd.toUtc(), DateTime.utc(2026, 2, 1));
+      expect(fromLedger.last.periodStart.toUtc(), DateTime.utc(2026, 2, 1));
+      expect(fromLedger.last.periodEnd.toUtc(), DateTime.utc(2026, 3, 1));
 
       for (var i = 1; i < sorted.length; i++) {
         expect(

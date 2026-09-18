@@ -104,11 +104,18 @@ class DashboardBloc extends Bloc<DashboardEvent, DashboardState> {
         status: DashboardStatus.ready,
         members: await _members.list(),
         recent: await _payments.history(limit: 8),
-        revenueTodayMinor:
-            await _payments.totalMinorBetween(todayStart, tomorrow),
+        // Today's figures are the app's own takings. An imported payment is
+        // dated to the first of the month it covers because that is all the
+        // ledger records, so counting it here would credit one arbitrary day
+        // with a whole month of history. The month's figure has no such
+        // problem — the sheet is right about which month — so it counts every
+        // rupee the gym collected, imported or not.
+        revenueTodayMinor: await _payments
+            .totalMinorBetween(todayStart, tomorrow, includeImported: false),
         revenueMonthMinor:
             await _payments.totalMinorBetween(monthStart, nextMonth),
-        paymentsToday: await _payments.countBetween(todayStart, tomorrow),
+        paymentsToday: await _payments
+            .countBetween(todayStart, tomorrow, includeImported: false),
         failedWhatsApp: await _receipts.failedCount(),
       ));
     } catch (e, s) {
