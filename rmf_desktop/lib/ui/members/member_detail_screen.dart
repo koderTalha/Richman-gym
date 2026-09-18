@@ -5,8 +5,10 @@ import '../../bloc/auth_bloc.dart';
 import '../../bloc/member_detail_bloc.dart';
 import '../../data/member_repository.dart';
 import '../../data/payment_repository.dart';
+import '../../domain/member_status.dart';
 import '../../domain/money.dart';
 import '../../services/billing_cycle_service.dart';
+import '../../services/reminder_service.dart';
 import '../../theme/app_theme.dart';
 import '../payments/advance_payment_dialog.dart';
 import '../payments/clear_payments_action.dart';
@@ -286,6 +288,13 @@ class _Body extends StatelessWidget {
                   label: const Text('Edit'),
                 ),
               ),
+              // Only where the member actually owes something, and read from
+              // the same status as the badge beside their name — so the button
+              // can never sit next to one reading PAID.
+              if (row.status.isOwing) ...[
+                const SizedBox(width: 10),
+                _SendReminderButton(row: row),
+              ],
               const SizedBox(width: 10),
               Builder(
                 builder: (context) => FilledButton.icon(
@@ -368,6 +377,76 @@ class _Body extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Sends this member their payment reminder, there and then.
+///
+/// The Reminders screen sends to everybody the schedule has picked out; this is
+/// for the owner who has turned the automatic run off and would rather decide
+/// member by member. It therefore does not ask the schedule whether a reminder
+/// is owed — with auto-send off nothing ever is, and the button would be dead
+/// in exactly the setup it exists for.
+///
+/// Stateful for one reason: a template message costs money and cannot be
+/// recalled, and a send that takes a second over a slow connection is long
+/// enough to be clicked twice.
+class _SendReminderButton extends StatefulWidget {
+  const _SendReminderButton({required this.row});
+
+  final MemberRow row;
+
+  @override
+  State<_SendReminderButton> createState() => _SendReminderButtonState();
+}
+
+class _SendReminderButtonState extends State<_SendReminderButton> {
+  bool _sending = false;
+
+  Future<void> _send() async {
+    final messenger = ScaffoldMessenger.of(context);
+    final actorId = context.read<AuthBloc>().state.user!.id;
+    final service = context.read<ReminderService>();
+    final name = widget.row.member.fullName;
+
+    setState(() => _sending = true);
+    final candidate = await service.candidateForMember(widget.row.id);
+
+    if (candidate == null) {
+      if (!mounted) return;
+      setState(() => _sending = false);
+      messenger.showSnackBar(const SnackBar(
+        content: Text('This member has nothing outstanding to remind them '
+            'about.'),
+      ));
+      return;
+    }
+
+    final outcome = await service.send(candidate, actorId: actorId);
+    if (!mounted) return;
+    setState(() => _sending = false);
+
+    messenger.showSnackBar(SnackBar(
+      content: Text(switch (outcome) {
+        ReminderSent() => 'Payment reminder sent to $name.',
+        ReminderFailed(:final error) => 'Could not send to $name: $error',
+      }),
+    ));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return OutlinedButton.icon(
+      onPressed: _sending ? null : _send,
+      icon: _sending
+          ? const SizedBox(
+              width: 14,
+              height: 14,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          : const Icon(Icons.notifications_active_outlined, size: 16),
+      label: Text(_sending ? 'Sending…' : 'Send reminder'),
     );
   }
 }
