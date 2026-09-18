@@ -154,6 +154,92 @@ class ReminderService {
     return candidates;
   }
 
+  /// Clears a reminder without sending it.
+  ///
+  /// For a queue the owner has already dealt with off the screen: the members
+  /// were caught at the counter, or chased on the phone, and sending each of
+  /// them a template anyway costs money and reads as nagging.
+  ///
+  /// Recorded as `skipped` rather than deleted. The row is what stops the
+  /// reminder coming back — [_handledKeys] counts any row for the stage,
+  /// whatever its status — and it still answers "what happened to this one"
+  /// afterwards, which a deleted row could not. Nothing about the member's
+  /// cycle changes, so the next one to fall due raises a fresh reminder.
+  Future<void> dismiss(ReminderCandidate candidate, {int? actorId}) async {
+    await _recordOutcome(
+      member: candidate.member,
+      periodId: candidate.periodId,
+      cycleDueDate: candidate.dueDate,
+      scheduled: candidate.scheduled,
+      amountDueMinor: candidate.amountDueMinor,
+      status: ReminderSendStatus.skipped,
+    );
+
+    await _audit.record(
+      category: AuditCategory.reminder,
+      action: AuditAction.reminderSkipped,
+      outcome: AuditOutcome.success,
+      actorId: actorId,
+      memberId: candidate.member.id,
+      memberName: candidate.member.fullName,
+      amountMinor: candidate.amountDueMinor,
+      summary: '${candidate.scheduled.stage.label} reminder for '
+          '${candidate.member.fullName} cleared without sending',
+      detail: ['Due: ${formatDayMonthYear(candidate.dueDate)}'],
+    );
+  }
+
+  /// The reminder for one member, whatever the schedule says.
+  ///
+  /// Deliberately not routed through [decideReminder], which is what separates
+  /// it from [buildQueue]. An owner who has turned the automatic run off has no
+  /// queue at all, and the button on the member's own screen is then the only
+  /// way to chase anybody — so gating it on the configured offsets would make
+  /// it useless in exactly the setup it exists for. Sending a second time in
+  /// one day is a decision the owner is entitled to make while looking at the
+  /// member.
+  ///
+  /// Null where there is nobody to remind: the member has left, or has no
+  /// enrolment to owe anything against. Whether they are *due* is the calling
+  /// screen's question, answered by `MemberStatus.isOwing` beside the badge.
+  Future<ReminderCandidate?> candidateForMember(
+    int memberId, {
+    DateTime? now,
+  }) async {
+    final member = await (db.select(db.members)
+          ..where((m) => m.id.equals(memberId)))
+        .getSingleOrNull();
+    if (member == null || member.deactivatedAt != null) return null;
+
+    final billing = await _cycles.forMember(memberId);
+    if (billing == null) return null;
+
+    final unsettled = billing.nextUnsettled;
+    final amountDue = unsettled?.outstandingMinor ?? billing.feeMinor;
+    if (amountDue <= 0) return null;
+
+    final at = (now ?? DateTime.now()).toUtc();
+    final today = DateTime.utc(at.year, at.month, at.day);
+    final dueDate = billing.nextDueDate;
+
+    // Named for where today sits against the cycle's due date, so the message
+    // and the audit trail read the same as a scheduled one would.
+    final days = today.difference(dueDate).inDays;
+    final key = days < 0
+        ? ReminderKey(ReminderStage.beforeDue, -days)
+        : days == 0
+            ? const ReminderKey(ReminderStage.onDue, 0)
+            : ReminderKey(ReminderStage.overdue, days);
+
+    return ReminderCandidate(
+      member: member,
+      periodId: unsettled?.periodId,
+      dueDate: dueDate,
+      amountDueMinor: amountDue,
+      scheduled: ScheduledReminder(key: key, on: today),
+    );
+  }
+
   /// Sends [candidate]'s message and records what happened. Never throws: a
   /// reminder run must not be able to take the whole queue down over one bad
   /// number or a broken token.

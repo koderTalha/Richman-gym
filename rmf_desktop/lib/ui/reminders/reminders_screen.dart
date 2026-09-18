@@ -81,6 +81,55 @@ class _RemindersScreenState extends State<RemindersScreen> {
     await _load();
   }
 
+  /// Clears the whole queue without messaging anybody.
+  ///
+  /// The counter deals with most of these in person — the member pays on the
+  /// way in, or is chased on the phone — and the queue is then a list of
+  /// people who must not be sent a template. Confirmed first, because it is
+  /// the whole screen at once and each one is somebody the gym is owed by.
+  Future<void> _clearAll() async {
+    final count = _queue.length;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: context.palette.surfaceRaised,
+        title: Text('Clear $count reminder${count == 1 ? '' : 's'}?'),
+        content: Text(
+          'Nothing is sent. These members drop off this screen and will not '
+          'be messaged about the payment they owe now. Each one comes back '
+          'here when their next payment falls due.',
+          style: mutedStyleOf(context),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Clear all'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    final actorId = context.read<AuthBloc>().state.user!.id;
+    setState(() => _sending = true);
+
+    for (final candidate in _queue) {
+      await _service.dismiss(candidate, actorId: actorId);
+    }
+
+    if (!mounted) return;
+    setState(() => _sending = false);
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(
+          'Cleared $count reminder${count == 1 ? '' : 's'} without sending.'),
+    ));
+    await _load();
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_loading) return const Center(child: CircularProgressIndicator());
@@ -149,12 +198,23 @@ class _RemindersScreenState extends State<RemindersScreen> {
               ),
             ),
             const SizedBox(height: 16),
-            FilledButton.icon(
-              onPressed: (_sending || _selected.isEmpty) ? null : _sendSelected,
-              icon: const Icon(Icons.send_outlined, size: 16),
-              label: Text(_sending
-                  ? 'Sending…'
-                  : 'Send selected (${_selected.length})'),
+            Row(
+              children: [
+                OutlinedButton.icon(
+                  onPressed: _sending ? null : _clearAll,
+                  icon: const Icon(Icons.done_all, size: 16),
+                  label: Text('Clear all (${_queue.length})'),
+                ),
+                const SizedBox(width: 10),
+                FilledButton.icon(
+                  onPressed:
+                      (_sending || _selected.isEmpty) ? null : _sendSelected,
+                  icon: const Icon(Icons.send_outlined, size: 16),
+                  label: Text(_sending
+                      ? 'Sending…'
+                      : 'Send selected (${_selected.length})'),
+                ),
+              ],
             ),
           ],
         ],

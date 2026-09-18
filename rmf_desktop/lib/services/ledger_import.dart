@@ -14,11 +14,37 @@ const monthNames = [
   'jul', 'aug', 'sep', 'oct', 'nov', 'dec',
 ];
 
+/// How many unpaid months in a row mean the member has stopped coming.
+///
+/// Three is the owner's own reading of their sheet. Two is a member who is
+/// simply behind — on a ledger that runs to September, everybody who last paid
+/// in July is two months down, and they have not all left.
+const lapsedAfterUnpaidMonths = 3;
+
+/// Cells saying the month was never this member's: they had not joined yet, or
+/// it has not happened.
+const _notApplicableMarkers = {'', '-', '--', 'null', 'n/a', 'na'};
+
+/// Cells where the owner wrote down that no money came in.
+///
+/// Worth keeping apart from the markers above even though neither produces a
+/// payment. A "0" against a month the member was here for is a month they did
+/// not pay; a "-" is a month that was never theirs to pay. Three "0"s in a row
+/// are the sheet's way of saying somebody stopped coming — see
+/// [ParsedMemberRow.trailingUnpaidMonths] — and a dash says nothing of the
+/// kind.
+const _unpaidMarkers = {'0', 'nill'};
+
 /// Values the ledger uses to mean "nothing here".
-const _blankMarkers = {'', '-', '--', 'nill', 'null', 'n/a', 'na', '0'};
+const _blankMarkers = {..._notApplicableMarkers, ..._unpaidMarkers};
 
 bool isBlankCell(String? value) =>
     value == null || _blankMarkers.contains(value.trim().toLowerCase());
+
+/// Whether the cell records a month that went unpaid, rather than one that
+/// never applied.
+bool isUnpaidCell(String? value) =>
+    value != null && _unpaidMarkers.contains(value.trim().toLowerCase());
 
 /// Where each meaningful column sits in the sheet, resolved from the header row.
 class ColumnMapping {
@@ -132,6 +158,88 @@ ColumnMapping _mapRow(List<String?> header) {
   );
 }
 
+const _monthNumbers = {
+  'jan': 1, 'feb': 2, 'mar': 3, 'apr': 4, 'may': 5, 'jun': 6,
+  'jul': 7, 'aug': 8, 'sep': 9, 'oct': 10, 'nov': 11, 'dec': 12,
+};
+
+/// "03-Jul-26", "3 July 2026" — a day, a month's name, a year.
+final _namedMonthDate = RegExp(r'^(\d{1,2})[-/ ]([A-Za-z]{3,})[-/ ](\d{2}|\d{4})$');
+
+/// "23/09/2026" — day first, as Pakistan writes it.
+final _numericDate = RegExp(r'^(\d{1,2})[-/](\d{1,2})[-/](\d{2}|\d{4})$');
+
+/// Reads the "Fee Submit" cell into a date.
+///
+/// The column reaches this function by two different routes, and they do not
+/// agree on a format. A real workbook goes through the `excel` package, which
+/// recognises the cell's date formatting and hands back an ISO timestamp. A CSV
+/// carries whatever the owner typed — "03-Jul-26" in their sheets.
+///
+/// Anything it cannot read confidently becomes null rather than a guess. The
+/// date's *day* decides which day of the month the member is billed on for as
+/// long as they are a member, so a misread here would quietly move somebody's
+/// due date; no date at all is the safer failure, and the member simply falls
+/// back to the anchor they would have had anyway.
+DateTime? parseLedgerDate(String? value) {
+  if (isBlankCell(value)) return null;
+  final trimmed = value!.trim();
+
+  // Dates out of a workbook: 2026-09-03T00:00:00.000Z.
+  final iso = DateTime.tryParse(trimmed);
+  if (iso != null) return DateTime.utc(iso.year, iso.month, iso.day);
+
+  final named = _namedMonthDate.firstMatch(trimmed);
+  if (named != null) {
+    final month = _monthNumbers[named.group(2)!.toLowerCase().substring(0, 3)];
+    if (month == null) return null;
+    return _ledgerDate(int.parse(named.group(1)!), month, named.group(3)!);
+  }
+
+  final numeric = _numericDate.firstMatch(trimmed);
+  if (numeric != null) {
+    return _ledgerDate(
+      int.parse(numeric.group(1)!),
+      int.parse(numeric.group(2)!),
+      numeric.group(3)!,
+    );
+  }
+
+  return null;
+}
+
+/// Builds the date, refusing one whose parts do not survive the trip.
+///
+/// `DateTime.utc` rolls an impossible date forward rather than rejecting it —
+/// the 45th of July becomes 14 August — so the only way to know the sheet held
+/// a real date is to read the parts back out and check they are the ones that
+/// went in.
+DateTime? _ledgerDate(int day, int month, String yearText) {
+  if (month < 1 || month > 12) return null;
+  final year = yearText.length == 2
+      ? 2000 + int.parse(yearText)
+      : int.parse(yearText);
+
+  final date = DateTime.utc(year, month, day);
+  if (date.year != year || date.month != month || date.day != day) return null;
+  return date;
+}
+
+/// One unbroken stretch of months the member paid the same fee for, and so one
+/// enrolment.
+class PlanSegment {
+  const PlanSegment({required this.startMonth, this.planId});
+
+  /// The first month (1–12) this enrolment covers.
+  final int startMonth;
+
+  /// The plan whose price these months match, or null to use the plan the row
+  /// names. The final stretch is always null: the "Plan" column states what the
+  /// member is on now, and an explicit column beats a fee that two plans might
+  /// share.
+  final int? planId;
+}
+
 /// One month cell that resolved to a payment.
 class ParsedMonthPayment {
   const ParsedMonthPayment({
@@ -160,10 +268,30 @@ class ParsedMemberRow {
     required this.notes,
     this.planName,
     this.planId,
+    this.feeSubmit,
+    this.trailingUnpaidMonths = 0,
+    this.planSegments = const [],
     required this.payments,
     required this.problems,
     required this.warnings,
   });
+
+  /// Unpaid months running from the member's last payment to the end of the
+  /// ledger.
+  final int trailingUnpaidMonths;
+
+  /// Whether the sheet shows this member walking away.
+  bool get hasLapsed => trailingUnpaidMonths >= lapsedAfterUnpaidMonths;
+
+  /// The enrolments the member's fees imply, oldest first, and empty where the
+  /// sheet records no payment at all.
+  final List<PlanSegment> planSegments;
+
+  /// The date in the "Fee Submit" column, or null where the sheet has none.
+  final DateTime? feeSubmit;
+
+  /// The day of the month this member is billed on.
+  int? get anchorDay => feeSubmit?.day;
 
   final int sourceRow;
   final String name;
@@ -219,6 +347,10 @@ class ParsedLedger {
   /// Importable rows that still deserve a mention in the preview.
   List<ParsedMemberRow> get withWarnings =>
       rows.where((r) => r.isValid && r.warnings.isNotEmpty).toList();
+
+  /// Members the sheet shows having stopped coming, in sheet order.
+  List<ParsedMemberRow> get lapsed =>
+      valid.where((r) => r.hasLapsed).toList();
 
   /// Whether this sheet carries a "Plan" column at all.
   bool get namesPlans => mapping.plan != null;
@@ -300,6 +432,14 @@ ParsedLedger parseLedger({
     plansByName.putIfAbsent(normalizePlanName(plan.name), () => plan.id);
   }
 
+  // Fees that name exactly one plan, which is the only kind worth reading a
+  // plan out of. A price two plans share says nothing about which of them a
+  // member moved onto, so it maps to null and leaves their run unbroken.
+  final planByPrice = <int, int?>{};
+  for (final plan in plans) {
+    planByPrice.update(plan.priceMinor, (_) => null, ifAbsent: () => plan.id);
+  }
+
   final parsed = <ParsedMemberRow>[];
 
   for (var r = headerRow + 1; r < rows.length; r++) {
@@ -362,6 +502,50 @@ ParsedLedger parseLedger({
     });
     payments.sort((a, b) => a.month.compareTo(b.month));
 
+    // Unpaid months running from the member's last payment to the end of the
+    // ledger. Counted as one unbroken run, so a gap they came back from stops
+    // counting the moment they pay again: Bilal is missing February to June and
+    // pays in July, and he has not left — he is two months behind, like
+    // everybody else on a sheet that stops at September.
+    var trailingUnpaid = 0;
+    if (payments.isNotEmpty) {
+      for (var month = payments.last.month + 1; month <= 12; month++) {
+        final column = mapping.monthColumns[month];
+        if (column == null || !isUnpaidCell(cell(column))) break;
+        trailingUnpaid++;
+      }
+    }
+
+    // The enrolments the fees imply. The sheet names one plan — the one they
+    // are on now — but the figures show what they were paying at the time, and
+    // on the owner's real ledger most members have moved at least once. A new
+    // stretch opens only where a month's fee names a plan outright and a
+    // different one from the stretch running: an unrecognised figure, or one
+    // two plans share, is not evidence enough to move somebody.
+    final segments = <PlanSegment>[];
+    int? runningPlanId;
+    for (final payment in payments) {
+      final planForFee =
+          payment.amountMinor == null ? null : planByPrice[payment.amountMinor];
+
+      if (segments.isEmpty) {
+        segments.add(
+            PlanSegment(startMonth: payment.month, planId: planForFee));
+        runningPlanId = planForFee;
+      } else if (planForFee != null && planForFee != runningPlanId) {
+        segments.add(
+            PlanSegment(startMonth: payment.month, planId: planForFee));
+        runningPlanId = planForFee;
+      }
+    }
+
+    // Whatever the last stretch cost, it is the one the member is on now, and
+    // the "Plan" column says so outright. An explicit column beats a fee.
+    if (segments.isNotEmpty) {
+      segments[segments.length - 1] =
+          PlanSegment(startMonth: segments.last.startMonth);
+    }
+
     parsed.add(ParsedMemberRow(
       sourceRow: r + 1, // 1-based, matching what the user sees in Excel
       name: name ?? '',
@@ -372,6 +556,9 @@ ParsedLedger parseLedger({
       notes: cell(mapping.extra),
       planName: planName,
       planId: planId,
+      feeSubmit: parseLedgerDate(cell(mapping.feeSubmit)),
+      trailingUnpaidMonths: trailingUnpaid,
+      planSegments: segments,
       payments: payments,
       problems: problems,
       warnings: warnings,

@@ -3,6 +3,17 @@
 /// the rules testable without a database.
 enum MemberStatus { paid, due, expired, inactive }
 
+extension MemberStatusOwing on MemberStatus {
+  /// Whether the member owes money right now.
+  ///
+  /// The single definition of that question: the dashboard's payments-due list
+  /// and the reminder button on a member's own screen both read it, so the
+  /// button can never appear beside a badge saying the member is paid up, nor
+  /// be missing from one that says they are not.
+  bool get isOwing =>
+      this == MemberStatus.due || this == MemberStatus.expired;
+}
+
 extension MemberStatusLabel on MemberStatus {
   String get label => switch (this) {
         MemberStatus.paid => 'PAID',

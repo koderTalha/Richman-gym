@@ -12,6 +12,7 @@ class ImportSummary {
     required this.membersMatched,
     required this.membersMergedByName,
     required this.membersAddedAsInactive,
+    this.membersLapsed = 0,
     required this.paymentsCreated,
     required this.paymentsSkipped,
     required this.rowsNeedingAttention,
@@ -35,6 +36,12 @@ class ImportSummary {
   /// Members created from a ledger for a year that has already ended, and so
   /// added as inactive. See [ImportService.commit].
   final int membersAddedAsInactive;
+
+  /// Members the sheet shows having stopped coming, brought in deactivated for
+  /// the owner to reinstate if they are wrong. Counted inside
+  /// [membersAddedAsInactive], which is every member who arrived inactive
+  /// whatever the reason.
+  final int membersLapsed;
 }
 
 /// A member already on file, held in memory for the length of one import.
@@ -100,6 +107,13 @@ class _Candidate {
   final int memberCode;
 }
 
+/// One enrolment written for a ledger row, and the month it takes over from.
+class _Enrolment {
+  const _Enrolment({required this.fromMonth, required this.membership});
+  final int fromMonth;
+  final Membership membership;
+}
+
 /// How a ledger row was recognised as somebody already on file.
 enum _MatchKind {
   /// On a key the sheet actually carries: phone plus name, or an enrolment
@@ -153,6 +167,7 @@ class ImportService {
     var membersMatched = 0;
     var membersMergedByName = 0;
     var membersAddedAsInactive = 0;
+    var membersLapsed = 0;
     var paymentsCreated = 0;
     var paymentsSkipped = 0;
 
@@ -195,6 +210,16 @@ class ImportService {
 
           final joiningDate = _earliestPeriod(row, ledger.year);
 
+          // A member whose sheet ends in a run of unpaid months stopped coming,
+          // and is brought in deactivated rather than billed from next month
+          // like somebody who still trains here. Dated to the end of the last
+          // month they paid for, so the record says when they were last known
+          // to be a member. The owner reinstates anyone this is wrong about —
+          // a cheap mistake to correct, and a much cheaper one to make than
+          // chasing three hundred people who left.
+          final lapsedAt =
+              leftAt ?? (row.hasLapsed ? _lastMonthPaidFor(row, ledger.year) : null);
+
           memberId = await db.into(db.members).insert(
                 MembersCompanion.insert(
                   memberCode: code,
@@ -202,11 +227,12 @@ class ImportService {
                   phone: phone,
                   phoneRaw: Value(row.rawPhone),
                   joiningDate: joiningDate,
-                  deactivatedAt: Value(leftAt),
+                  deactivatedAt: Value(lapsedAt),
                 ),
               );
           membersCreated++;
-          if (leftAt != null) membersAddedAsInactive++;
+          if (lapsedAt != null) membersAddedAsInactive++;
+          if (leftAt == null && row.hasLapsed) membersLapsed++;
           roster.remember(
             id: memberId,
             phone: phone,
@@ -225,28 +251,38 @@ class ImportService {
           }
         }
 
-        final rowPlan = plansById[row.planId ?? planId]!;
+        final namedPlan = plansById[row.planId ?? planId]!;
 
         // Reuse the open enrolment if there is one, so re-importing another
         // year's sheet does not create a second membership. This is also why a
         // "Plan" column cannot move an existing member: their enrolment already
         // says which plan they are on, and only the owner changes that.
-        var membership = await openMembershipFor(db, memberId);
-
-        membership ??= await db.into(db.memberships).insertReturning(
-              MembershipsCompanion.insert(
+        final existing = await openMembershipFor(db, memberId);
+        final enrolments = existing != null
+            ? [_Enrolment(fromMonth: 1, membership: existing)]
+            : await _enrolmentsFor(
                 memberId: memberId,
-                planId: rowPlan.id,
-                startDate: _earliestPeriod(row, ledger.year),
-              ),
-            );
+                row: row,
+                year: ledger.year,
+                namedPlan: namedPlan,
+                plansById: plansById,
+              );
+
+        // The enrolment billing carries on under, which is the last one the
+        // sheet leaves the member on.
+        final openEnrolment = enrolments.last.membership;
 
         for (final payment in row.payments) {
+          // The enrolment the member was on that month, which on a sheet
+          // showing its figures is often not the one they are on now.
+          final onPlan = _enrolmentCovering(enrolments, payment.month);
+          final cyclePlan = plansById[onPlan.planId]!;
+
           // A ### cell means the month was paid but the sheet did not show the
           // figure, so bill it at the member's own rate.
           final amountMinor = payment.amountMinor ??
-              membership.feeOverrideMinor ??
-              rowPlan.priceMinor;
+              onPlan.feeOverrideMinor ??
+              cyclePlan.priceMinor;
 
           final periodStart = DateTime.utc(ledger.year, payment.month, 1);
 
@@ -274,7 +310,7 @@ class ImportService {
           if (period == null) {
             period = await db.into(db.membershipPeriods).insertReturning(
                   MembershipPeriodsCompanion.insert(
-                    membershipId: membership.id,
+                    membershipId: onPlan.id,
                     periodStart: periodStart,
                     periodEnd: periodEnd,
                     expectedAmountMinor: amountMinor,
@@ -288,7 +324,7 @@ class ImportService {
               db,
               membershipPeriodId: period.id,
               amountMinor: amountMinor,
-              membership: membership,
+              membership: onPlan,
               source: CyclePricingSource.ledgerImport,
               reason: "Read from the owner's spreadsheet ledger.",
             );
@@ -342,6 +378,23 @@ class ImportService {
 
           paymentsCreated++;
         }
+
+        // Nobody arrives owing anything. A member the ledger has just
+        // introduced is covered up to their first real bill, so the months in
+        // the sheet stay history and the app starts billing them fresh.
+        // Members already on file are left alone: the app knows their state,
+        // and a spreadsheet is not an instruction to forgive what it says.
+        // Nobody deactivated is covered: they are not being billed at all, and
+        // a cycle running to a bill they will never be sent reads as though
+        // somebody still expects them.
+        if (resolved == null && !isHistoricalLedger && !row.hasLapsed) {
+          await _coverUntilFirstBill(
+            membership: openEnrolment,
+            memberId: memberId,
+            anchorDay: row.anchorDay,
+            at: at,
+          );
+        }
       }
     });
 
@@ -350,6 +403,7 @@ class ImportService {
       membersMatched: membersMatched,
       membersMergedByName: membersMergedByName,
       membersAddedAsInactive: membersAddedAsInactive,
+      membersLapsed: membersLapsed,
       paymentsCreated: paymentsCreated,
       paymentsSkipped: paymentsSkipped,
       rowsNeedingAttention: ledger.invalid.length,
@@ -419,12 +473,161 @@ class ImportService {
     return (id: byName.id, kind: _MatchKind.mergedByName);
   }
 
+  /// Covers a newly imported member from where the ledger leaves them up to
+  /// their first bill under the app, so the import itself owes nothing.
+  ///
+  /// The sheet cannot say who owed money. A "0" against March is both "he was
+  /// a member and did not pay" and "he had already left", and the ledger has no
+  /// column that tells the two apart — so reading debt out of it would invent
+  /// receivables for hundreds of people who simply stopped coming. Instead
+  /// everything up to the import is treated as closed, and the first month the
+  /// app bills for is the first one it can actually vouch for.
+  ///
+  /// The cycle written here is zero-cost and stamped settled, which is what
+  /// keeps `BillingMaintenance` from rolling anyone a bill for the month the
+  /// import happened in: it rolls forward from the member's latest cycle end,
+  /// and that end is now their first billing day. It is logged like any other
+  /// cycle so the waiver is visible afterwards rather than implied.
+  Future<void> _coverUntilFirstBill({
+    required Membership membership,
+    required int memberId,
+    required int? anchorDay,
+    required DateTime at,
+  }) async {
+    final periods = await periodsForMember(db, memberId);
+    final coveredTo = periods.isEmpty
+        ? null
+        : periods
+            .map((p) => p.periodEnd.toUtc())
+            .reduce((a, b) => a.isAfter(b) ? a : b);
+
+    final from = coveredTo ?? membership.startDate.toUtc();
+    final firstBill = _firstBillAfter(at, anchorDay ?? from.day);
+
+    // Already covered past their first billing day, which is what paying
+    // several months ahead looks like. Nothing to bridge.
+    if (!firstBill.isAfter(from)) return;
+
+    final period = await db.into(db.membershipPeriods).insertReturning(
+          MembershipPeriodsCompanion.insert(
+            membershipId: membership.id,
+            periodStart: from,
+            periodEnd: firstBill,
+            expectedAmountMinor: 0,
+            settledAt: Value(from),
+          ),
+        );
+
+    await recordCycleOpened(
+      db,
+      membershipPeriodId: period.id,
+      amountMinor: 0,
+      membership: membership,
+      source: CyclePricingSource.ledgerImport,
+      reason: 'Covered by the ledger import: months before the import are '
+          'history, and billing starts on the first billing day after it.',
+    );
+  }
+
+  /// The member's billing day in the month after [at].
+  ///
+  /// Clamped to the last day of a month too short to hold it, so an anchor of
+  /// the 31st bills on the 30th in November without losing the 31st.
+  DateTime _firstBillAfter(DateTime at, int anchorDay) {
+    final month = DateTime.utc(at.year, at.month + 1, 1);
+    final lastDay = DateTime.utc(month.year, month.month + 1, 0).day;
+    return DateTime.utc(
+      month.year,
+      month.month,
+      anchorDay < lastDay ? anchorDay : lastDay,
+    );
+  }
+
   Future<Payment?> _paymentWithKey(String key) async {
     final rows = await (db.select(db.payments)
           ..where((p) => p.idempotencyKey.equals(key))
           ..limit(1))
         .get();
     return rows.isEmpty ? null : rows.first;
+  }
+
+  /// Writes the enrolments a ledger row implies, oldest first.
+  ///
+  /// The sheet has one "Plan" column and it names the plan the member is on
+  /// *now*, but the monthly figures show what they were paying at the time —
+  /// and on the owner's real ledger most members have moved at least once.
+  /// Recording the whole year against their current plan would leave months
+  /// priced at a fee that plan never charged, so each stretch of months at one
+  /// fee becomes its own enrolment, closed off where the fee moved.
+  ///
+  /// Only the last stays open, and only it carries the billing day: the earlier
+  /// ones are history and will never be billed again. See
+  /// [ParsedMemberRow.planSegments] for which fees are allowed to imply a plan
+  /// in the first place.
+  Future<List<_Enrolment>> _enrolmentsFor({
+    required int memberId,
+    required ParsedMemberRow row,
+    required int year,
+    required MembershipPlan namedPlan,
+    required Map<int, MembershipPlan> plansById,
+  }) async {
+    final segments = row.planSegments;
+
+    // No payments at all, so no fees to read a history out of.
+    if (segments.isEmpty) {
+      final only = await db.into(db.memberships).insertReturning(
+            MembershipsCompanion.insert(
+              memberId: memberId,
+              planId: namedPlan.id,
+              startDate: _earliestPeriod(row, year),
+              billingAnchorDay: Value(row.anchorDay),
+            ),
+          );
+      return [_Enrolment(fromMonth: 1, membership: only)];
+    }
+
+    final written = <_Enrolment>[];
+    for (var i = 0; i < segments.length; i++) {
+      final segment = segments[i];
+      final isOpen = i == segments.length - 1;
+      final plan =
+          segment.planId == null ? namedPlan : plansById[segment.planId]!;
+
+      final membership = await db.into(db.memberships).insertReturning(
+            MembershipsCompanion.insert(
+              memberId: memberId,
+              planId: plan.id,
+              startDate: DateTime.utc(year, segment.startMonth, 1),
+              endDate: Value(isOpen
+                  ? null
+                  : DateTime.utc(year, segments[i + 1].startMonth, 1)),
+              billingAnchorDay: Value(isOpen ? row.anchorDay : null),
+            ),
+          );
+      written.add(
+          _Enrolment(fromMonth: segment.startMonth, membership: membership));
+    }
+    return written;
+  }
+
+  /// The enrolment in force in [month], which is the latest one starting on or
+  /// before it.
+  Membership _enrolmentCovering(List<_Enrolment> enrolments, int month) {
+    var covering = enrolments.first.membership;
+    for (final enrolment in enrolments) {
+      if (enrolment.fromMonth > month) break;
+      covering = enrolment.membership;
+    }
+    return covering;
+  }
+
+  /// The end of the last month the member paid for, which is the last day they
+  /// are known to have been a member.
+  DateTime? _lastMonthPaidFor(ParsedMemberRow row, int year) {
+    if (row.payments.isEmpty) return null;
+    final month =
+        row.payments.map((p) => p.month).reduce((a, b) => a > b ? a : b);
+    return DateTime.utc(year, month + 1, 1);
   }
 
   DateTime _earliestPeriod(ParsedMemberRow row, int year) {

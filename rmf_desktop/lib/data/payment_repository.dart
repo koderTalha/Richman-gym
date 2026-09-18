@@ -176,21 +176,48 @@ class PaymentRepository {
     }).toList();
   }
 
-  Future<int> totalMinorBetween(DateTime from, DateTime to) async {
+  /// What the gym took in over `[from, to)`.
+  ///
+  /// Money carried in from the owner's spreadsheet counts. Their ledger holds
+  /// real figures — Excel only draws "###" where the column is too narrow for
+  /// the number, and the cell still stores it — so an imported month is money
+  /// the gym genuinely collected, and a year that reads as empty until the day
+  /// of the import would be the wrong answer.
+  ///
+  /// What the sheet does not know is the *day*. It keeps one column per month,
+  /// so every imported payment is dated to the first of the month it covers:
+  /// true about the month, a placeholder about the day. Pass
+  /// [includeImported] as false for a window narrower than a month, where that
+  /// placeholder would otherwise hand a single date a month's takings. See
+  /// `DashboardBloc`, which is the one caller that does.
+  Future<int> totalMinorBetween(DateTime from, DateTime to,
+      {bool includeImported = true}) async {
     final result = await (db.selectOnly(db.payments)
           ..addColumns([db.payments.amountMinor.sum()])
-          ..where(db.payments.paymentDate.isBiggerOrEqualValue(from) &
-              db.payments.paymentDate.isSmallerThanValue(to)))
+          ..where(_window(from, to, includeImported: includeImported)))
         .getSingleOrNull();
     return result?.read(db.payments.amountMinor.sum()) ?? 0;
   }
 
-  Future<int> countBetween(DateTime from, DateTime to) async {
+  /// How many payments landed in `[from, to)`, on the same terms as
+  /// [totalMinorBetween].
+  Future<int> countBetween(DateTime from, DateTime to,
+      {bool includeImported = true}) async {
     final rows = await (db.select(db.payments)
-          ..where((p) =>
-              p.paymentDate.isBiggerOrEqualValue(from) &
-              p.paymentDate.isSmallerThanValue(to)))
+          ..where((_) => _window(from, to, includeImported: includeImported)))
         .get();
     return rows.length;
+  }
+
+  Expression<bool> _window(
+    DateTime from,
+    DateTime to, {
+    required bool includeImported,
+  }) {
+    final within = db.payments.paymentDate.isBiggerOrEqualValue(from) &
+        db.payments.paymentDate.isSmallerThanValue(to);
+    return includeImported
+        ? within
+        : within & db.payments.source.equalsValue(PaymentSource.manual);
   }
 }
