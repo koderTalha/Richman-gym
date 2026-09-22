@@ -3,6 +3,7 @@ import 'package:logging/logging.dart';
 
 import '../data/audit_repository.dart';
 import '../data/cycle_pricing_log.dart';
+import '../data/cycle_waivers.dart';
 import '../data/database.dart';
 import '../data/membership_queries.dart';
 import '../domain/billing_month_check.dart';
@@ -240,6 +241,81 @@ class RecordPaymentService {
     return paymentForPeriod(db, period.id);
   }
 
+  /// Opens the cycle a named month is to be billed as.
+  ///
+  /// [typed] is the fee named on the form, which is the cycle's price only when
+  /// this call is what brings the cycle into being — see
+  /// [RecordPaymentInput.expectedAmountMinor]. Null falls back to what the
+  /// member pays now.
+  ///
+  /// The month may be one the ledger import forgave, in which case the cycle
+  /// comes out of that waiver rather than being inserted alongside it: the
+  /// months either side stay forgiven, and no two cycles cover the same day.
+  ///
+  /// Runs inside the caller's transaction.
+  Future<MembershipPeriod> _openCycleFor({
+    required PeriodBounds bounds,
+    required Membership membership,
+    required MembershipPlan plan,
+    required int? typed,
+    required int actorId,
+    required DateTime at,
+  }) async {
+    final expected = typed ?? (membership.feeOverrideMinor ?? plan.priceMinor);
+
+    // A figure typed on the form is its own reason: it is not the plan's price
+    // and not the member's standing fee, and a later reader must not be left to
+    // assume it was either.
+    final source = typed == null ? null : CyclePricingSource.manual;
+    final reason = typed == null
+        ? 'Opened by a payment recorded for this month.'
+        : 'Amount entered on the Record Payment form.';
+
+    final waiver = await waiverForMonth(
+      db,
+      memberId: membership.memberId,
+      month: bounds.periodStart,
+    );
+
+    if (waiver != null && waiverCanGiveUp(waiver, bounds)) {
+      return billMonthOutOfWaiver(
+        db,
+        waiver: waiver,
+        bounds: bounds,
+        membership: membership,
+        expectedAmountMinor: expected,
+        plan: plan,
+        source: source,
+        reason: reason,
+        actorId: actorId,
+        at: at,
+      );
+    }
+
+    final period = await db.into(db.membershipPeriods).insertReturning(
+          MembershipPeriodsCompanion.insert(
+            membershipId: membership.id,
+            periodStart: bounds.periodStart,
+            periodEnd: bounds.periodEnd,
+            expectedAmountMinor: expected,
+          ),
+        );
+
+    await recordCycleOpened(
+      db,
+      membershipPeriodId: period.id,
+      amountMinor: expected,
+      membership: membership,
+      plan: plan,
+      source: source,
+      reason: reason,
+      actorId: actorId,
+      at: at,
+    );
+
+    return period;
+  }
+
   Future<RecordPaymentResult> call(RecordPaymentInput input) async {
     // A repeat submit with the same key is not an error: hand back what was
     // recorded the first time.
@@ -276,10 +352,14 @@ class RecordPaymentService {
     // rendering because the receipt has to name that cycle's own months: on a
     // three-month plan, a payment picked as September belongs to — and must
     // read as — August 2026 - October 2026.
-    final existingCycle = await periodForMemberContaining(
+    //
+    // A month covered only by a waiver has no cycle yet, so the receipt names
+    // the month itself. Reading the waiver here is what printed "August 2026"
+    // on a receipt for September.
+    final existingCycle = await cycleToBillFor(
       db,
       memberId: member.id,
-      month: bounds.periodStart,
+      bounds: bounds,
     );
     final cycleStart =
         existingCycle?.periodStart.toUtc() ?? bounds.periodStart;
@@ -345,46 +425,24 @@ class RecordPaymentService {
         // Resolved again inside the transaction: the read above was for the
         // receipt text, and between then and here another submit could have
         // opened the cycle.
-        var period = await periodForMemberContaining(
+        final billed = await cycleToBillFor(
           db,
           memberId: member.id,
-          month: bounds.periodStart,
+          bounds: bounds,
         );
 
-        if (period == null) {
-          // The caller's figure only when the cycle is being created here; a
-          // month that already has one keeps the price it was billed at. See
-          // [RecordPaymentInput.expectedAmountMinor].
-          final typed = input.expectedAmountMinor;
-          final expected =
-              typed ?? (membership.feeOverrideMinor ?? plan.priceMinor);
-
-          period = await db.into(db.membershipPeriods).insertReturning(
-                MembershipPeriodsCompanion.insert(
-                  membershipId: membership.id,
-                  periodStart: bounds.periodStart,
-                  periodEnd: bounds.periodEnd,
-                  expectedAmountMinor: expected,
-                ),
-              );
-
-          // A figure typed on the form is its own reason: it is not the plan's
-          // price and not the member's standing fee, and a later reader must
-          // not be left to assume it was either.
-          await recordCycleOpened(
-            db,
-            membershipPeriodId: period.id,
-            amountMinor: expected,
-            membership: membership,
-            plan: plan,
-            source: typed == null ? null : CyclePricingSource.manual,
-            reason: typed == null
-                ? 'Opened by a payment recorded for this month.'
-                : 'Amount entered on the Record Payment form.',
-            actorId: input.recordedById,
-            at: input.paymentDate,
-          );
-        }
+        final period = billed ??
+            await _openCycleFor(
+              bounds: bounds,
+              membership: membership,
+              plan: plan,
+              // The caller's figure only when the cycle is being created here;
+              // a month that already has one keeps the price it was billed at.
+              // See [RecordPaymentInput.expectedAmountMinor].
+              typed: input.expectedAmountMinor,
+              actorId: input.recordedById,
+              at: input.paymentDate,
+            );
 
         final paymentId = await db.into(db.payments).insert(
               PaymentsCompanion.insert(

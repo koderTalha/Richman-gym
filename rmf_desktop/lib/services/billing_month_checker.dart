@@ -1,5 +1,6 @@
 import 'package:drift/drift.dart';
 
+import '../data/cycle_waivers.dart';
 import '../data/database.dart';
 import '../data/membership_queries.dart';
 import '../data/settings_repository.dart';
@@ -50,7 +51,7 @@ class BillingMonthChecker {
 
     // The cycle covering the selected month, on any enrolment. Containment,
     // not start-of-month equality — see periodForMemberContaining.
-    final containing = await periodForMemberContaining(
+    final covering = await periodForMemberContaining(
       db,
       memberId: memberId,
       month: selectedStart,
@@ -60,10 +61,10 @@ class BillingMonthChecker {
     // under if it exists, otherwise the plan the member is on now, because
     // that is what a new cycle would be created under.
     final open = await openMembershipFor(db, memberId);
-    final governing = containing == null
+    final governing = covering == null
         ? open
         : memberships.firstWhere(
-            (m) => m.id == containing.membershipId,
+            (m) => m.id == covering.membershipId,
             orElse: () => open ?? memberships.first,
           );
     final plan = governing == null ? null : planById[governing.planId];
@@ -73,12 +74,23 @@ class BillingMonthChecker {
     if (plan == null) {
       return BillingMonthCheck(
         review: const BillingMonthReview.clean(),
-        period: containing,
+        period: covering,
         plan: null,
         durationMonths: 1,
         member: member,
       );
     }
+
+    // Waivers are not cycles for this purpose: a month the ledger import
+    // forgave has no bill of its own, and answering with the waiver billed the
+    // money against a cycle worth nothing, named after whichever month the
+    // waiver happened to start in. Resolved against the span the month would be
+    // billed over — see `data/cycle_waivers.dart`.
+    final containing = await cycleToBillFor(
+      db,
+      memberId: memberId,
+      bounds: periodBounds(billingMonth, plan.durationMonths),
+    );
 
     // Every rule is about the cycle, so a month falling inside an existing one
     // is judged as that cycle — not as a cycle that would start mid-quarter.
@@ -90,9 +102,14 @@ class BillingMonthChecker {
       excludePaymentId: excludePaymentId,
     );
 
+    // A waiver holds no payment because none was ever owed. Counting it as an
+    // unpaid earlier cycle would warn that "August 2026 is still unpaid" on
+    // every September the import forgave — which is the one thing the owner has
+    // already decided.
     final unpaidEarlier = [
       for (final period in periods)
         if (period.periodStart.toUtc().isBefore(cycleStart) &&
+            !isWaivedCycle(period) &&
             !paidPeriodIds.contains(period.id))
           UnpaidCycle(
             periodStart: period.periodStart.toUtc(),
@@ -181,8 +198,12 @@ class BillingMonthCheck {
 
   final BillingMonthReview review;
 
-  /// The existing cycle containing the selected month, or null if the month is
-  /// not covered by one yet.
+  /// The existing cycle billing the selected month, or null if the month has no
+  /// bill of its own yet.
+  ///
+  /// Null for a month covered only by a waiver, which is not a bill — see
+  /// `data/cycle_waivers.dart`. Callers that go on to open a cycle must take
+  /// the month out of that waiver rather than insert alongside it.
   final MembershipPeriod? period;
 
   /// Null only when the member has no enrolment at all, in which case there is
