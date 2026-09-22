@@ -3,6 +3,7 @@ import 'package:logging/logging.dart';
 
 import '../data/audit_repository.dart';
 import '../data/cycle_pricing_log.dart';
+import '../data/cycle_waivers.dart';
 import '../data/database.dart';
 import '../data/membership_queries.dart';
 import '../data/settings_repository.dart';
@@ -400,10 +401,15 @@ class PaymentEditService {
     await db.transaction(() async {
       // Resolved again in here: between the check above and now, another
       // window could have opened the cycle this payment is moving to.
-      var period = await periodForMemberContaining(
+      // Waivers are not cycles a payment can move onto: a month the ledger
+      // import forgave has no bill of its own, and moving money onto the waiver
+      // would credit a cycle worth nothing. Same rule the checker above applied
+      // — see `data/cycle_waivers.dart`.
+      final bounds = periodBounds(input.billingMonth, check.durationMonths);
+      var period = await cycleToBillFor(
         db,
         memberId: member.id,
-        month: parseBillingMonth(input.billingMonth),
+        bounds: bounds,
       );
 
       if (period == null) {
@@ -413,26 +419,45 @@ class PaymentEditService {
           // gone. Abort rather than invent an enrolment.
           throw StateError('No enrolment to open a billing cycle under');
         }
-        final bounds =
-            periodBounds(input.billingMonth, check.durationMonths);
         final expected = open.feeOverrideMinor ?? check.plan!.priceMinor;
-        period = await db.into(db.membershipPeriods).insertReturning(
-              MembershipPeriodsCompanion.insert(
-                membershipId: open.id,
-                periodStart: bounds.periodStart,
-                periodEnd: bounds.periodEnd,
-                expectedAmountMinor: expected,
-              ),
-            );
-        await recordCycleOpened(
+
+        final waiver = await waiverForMonth(
           db,
-          membershipPeriodId: period.id,
-          amountMinor: expected,
-          membership: open,
-          plan: check.plan,
-          reason: 'Opened by a payment moved onto this month.',
-          actorId: input.editedById,
+          memberId: member.id,
+          month: bounds.periodStart,
         );
+
+        if (waiver != null && waiverCanGiveUp(waiver, bounds)) {
+          period = await billMonthOutOfWaiver(
+            db,
+            waiver: waiver,
+            bounds: bounds,
+            membership: open,
+            expectedAmountMinor: expected,
+            plan: check.plan,
+            reason: 'Billed out of the ledger import\'s waiver by a payment '
+                'moved onto this month.',
+            actorId: input.editedById,
+          );
+        } else {
+          period = await db.into(db.membershipPeriods).insertReturning(
+                MembershipPeriodsCompanion.insert(
+                  membershipId: open.id,
+                  periodStart: bounds.periodStart,
+                  periodEnd: bounds.periodEnd,
+                  expectedAmountMinor: expected,
+                ),
+              );
+          await recordCycleOpened(
+            db,
+            membershipPeriodId: period.id,
+            amountMinor: expected,
+            membership: open,
+            plan: check.plan,
+            reason: 'Opened by a payment moved onto this month.',
+            actorId: input.editedById,
+          );
+        }
       }
       newPeriodId = period.id;
 
