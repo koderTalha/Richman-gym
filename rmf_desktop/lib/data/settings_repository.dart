@@ -1,5 +1,6 @@
 import 'package:bcrypt/bcrypt.dart';
 import 'package:drift/drift.dart';
+import 'package:logging/logging.dart';
 
 import '../domain/money.dart';
 import '../services/whatsapp/meta_client.dart';
@@ -9,6 +10,8 @@ import 'audit_repository.dart';
 import 'cycle_repricing.dart';
 import 'database.dart';
 import 'seed.dart';
+
+final _log = Logger('auth');
 
 /// Gym settings, plans and sections — everything the owner can configure.
 ///
@@ -211,6 +214,57 @@ class SettingsRepository {
     required String currentPassword,
     required String newPassword,
   }) async {
+    final weak = _rejectNewPassword(newPassword);
+    if (weak != null) return weak;
+
+    final user = await (db.select(db.users)..where((u) => u.id.equals(userId)))
+        .getSingleOrNull();
+    if (user == null) return 'That account no longer exists.';
+
+    if (!BCrypt.checkpw(currentPassword, user.passwordHash)) {
+      return 'The current password is incorrect.';
+    }
+
+    await _setPassword(userId, newPassword);
+    return null;
+  }
+
+  /// Replaces a forgotten password, proven by the password the app ships with
+  /// instead of the current one.
+  ///
+  /// This is the way back in for an owner who has locked themselves out, so
+  /// it asks for nothing they could have lost. The shipped password is in the
+  /// source, so anyone who has it can use this too — the price of recovery
+  /// without an email or phone to send a code to.
+  ///
+  /// Returns null on success, or a message explaining why it was rejected.
+  Future<String?> resetPassword({
+    required String email,
+    required String defaultPassword,
+    required String newPassword,
+  }) async {
+    // Checked before the account is looked up, so the reset form cannot be
+    // used to find out which emails have accounts.
+    if (defaultPassword != defaultAdminPassword) {
+      _log.warning('Password reset refused: wrong default password');
+      return 'The default password is incorrect.';
+    }
+
+    final weak = _rejectNewPassword(newPassword);
+    if (weak != null) return weak;
+
+    final address = email.trim().toLowerCase();
+    final user = await (db.select(db.users)
+          ..where((u) => u.email.equals(address)))
+        .getSingleOrNull();
+    if (user == null) return 'No account uses that email.';
+
+    await _setPassword(user.id, newPassword);
+    _log.warning('Password reset for ${user.email} using the default password');
+    return null;
+  }
+
+  static String? _rejectNewPassword(String newPassword) {
     if (newPassword.length < 8) {
       return 'The new password must be at least 8 characters.';
     }
@@ -221,22 +275,15 @@ class SettingsRepository {
       return 'That is the password the app is installed with. '
           'Choose a different one.';
     }
-
-    final user = await (db.select(db.users)..where((u) => u.id.equals(userId)))
-        .getSingleOrNull();
-    if (user == null) return 'That account no longer exists.';
-
-    if (!BCrypt.checkpw(currentPassword, user.passwordHash)) {
-      return 'The current password is incorrect.';
-    }
-
-    await (db.update(db.users)..where((u) => u.id.equals(userId))).write(
-      UsersCompanion(
-        passwordHash: Value(BCrypt.hashpw(newPassword, BCrypt.gensalt())),
-      ),
-    );
     return null;
   }
+
+  Future<void> _setPassword(int userId, String newPassword) =>
+      (db.update(db.users)..where((u) => u.id.equals(userId))).write(
+        UsersCompanion(
+          passwordHash: Value(BCrypt.hashpw(newPassword, BCrypt.gensalt())),
+        ),
+      );
 
   /// Builds the client for the currently configured provider.
   /// Throws when Meta is selected but not fully configured, which surfaces as a

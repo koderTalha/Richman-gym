@@ -3,6 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../bloc/auth_bloc.dart';
 import '../theme/app_theme.dart';
+import 'reset_password_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -41,6 +42,22 @@ class _LoginScreenState extends State<LoginScreen> {
             password: _passwordController.text,
           ),
         );
+  }
+
+  Future<void> _forgotPassword() async {
+    final reset = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => ResetPasswordScreen(email: _emailController.text.trim()),
+      ),
+    );
+    if (reset != true || !mounted) return;
+
+    _passwordController.clear();
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Password reset. Sign in with your new password.'),
+      ),
+    );
   }
 
   @override
@@ -139,6 +156,11 @@ class _LoginScreenState extends State<LoginScreen> {
                               onPressed: submitting ? null : _submit,
                               child:
                                   Text(submitting ? 'Signing in…' : 'Sign in'),
+                            ),
+                            const SizedBox(height: 6),
+                            TextButton(
+                              onPressed: submitting ? null : _forgotPassword,
+                              child: const Text('Forgot password?'),
                             ),
                           ],
                         ),
