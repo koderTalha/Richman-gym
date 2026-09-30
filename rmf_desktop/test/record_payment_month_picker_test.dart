@@ -191,13 +191,23 @@ void main() {
 
   testWidgets('naming a past month asks what it cost and settles that month',
       (tester) async {
-    await openDialog(tester);
-    await chooseMonthBack(tester, 4); // September -> May
+    // Four months before whenever this runs. It was written in September and
+    // spelled "May 2026" out, which stopped being four months back in October.
+    final now = DateTime.now();
+    final target = DateTime(now.year, now.month - 4);
+    const monthNames = [
+      'January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December',
+    ];
+    final label = '${monthNames[target.month - 1]} ${target.year}';
 
-    expect(find.text('May 2026'), findsWidgets,
+    await openDialog(tester);
+    await chooseMonthBack(tester, 4);
+
+    expect(find.text(label), findsWidgets,
         reason: 'the summary names the month the money is for');
     expect(find.text('Fee for this month *'), findsOneWidget,
-        reason: 'May has no cycle, so this payment opens one and its price is '
+        reason: 'that month has no cycle, so this payment opens one and its price is '
             'the owner\'s to state — not silently today\'s fee');
     expect(
       find.textContaining('No billing cycle exists for this period yet'),
@@ -215,8 +225,10 @@ void main() {
 
     final cycles = await periodsForMember(db, memberId);
     expect(cycles, hasLength(1));
-    expect(cycles.single.periodStart.toUtc(), DateTime.utc(2026, 5, 1),
-        reason: 'the money went to May, not to the oldest unpaid cycle');
+    expect(cycles.single.periodStart.toUtc(),
+        DateTime.utc(target.year, target.month, 1),
+        reason: 'the money went to the named month, not to the oldest '
+            'unpaid cycle');
     expect(cycles.single.expectedAmountMinor, 250000);
     expect(cycles.single.settledAt, isNotNull);
   });

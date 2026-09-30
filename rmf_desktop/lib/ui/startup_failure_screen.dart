@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
 import '../services/backup_service.dart';
+import '../services/diagnostics/send_to_developer.dart';
 import '../theme/app_theme.dart';
+import 'send_to_developer_dialog.dart';
 
 /// Shown instead of the app when startup fails.
 ///
@@ -81,8 +83,17 @@ class _StartupFailureScreen extends StatelessWidget {
                 ),
                 _Step(
                   number: 3,
-                  text: 'Send the log file in the "logs" folder to whoever '
-                      'supports this app. It records exactly what failed.',
+                  text: 'Send the developer a copy of the data and the logs, '
+                      'which record exactly what failed. It is locked so only '
+                      'the developer can open it.',
+                ),
+                Padding(
+                  padding: const EdgeInsets.only(left: 20, top: 4),
+                  child: FilledButton.icon(
+                    onPressed: () => _sendToDeveloper(context),
+                    icon: const Icon(Icons.support_agent_outlined, size: 16),
+                    label: const Text('Send to developer…'),
+                  ),
                 ),
                 const SizedBox(height: 20),
                 FutureBuilder<String>(
@@ -96,6 +107,28 @@ class _StartupFailureScreen extends StatelessWidget {
               ],
             ),
           ),
+        ),
+      ),
+    );
+  }
+
+  /// The database would not open, so there is no connection to snapshot
+  /// through; the files are sent as they lie on disk.
+  Future<void> _sendToDeveloper(BuildContext context) {
+    final sender = SendToDeveloper.installed(
+      snapshot: (scratch) async =>
+          rawFileSnapshot(await BackupService.liveDatabaseFile())(scratch),
+      gymName: () async => null,
+    );
+    return showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => SendToDeveloperDialog(
+        configured: sender.isConfigured,
+        send: (note) => sender.send(
+          note: note,
+          source: 'startup-failure',
+          startupError: '$error',
         ),
       ),
     );
