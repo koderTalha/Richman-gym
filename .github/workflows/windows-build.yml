@@ -61,10 +61,32 @@ jobs:
 
       - run: flutter pub get
 
+      # "Send to developer" posts to an Apps Script whose address is kept out
+      # of this public repository. A release without it would ship a button
+      # that can only say it cannot send, so a tag refuses to build without it;
+      # ordinary pushes and pull requests build either way.
+      - name: Check the diagnostics upload address is set
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          DIAGNOSTICS_UPLOAD_URL: ${{ secrets.DIAGNOSTICS_UPLOAD_URL }}
+        run: |
+          if (-not $env:DIAGNOSTICS_UPLOAD_URL) {
+            throw "The DIAGNOSTICS_UPLOAD_URL secret is not set. " +
+                  "See docs/diagnostics/SETUP.md."
+          }
+        shell: pwsh
+
       # Downloads SQLite for Windows and pdfium (used to turn the receipt PDF
       # into the PNG sent over WhatsApp), so the build needs network access.
+      # The upload address goes in through the environment rather than being
+      # written into the command, so it never appears in the workflow source.
       - name: Build release
-        run: flutter build windows --release
+        env:
+          DIAGNOSTICS_UPLOAD_URL: ${{ secrets.DIAGNOSTICS_UPLOAD_URL }}
+        run: >-
+          flutter build windows --release
+          "--dart-define=DIAGNOSTICS_UPLOAD_URL=$env:DIAGNOSTICS_UPLOAD_URL"
+        shell: pwsh
 
       - name: Show what was produced
         run: |

@@ -13,6 +13,7 @@ import 'backup_card.dart';
 import 'delete_members_card.dart';
 import 'historical_review_screen.dart';
 import 'plan_price_change_dialog.dart';
+import 'send_to_developer_card.dart';
 import 'update_card.dart';
 
 class SettingsScreen extends StatelessWidget {
@@ -75,6 +76,11 @@ class _SettingsView extends StatelessWidget {
                 ),
                 const SizedBox(height: 16),
                 UpdateCard(
+                  card: ({required title, subtitle, required child}) =>
+                      _Card(title: title, subtitle: subtitle, child: child),
+                ),
+                const SizedBox(height: 16),
+                SendToDeveloperCard(
                   card: ({required title, subtitle, required child}) =>
                       _Card(title: title, subtitle: subtitle, child: child),
                 ),
