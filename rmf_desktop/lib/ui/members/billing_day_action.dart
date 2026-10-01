@@ -4,6 +4,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../bloc/auth_bloc.dart';
 import '../../data/member_repository.dart';
 import '../../domain/dates.dart';
+import '../../domain/money.dart';
 import '../../services/billing_cycle_service.dart';
 import '../../theme/app_theme.dart';
 
@@ -155,10 +156,12 @@ class _TransitionPreview extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return FutureBuilder(
-      future: cycles.previewAnchorChange(memberId: memberId, anchorDay: anchorDay),
+      future: cycles.previewAnchorChangeWithFee(
+          memberId: memberId, anchorDay: anchorDay),
       builder: (context, snapshot) {
-        final preview = snapshot.data;
-        if (preview == null) return const SizedBox.shrink();
+        final data = snapshot.data;
+        if (data == null) return const SizedBox.shrink();
+        final preview = data.cycle;
 
         return Container(
           padding: const EdgeInsets.all(10),
@@ -170,7 +173,9 @@ class _TransitionPreview extends StatelessWidget {
             'Nothing already paid changes. The next cycle runs '
             '${formatDayMonthYear(preview.start)} to '
             '${formatDayMonthYear(preview.end)} (${preview.lengthInDays} days) '
-            'to move onto the new day.',
+            'to move onto the new day, and is charged '
+            '${formatMinorUnits(data.feeMinor)}'
+            '${preview.isTransition ? ' for those days' : ''}.',
             style: mutedStyleOf(context),
           ),
         );

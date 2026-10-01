@@ -2,12 +2,14 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:archive/archive.dart';
+import 'package:drift/drift.dart' show Value;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:path/path.dart' as p;
 import 'package:rich_man_fitness/data/database.dart';
+import 'package:rich_man_fitness/data/seed.dart';
 import 'package:rich_man_fitness/services/diagnostics/diagnostics_crypto.dart';
 import 'package:rich_man_fitness/services/diagnostics/send_to_developer.dart';
 
@@ -139,6 +141,43 @@ void main() {
     addTearDown(opened.close);
     final members = await opened.select(opened.members).get();
     expect(members.single.fullName, 'Member Three Eleven');
+  });
+
+  test('the Meta access token is not in the copy that is sent', () async {
+    // The bundle is sealed, but once unpacked on the developer's Mac it is an
+    // ordinary file, and the token in it would keep sending as the gym from
+    // anywhere (audit SEC-006).
+    const token = 'EAAG-live-token-that-works-from-anywhere-311';
+    await seedDatabase(db);
+    await db.update(db.gymSettings).write(const GymSettingsCompanion(
+          whatsappPhoneNumberId: Value('1234567890'),
+          whatsappAccessToken: Value(token),
+        ));
+
+    final received = <http.Request>[];
+    await sender(google(received: received)).send(note: '');
+
+    final archive =
+        await openUpload(received.firstWhere((r) => r.method == 'POST'));
+    final bytes = archive
+        .findFile('database/richmanfitness.sqlite')!
+        .content as List<int>;
+    expect(latin1.decode(bytes, allowInvalid: true), isNot(contains(token)),
+        reason: 'not even in the page\'s free space, where an UPDATE '
+            'would otherwise leave the old value');
+
+    final copy = File(p.join(workspace.path, 'received.sqlite'))
+      ..writeAsBytesSync(bytes);
+    final opened = AppDatabase.forTesting(NativeDatabase(copy));
+    addTearDown(opened.close);
+    final settings = await opened.select(opened.gymSettings).getSingle();
+    expect(settings.whatsappAccessToken, isNull);
+    expect(settings.whatsappPhoneNumberId, '1234567890',
+        reason: 'only the secret is taken out');
+
+    // And the gym's own copy is untouched.
+    expect((await db.select(db.gymSettings).getSingle()).whatsappAccessToken,
+        token);
   });
 
   test('leaves no snapshot behind on this computer', () async {

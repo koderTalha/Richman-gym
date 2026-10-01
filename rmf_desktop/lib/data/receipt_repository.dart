@@ -1,7 +1,13 @@
 import 'package:drift/drift.dart';
 
-import '../domain/billing_period.dart';
 import 'database.dart';
+import 'listing_search.dart';
+import 'payment_cycles.dart';
+
+/// Which receipts the Receipts screen lists, by where their WhatsApp delivery
+/// stands — judged on each receipt's *latest* attempt, as the dashboard's
+/// Failed WhatsApp count is.
+enum ReceiptFilter { all, sent, failed, notSent }
 
 /// A receipt joined with everything needed to display or resend it.
 class ReceiptRow {
@@ -16,6 +22,9 @@ class ReceiptRow {
   final Receipt receipt;
   final Payment payment;
   final Member member;
+
+  /// The months the payment paid for, read from its allocations — see
+  /// `payment_cycles.dart`.
   final String periodLabel;
   final WhatsAppMessage? latestMessage;
 
@@ -68,13 +77,27 @@ class ReceiptRepository {
 
   final AppDatabase db;
 
-  Future<List<ReceiptRow>> list({String? search, int limit = 300}) async {
-    final receipts = await (db.select(db.receipts)
-          ..orderBy([
-            (r) => OrderingTerm(expression: r.id, mode: OrderingMode.desc)
-          ])
-          ..limit(limit))
-        .get();
+  /// Receipts, newest first.
+  ///
+  /// [search] (receipt number, member name or phone) and [filter] are applied
+  /// in SQL *before* [limit]. They used to be applied in Dart to the newest
+  /// 300, so an older receipt could not be found by its own number, and the
+  /// "WhatsApp failed" filter showed nothing while the dashboard counted a
+  /// failure further back. [count] answers how many match in all.
+  Future<List<ReceiptRow>> list({
+    String? search,
+    ReceiptFilter filter = ReceiptFilter.all,
+    int limit = 300,
+  }) async {
+    final query = db.select(db.receipts)
+      ..orderBy([
+        (r) => OrderingTerm(expression: r.id, mode: OrderingMode.desc)
+      ])
+      ..limit(limit);
+    final where = _listFilter(search: search, filter: filter);
+    if (where != null) query.where((_) => where);
+
+    final receipts = await query.get();
     if (receipts.isEmpty) return const [];
 
     final paymentIds = receipts.map((r) => r.paymentId).toList();
@@ -94,7 +117,7 @@ class ReceiptRepository {
     };
 
     final latest = await _latestMessages(receipts.map((r) => r.id).toList());
-    final periodLabels = await _periodLabels(payments.values.toList());
+    final periodLabels = await paymentPeriodLabels(db, payments.values);
 
     final rows = <ReceiptRow>[];
     for (final receipt in receipts) {
@@ -111,16 +134,77 @@ class ReceiptRepository {
         latestMessage: latest[receipt.id],
       ));
     }
+    return rows;
+  }
 
-    final term = search?.trim().toLowerCase();
-    if (term == null || term.isEmpty) return rows;
+  /// How many receipts match [search] and [filter] in all, however many
+  /// [list] was allowed to return.
+  Future<int> count({
+    String? search,
+    ReceiptFilter filter = ReceiptFilter.all,
+  }) async {
+    final count = db.receipts.id.count();
+    final query = db.selectOnly(db.receipts)..addColumns([count]);
+    final where = _listFilter(search: search, filter: filter);
+    if (where != null) query.where(where);
+    return (await query.getSingle()).read(count) ?? 0;
+  }
 
-    return rows
-        .where((r) =>
-            r.receipt.receiptNumber.toLowerCase().contains(term) ||
-            r.member.fullName.toLowerCase().contains(term) ||
-            r.member.phone.contains(term))
-        .toList();
+  /// The WHERE clause [list] and [count] share. Null when nothing narrows
+  /// the list.
+  Expression<bool>? _listFilter({
+    String? search,
+    required ReceiptFilter filter,
+  }) {
+    final conditions = <Expression<bool>>[];
+
+    final term = search?.trim() ?? '';
+    if (term.isNotEmpty) {
+      final members = db.selectOnly(db.members)
+        ..addColumns([db.members.id])
+        ..where(memberMatches(db.members, term));
+      final payments = db.selectOnly(db.payments)
+        ..addColumns([db.payments.id])
+        ..where(db.payments.memberId.isInQuery(members));
+      conditions.add(db.receipts.receiptNumber
+              .lower()
+              .like(containsPattern(term), escapeChar: r'\') |
+          db.receipts.paymentId.isInQuery(payments));
+    }
+
+    final byStatus = switch (filter) {
+      ReceiptFilter.all => null,
+      ReceiptFilter.sent => _latestAttemptIs(const [
+          WhatsAppStatus.sent,
+          WhatsAppStatus.delivered,
+          WhatsAppStatus.read,
+        ]),
+      ReceiptFilter.failed => _latestAttemptIs(const [WhatsAppStatus.failed]),
+      // Never attempted at all: no message row for the receipt.
+      ReceiptFilter.notSent => db.receipts.id.isNotInQuery(
+          db.selectOnly(db.whatsAppMessages)
+            ..addColumns([db.whatsAppMessages.receiptId])),
+    };
+    if (byStatus != null) conditions.add(byStatus);
+
+    return conditions.isEmpty ? null : conditions.reduce((a, b) => a & b);
+  }
+
+  /// Receipts whose latest WhatsApp attempt has one of [statuses]. "Latest"
+  /// is the highest message id per receipt — the rule [sendHistory],
+  /// [failedCount] and [_latestMessages] all use, so a receipt the dashboard
+  /// counts as failed is one this filter lists.
+  Expression<bool> _latestAttemptIs(List<WhatsAppStatus> statuses) {
+    final latestIds = db.selectOnly(db.whatsAppMessages)
+      ..addColumns([db.whatsAppMessages.id.max()])
+      ..groupBy([db.whatsAppMessages.receiptId]);
+    final matching = db.selectOnly(db.whatsAppMessages)
+      ..addColumns([db.whatsAppMessages.receiptId])
+      ..where(db.whatsAppMessages.id.isInQuery(latestIds) &
+          statuses
+              .map((s) => db.whatsAppMessages.status.equalsValue(s))
+              .reduce((a, b) => a | b));
+    return db.receipts.id.isInQuery(matching);
   }
 
   /// Send history, one entry per receipt, newest activity first.
@@ -214,51 +298,18 @@ class ReceiptRepository {
       (db.select(db.receipts)..where((r) => r.id.equals(id)))
           .getSingleOrNull();
 
+  /// Each receipt's latest attempt: the highest message id, as in
+  /// [_latestAttemptIs]. A retry always inserts, so ids and attempt numbers
+  /// rise together; reading both by id means the badge on a receipt and the
+  /// filter that listed it cannot disagree about which attempt is latest.
   Future<Map<int, WhatsAppMessage>> _latestMessages(List<int> receiptIds) async {
     if (receiptIds.isEmpty) return {};
     final all = await (db.select(db.whatsAppMessages)
           ..where((m) => m.receiptId.isIn(receiptIds))
-          ..orderBy([(m) => OrderingTerm(expression: m.attemptNumber)]))
+          ..orderBy([(m) => OrderingTerm(expression: m.id)]))
         .get();
 
     // Ascending order means the last write per receipt wins.
     return {for (final m in all) m.receiptId: m};
-  }
-
-  Future<Map<int, String>> _periodLabels(List<Payment> payments) async {
-    final periodIds =
-        payments.map((p) => p.membershipPeriodId).whereType<int>().toSet().toList();
-    if (periodIds.isEmpty) return {};
-
-    final periods = {
-      for (final p in await (db.select(db.membershipPeriods)
-            ..where((p) => p.id.isIn(periodIds)))
-          .get())
-        p.id: p,
-    };
-    final membershipIds =
-        periods.values.map((p) => p.membershipId).toSet().toList();
-    final memberships = {
-      for (final m in await (db.select(db.memberships)
-            ..where((m) => m.id.isIn(membershipIds)))
-          .get())
-        m.id: m,
-    };
-    final plans = {
-      for (final p in await db.select(db.membershipPlans).get()) p.id: p
-    };
-
-    return {
-      for (final payment in payments)
-        if (payment.membershipPeriodId != null &&
-            periods[payment.membershipPeriodId] != null)
-          payment.id: formatBillingPeriod(
-            periods[payment.membershipPeriodId]!.periodStart,
-            plans[memberships[periods[payment.membershipPeriodId]!.membershipId]
-                        ?.planId]
-                    ?.durationMonths ??
-                1,
-          ),
-    };
   }
 }

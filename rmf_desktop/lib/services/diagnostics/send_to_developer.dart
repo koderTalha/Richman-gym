@@ -38,18 +38,55 @@ const _replyTimeout = Duration(seconds: 30);
 typedef DatabaseSnapshot = Future<List<File>> Function(Directory scratch);
 
 /// The snapshot for a running app: `VACUUM INTO`, which gives a consistent
-/// copy even while the database is open, exactly as a backup does.
+/// copy even while the database is open, exactly as a backup does — with the
+/// Meta access token taken out of the copy before it is packed.
 DatabaseSnapshot vacuumSnapshot(AppDatabase db) => (scratch) async {
       final target = File(p.join(scratch.path, 'richmanfitness.sqlite'));
       final escaped = target.path.replaceAll("'", "''");
       await db.customStatement("VACUUM INTO '$escaped'");
+      await _removeAccessToken(db, escaped);
       return [target];
     };
+
+/// Blanks the WhatsApp access token in the scratch copy (audit SEC-006).
+///
+/// The bundle is sealed for the developer, but once unpacked on their Mac the
+/// database is an ordinary file, and the token in it keeps sending as the gym
+/// from anywhere until it is revoked in Meta's dashboard. Nothing the
+/// developer looks into needs it: whether one is set is visible from the
+/// other WhatsApp columns, and a token can be tested only from the gym's own
+/// Settings anyway.
+///
+/// `secure_delete` because an UPDATE otherwise leaves the old value sitting
+/// in the page's free space, where anything reading the raw bytes still finds
+/// it; the rollback journal rather than WAL so the change lands in the one
+/// file that is packed. Throws if it cannot be done, which fails the send:
+/// the copy is one this function just made, so a failure here is not the
+/// broken-database case, and quietly sending the token is the worse outcome.
+Future<void> _removeAccessToken(AppDatabase db, String escapedPath) async {
+  const alias = 'diagnostics_copy';
+  await db.customStatement("ATTACH DATABASE '$escapedPath' AS $alias");
+  try {
+    await db.customStatement('PRAGMA $alias.journal_mode = DELETE');
+    await db.customStatement('PRAGMA $alias.secure_delete = ON');
+    await db.customStatement(
+        'UPDATE $alias.gym_settings SET whatsapp_access_token = NULL');
+  } finally {
+    await db.customStatement('DETACH DATABASE $alias');
+  }
+}
 
 /// The snapshot for when the database would not open at all. There is no
 /// connection to VACUUM through, so the files are copied as they lie — the
 /// write-ahead log too, since SQLite replays it when the copy is opened beside
 /// it and that is where the most recent writes may be.
+///
+/// Unlike [vacuumSnapshot], the access token is left in: these files are the
+/// evidence of why the database would not open, and opening them to edit one
+/// column would replay and fold the write-ahead log into the main file —
+/// changing exactly what the developer needs to see — on a file that may not
+/// open at all. The folder such a bundle unpacks into therefore holds a live
+/// credential, and is deleted once it has been looked at.
 DatabaseSnapshot rawFileSnapshot(File live) => (scratch) async {
       final copied = <File>[];
       for (final suffix in ['', '-wal']) {

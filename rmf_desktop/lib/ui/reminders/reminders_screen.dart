@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:logging/logging.dart';
 
 import '../../bloc/auth_bloc.dart';
+import '../../data/database.dart';
 import '../../data/settings_repository.dart';
 import '../../domain/dates.dart';
 import '../../domain/money.dart';
@@ -9,6 +11,8 @@ import '../../domain/phone.dart';
 import '../../domain/reminder_schedule.dart';
 import '../../services/reminder_service.dart';
 import '../../theme/app_theme.dart';
+
+final _log = Logger('reminders');
 
 /// Who is due, who is overdue, and one place to send to all of them.
 ///
@@ -29,6 +33,17 @@ class _RemindersScreenState extends State<RemindersScreen> {
   bool _sending = false;
   String? _currency;
 
+  /// Set when the queue could not be built. Shown in place of the list, with
+  /// a way to try again: a spinner that never stops reads as "still
+  /// working", and the owner would wait on it indefinitely.
+  String? _error;
+
+  /// The Mock provider records every reminder as sent — and a sent reminder
+  /// is never offered again — while nothing actually leaves the machine. Said
+  /// here as well as on the WhatsApp screen, because this is where the owner
+  /// presses Send.
+  bool _mockProvider = false;
+
   ReminderService get _service => context.read<ReminderService>();
 
   @override
@@ -38,18 +53,40 @@ class _RemindersScreenState extends State<RemindersScreen> {
   }
 
   Future<void> _load() async {
-    setState(() => _loading = true);
-    final settings = await context.read<SettingsRepository>().get();
-    final queue = await _service.buildQueue();
-    if (!mounted) return;
     setState(() {
-      _queue = queue;
-      _currency = settings.currency;
-      _selected
-        ..clear()
-        ..addAll(queue.map((c) => c.member.id));
-      _loading = false;
+      _loading = true;
+      _error = null;
     });
+
+    // Read before the first await: the context must not be used across an
+    // async gap.
+    final settingsRepository = context.read<SettingsRepository>();
+    final service = _service;
+
+    try {
+      final settings = await settingsRepository.get();
+      final queue = await service.buildQueue();
+      if (!mounted) return;
+      setState(() {
+        _queue = queue;
+        _currency = settings.currency;
+        _mockProvider = settings.whatsappProvider != WhatsAppProviderKind.meta;
+        _selected
+          ..clear()
+          ..addAll(queue.map((c) => c.member.id));
+        _loading = false;
+      });
+    } catch (error, stack) {
+      _log.severe('The reminder queue could not be built', error, stack);
+      if (!mounted) return;
+      setState(() {
+        _queue = const [];
+        _selected.clear();
+        _error = 'The reminders could not be loaded. Try again, or see the '
+            'Logs screen.';
+        _loading = false;
+      });
+    }
   }
 
   Future<void> _sendSelected() async {
@@ -60,23 +97,35 @@ class _RemindersScreenState extends State<RemindersScreen> {
 
     setState(() => _sending = true);
 
+    final service = _service;
     var sent = 0;
     var failed = 0;
+    // Paid, already sent by the automatic run, or being sent by it right now
+    // — see `ReminderService.send`. Not a failure, so not counted as one.
+    var notNeeded = 0;
     for (final candidate in toSend) {
-      final outcome = await _service.send(candidate, actorId: actorId);
-      if (outcome is ReminderSent) {
-        sent++;
-      } else {
-        failed++;
+      final outcome = await service.send(candidate, actorId: actorId);
+      switch (outcome) {
+        case ReminderSent():
+          sent++;
+        case ReminderNotNeeded():
+          notNeeded++;
+        case ReminderFailed():
+          failed++;
       }
     }
 
     if (!mounted) return;
     setState(() => _sending = false);
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(failed == 0
-          ? 'Sent $sent reminder${sent == 1 ? '' : 's'}.'
-          : 'Sent $sent, $failed could not be sent — see the Logs screen.'),
+      content: Text([
+        failed == 0
+            ? 'Sent $sent reminder${sent == 1 ? '' : 's'}.'
+            : 'Sent $sent, $failed could not be sent — see the Logs screen.',
+        if (notNeeded > 0)
+          '$notNeeded no longer needed: paid or already reminded since the '
+              'list was loaded.',
+      ].join(' ')),
     ));
     await _load();
   }
@@ -115,18 +164,30 @@ class _RemindersScreenState extends State<RemindersScreen> {
     if (confirmed != true || !mounted) return;
 
     final actorId = context.read<AuthBloc>().state.user!.id;
+    final service = _service;
+    final messenger = ScaffoldMessenger.of(context);
     setState(() => _sending = true);
 
-    for (final candidate in _queue) {
-      await _service.dismiss(candidate, actorId: actorId);
+    var cleared = 0;
+    try {
+      for (final candidate in _queue) {
+        await service.dismiss(candidate, actorId: actorId);
+        cleared++;
+      }
+      messenger.showSnackBar(SnackBar(
+        content: Text('Cleared $count reminder${count == 1 ? '' : 's'} '
+            'without sending.'),
+      ));
+    } catch (error, stack) {
+      _log.severe('Clearing the reminder queue failed', error, stack);
+      messenger.showSnackBar(SnackBar(
+        content: Text('Cleared $cleared of $count, then something went '
+            'wrong — see the Logs screen.'),
+      ));
     }
 
     if (!mounted) return;
     setState(() => _sending = false);
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(
-          'Cleared $count reminder${count == 1 ? '' : 's'} without sending.'),
-    ));
     await _load();
   }
 
@@ -169,8 +230,31 @@ class _RemindersScreenState extends State<RemindersScreen> {
               ),
             ],
           ),
+          if (_mockProvider) ...[
+            const SizedBox(height: 16),
+            const _MockProviderWarning(),
+          ],
           const SizedBox(height: 20),
-          if (_queue.isEmpty)
+          if (_error != null)
+            Expanded(
+              child: Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(_error!,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: context.palette.expired)),
+                    const SizedBox(height: 12),
+                    OutlinedButton.icon(
+                      onPressed: _load,
+                      icon: const Icon(Icons.refresh, size: 16),
+                      label: const Text('Try again'),
+                    ),
+                  ],
+                ),
+              ),
+            )
+          else if (_queue.isEmpty)
             Expanded(
               child: Center(
                 child: Text('Nobody is due or overdue right now.',
@@ -217,6 +301,41 @@ class _RemindersScreenState extends State<RemindersScreen> {
               ],
             ),
           ],
+        ],
+      ),
+    );
+  }
+}
+
+/// Key on the Mock-provider warning, for tests.
+const remindersMockWarningKey = Key('reminders-mock-warning');
+
+class _MockProviderWarning extends StatelessWidget {
+  const _MockProviderWarning();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      key: remindersMockWarningKey,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: context.palette.dueBg,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: context.palette.border),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.warning_amber_rounded,
+              size: 18, color: context.palette.due),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'WhatsApp is in Mock mode: nothing sent from here reaches '
+              'anybody, yet each reminder is recorded as sent and will not '
+              'be offered again. Switch to Meta in Settings before sending.',
+              style: TextStyle(fontSize: 12, color: context.palette.due),
+            ),
+          ),
         ],
       ),
     );
@@ -275,8 +394,13 @@ class _ReminderTile extends StatelessWidget {
                         fontWeight: FontWeight.w600,
                         color: context.palette.textPrimary)),
                 const SizedBox(height: 2),
-                Text(maskPhone(candidate.member.phone),
-                    style: mutedStyleOf(context)),
+                Text(
+                  candidate.retry
+                      ? '${maskPhone(candidate.member.phone)} · '
+                          'last attempt could not be sent'
+                      : maskPhone(candidate.member.phone),
+                  style: mutedStyleOf(context),
+                ),
               ],
             ),
           ),

@@ -51,13 +51,13 @@ void main() {
             'name': 'RichManFitness-Setup-1.2.0.exe',
             'size': 1024,
             'browser_download_url':
-                'https://github.com/x/y/releases/download/v1.2.0/i.exe',
+                'https://github.com/koderTalha/Richman-gym/releases/download/v1.2.0/i.exe',
           },
           {
             'name': 'RichManFitness-Setup-1.2.0.exe.sha256',
             'size': 64,
             'browser_download_url':
-                'https://github.com/x/y/releases/download/v1.2.0/i.exe.sha256',
+                'https://github.com/koderTalha/Richman-gym/releases/download/v1.2.0/i.exe.sha256',
           },
         ],
       });
@@ -107,9 +107,9 @@ void main() {
           current: const AppVersion(1, 1, 0),
           version: const AppVersion(1, 2, 0),
           installerUrl: Uri.parse(
-              'https://github.com/x/y/releases/download/v1.2.0/i.exe'),
+              'https://github.com/koderTalha/Richman-gym/releases/download/v1.2.0/i.exe'),
           checksumUrl: Uri.parse(
-              'https://github.com/x/y/releases/download/v1.2.0/i.exe.sha256'),
+              'https://github.com/koderTalha/Richman-gym/releases/download/v1.2.0/i.exe.sha256'),
           sizeBytes: 1024,
         ),
       );

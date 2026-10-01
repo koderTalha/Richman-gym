@@ -4,6 +4,7 @@ import 'package:logging/logging.dart';
 
 import '../data/database.dart';
 import '../data/member_repository.dart';
+import '../domain/name.dart';
 import '../domain/phone.dart';
 import '../services/whatsapp/member_welcome_service.dart';
 
@@ -197,7 +198,23 @@ class MemberFormBloc extends Bloc<MemberFormEvent, MemberFormState> {
   ) async {
     emit(state.copyWith(status: MemberFormStatus.submitting));
 
-    final normalized = normalizePhone(event.rawPhone);
+    // Read fresh rather than taken from [state]: the comparisons below are
+    // about what is on file at the moment of saving, not when the form opened.
+    final stored =
+        isEditing ? (await _repository.byId(memberId!))?.member : null;
+    final raw = event.rawPhone.trim();
+
+    // A member imported without a usable number is stored with phone ''. The
+    // form prefills whatever the ledger had ("-", "NILL", or nothing), which
+    // never normalises — so demanding a valid number here made such a member
+    // uneditable unless the owner invented one. Leaving the field blank, or
+    // exactly as it was, keeps them phoneless. New members still need a
+    // number: there is no older record to be faithful to.
+    final keepsNoNumber = stored != null &&
+        stored.phone.isEmpty &&
+        (raw.isEmpty || raw == (stored.phoneRaw ?? '').trim());
+
+    final normalized = keepsNoNumber ? '' : normalizePhone(raw);
     if (normalized == null) {
       emit(state.copyWith(
         status: MemberFormStatus.failed,
@@ -206,11 +223,26 @@ class MemberFormBloc extends Bloc<MemberFormEvent, MemberFormState> {
       return;
     }
 
+    // An edit that leaves the number alone is not putting anybody on it. The
+    // owner already answered "is this number right?" when it was entered, and
+    // asking again on every save of a relative's fee or address taught them to
+    // click through the question without reading it.
+    final phoneUnchanged = stored != null && stored.phone == normalized;
+
+    // `membersOnPhone` returns nobody for '' — a missing number is not one the
+    // phoneless members share with each other.
     final sharing =
         await _repository.membersOnPhone(normalized, excluding: memberId);
 
     // The same person on the same number is a duplicate, not a family: reject.
-    final samePerson = matchByName(sharing, event.fullName);
+    // Skipped only for an edit that changes neither the number nor the name,
+    // which cannot be creating a duplicate and must not be blocked by one that
+    // already exists — that would make both members uneditable.
+    final untouchedIdentity = stored != null &&
+        phoneUnchanged &&
+        namesMatch(stored.fullName, event.fullName);
+    final samePerson =
+        untouchedIdentity ? null : matchByName(sharing, event.fullName);
     if (samePerson != null) {
       emit(state.copyWith(
         status: MemberFormStatus.failed,
@@ -225,7 +257,7 @@ class MemberFormBloc extends Bloc<MemberFormEvent, MemberFormState> {
     // looks exactly the same, and silently accepting it points somebody else's
     // WhatsApp receipts at the wrong handset for good. So the operator is
     // shown whose number it is and has to say yes.
-    if (sharing.isNotEmpty && !event.confirmSharedPhone) {
+    if (sharing.isNotEmpty && !event.confirmSharedPhone && !phoneUnchanged) {
       emit(state.copyWith(
         status: MemberFormStatus.confirmSharedPhone,
         sharingPhone: sharing,
@@ -239,13 +271,28 @@ class MemberFormBloc extends Bloc<MemberFormEvent, MemberFormState> {
       event.joiningDate.day,
     );
 
+    // The same treatment as the joining date, for the same reason. The date
+    // picker hands back a *local* midnight; passed through as it was, every
+    // later `toUtc()` on the gym's UTC+5 clock landed on the day before the
+    // one picked — in `membership_changes`, the new enrolment's start, the
+    // audit line and the re-pricing cut-off alike. The calendar day the owner
+    // chose is what is meant, so that is what is stored.
+    final picked = event.effectiveFrom;
+    final effectiveFrom = picked == null
+        ? null
+        : DateTime.utc(picked.year, picked.month, picked.day);
+
+    // Null rather than the ledger's placeholder once the owner has cleared
+    // it: the column holds the number as entered, and they entered nothing.
+    final phoneRaw = raw.isEmpty ? null : raw;
+
     try {
       if (isEditing) {
         await _repository.update(
           id: memberId!,
           fullName: event.fullName,
           phone: normalized,
-          phoneRaw: event.rawPhone,
+          phoneRaw: phoneRaw,
           email: event.email,
           gender: event.gender,
           address: event.address,
@@ -254,7 +301,7 @@ class MemberFormBloc extends Bloc<MemberFormEvent, MemberFormState> {
           feeOverrideMinor: event.feeOverrideMinor,
           joiningDate: joining,
           actorId: event.actorId,
-          effectiveFrom: event.effectiveFrom,
+          effectiveFrom: effectiveFrom,
         );
         emit(state.copyWith(status: MemberFormStatus.saved));
         return;
@@ -263,7 +310,7 @@ class MemberFormBloc extends Bloc<MemberFormEvent, MemberFormState> {
       final newMemberId = await _repository.create(
         fullName: event.fullName,
         phone: normalized,
-        phoneRaw: event.rawPhone,
+        phoneRaw: phoneRaw,
         email: event.email,
         gender: event.gender,
         address: event.address,

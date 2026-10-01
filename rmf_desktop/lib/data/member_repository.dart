@@ -4,6 +4,7 @@ import '../domain/dates.dart';
 import '../domain/member_status.dart';
 import '../domain/money.dart';
 import '../domain/name.dart';
+import '../domain/phone.dart';
 import 'audit_repository.dart';
 import 'cycle_repricing.dart';
 import 'database.dart';
@@ -196,14 +197,44 @@ class MemberRepository {
       // Escaped, so a "%" typed into the search box matches a literal percent
       // sign rather than expanding to every member on the roster.
       final pattern = '%${escapeLikePattern(term.toLowerCase())}%';
+
+      // Phones are stored as E.164 (+923001234567), and the owner never types
+      // one that way: 03001234567, 0300-1234567, "+92 300 1234567". Matched
+      // as typed, none of those found anybody. A complete number is
+      // normalised exactly as the form normalises it and matched outright; a
+      // partial one is reduced to its digits, less the trunk 0 or country
+      // code a stored number cannot contain in that position, and matched
+      // anywhere in the number. Digits only, so nothing in it needs escaping.
+      final fullNumber = normalizePhone(term);
+      final digitRun = _phoneDigits(term);
+
       membersQuery = membersQuery
         ..where((m) =>
             m.fullName.lower().like(pattern, escapeChar: r'\') |
             m.phone.like(pattern, escapeChar: r'\') |
+            (fullNumber != null
+                ? m.phone.equals(fullNumber)
+                : const Constant(false)) |
+            (digitRun.isNotEmpty
+                ? m.phone.like('%$digitRun%')
+                : const Constant(false)) |
             (code != null ? m.memberCode.equals(code) : const Constant(false)));
     }
 
     return _buildRows(await membersQuery.get(), now: now);
+  }
+
+  /// The digits of a phone number as typed, without the prefix that only
+  /// exists in the way people write it: 0092 or 92 (the country code, which a
+  /// stored number does have, but after a "+" that the typed one lacks), or
+  /// the trunk 0 a stored number never has at all. Empty for a term with no
+  /// digits in it, which then matches no phone rather than every phone.
+  static String _phoneDigits(String term) {
+    final digits = term.replaceAll(RegExp(r'\D'), '');
+    for (final prefix in const ['0092', '92', '0']) {
+      if (digits.startsWith(prefix)) return digits.substring(prefix.length);
+    }
+    return digits;
   }
 
   /// Joins members with their current enrolment, cycles and payment state.
@@ -229,10 +260,14 @@ class MemberRepository {
       for (final p in await db.select(db.membershipPlans).get()) p.id: p
     };
 
-    final memberships = await (db.select(db.memberships)
-          ..where((m) => m.memberId.isIn(memberIds))
-          ..orderBy([(m) => OrderingTerm(expression: m.id)]))
-        .get();
+    // Named in chunks: every id is a bound variable, and SQLite stops at
+    // 32,766 — see [idChunkSize].
+    final memberships = <Membership>[
+      for (final chunk in idChunks(memberIds))
+        ...await (db.select(db.memberships)
+              ..where((m) => m.memberId.isIn(chunk)))
+            .get(),
+    ]..sort((a, b) => a.id.compareTo(b.id));
 
     // The open enrolment (endDate == null) is what the member is on *now*.
     // Iterating in id order means the newest wins if a legacy database holds
@@ -248,12 +283,12 @@ class MemberRepository {
 
     final membershipIds = memberships.map((m) => m.id).toList();
 
-    final periods = membershipIds.isEmpty
-        ? <MembershipPeriod>[]
-        : await (db.select(db.membershipPeriods)
-              ..where((p) => p.membershipId.isIn(membershipIds))
-              ..orderBy([(p) => OrderingTerm(expression: p.periodStart)]))
-            .get();
+    final periods = <MembershipPeriod>[
+      for (final chunk in idChunks(membershipIds))
+        ...await (db.select(db.membershipPeriods)
+              ..where((p) => p.membershipId.isIn(chunk)))
+            .get(),
+    ]..sort((a, b) => a.periodStart.compareTo(b.periodStart));
 
     // Which cycles have at least one payment — the old signal, kept as a
     // fallback for a cycle whose money was never given an allocation row: a
@@ -261,10 +296,10 @@ class MemberRepository {
     // running the migration, or a raw row written straight to `payments`.
     final periodIds = periods.map((p) => p.id).toList();
     final paidPeriodIds = <int>{};
-    if (periodIds.isNotEmpty) {
+    for (final chunk in idChunks(periodIds)) {
       final paid = await (db.selectOnly(db.payments)
             ..addColumns([db.payments.membershipPeriodId])
-            ..where(db.payments.membershipPeriodId.isIn(periodIds))
+            ..where(db.payments.membershipPeriodId.isIn(chunk))
             ..groupBy([db.payments.membershipPeriodId]))
           .get();
       for (final row in paid) {
@@ -425,13 +460,46 @@ class MemberRepository {
     return rows.isEmpty ? null : rows.first;
   }
 
+  /// One past the highest member code ever handed out — not merely the
+  /// highest one still on the roster.
+  ///
+  /// `max + 1` over the live members gave a deleted member's code to the next
+  /// person added whenever the deleted one had been the newest, and the audit
+  /// log names members by code ("Ali Raza deleted (member #612)"), so two
+  /// different people became "member #612" in it. There is no counter column
+  /// to keep the high-water mark in without a schema change, but the log
+  /// already holds it: every deletion records the code it freed, in the
+  /// summary [deleteMember] writes. Only deletions since the last "delete all
+  /// members data" count — that purge is the owner starting again, and
+  /// numbering starts again with it.
   Future<int> nextMemberCode() async {
     final result = await (db.selectOnly(db.members)
           ..addColumns([db.members.memberCode.max()]))
         .getSingleOrNull();
-    final highest = result?.read(db.members.memberCode.max()) ?? 0;
+    var highest = result?.read(db.members.memberCode.max()) ?? 0;
+
+    final lastPurge = await (db.selectOnly(db.auditEvents)
+          ..addColumns([db.auditEvents.id.max()])
+          ..where(db.auditEvents.action.equals(AuditAction.memberDataPurged)))
+        .getSingleOrNull();
+    final purgedAt = lastPurge?.read(db.auditEvents.id.max()) ?? 0;
+
+    final deletions = await (db.select(db.auditEvents)
+          ..where((e) =>
+              e.action.equals(AuditAction.memberDeleted) &
+              e.id.isBiggerThanValue(purgedAt)))
+        .get();
+    for (final deletion in deletions) {
+      final code = _deletedCode.firstMatch(deletion.summary)?.group(1);
+      final freed = code == null ? null : int.tryParse(code);
+      if (freed != null && freed > highest) highest = freed;
+    }
     return highest + 1;
   }
+
+  /// The code at the end of a [deleteMember] audit summary. Anchored to the
+  /// end so a member whose *name* contains "(member #9)" cannot inject one.
+  static final _deletedCode = RegExp(r'\(member #(\d+)\)$');
 
   /// Everyone already registered on [phone].
   ///
@@ -489,6 +557,11 @@ class MemberRepository {
               planId: planId,
               feeOverrideMinor: Value(feeOverrideMinor),
               startDate: joiningDate,
+              // Stored rather than left to resolve. An empty column is read
+              // back off the latest cycle's start, and after a short month
+              // that is the clamped day: a member who joined on the 31st was
+              // billed on the 30th, then the 28th, then the 30th again.
+              billingAnchorDay: Value(joiningDate.toUtc().day),
             ),
           );
 
@@ -520,12 +593,25 @@ class MemberRepository {
     final feeBefore = await _effectiveFeeFor(id);
     final before = await openMembershipFor(db, id);
     final planBefore = before == null ? null : await _plan(before.planId);
+    // The profile as it was, for the `member.updated` row below: once the
+    // transaction has written, nothing else remembers it.
+    final memberBefore = await (db.select(db.members)
+          ..where((m) => m.id.equals(id)))
+        .getSingleOrNull();
     var repriced = 0;
 
     final at = (now ?? DateTime.now()).toUtc();
     // The owner's answer to "from when?", or today when they were not asked —
     // which is every caller that predates the choice existing on the form.
-    final appliesFrom = (effectiveFrom ?? at).toUtc();
+    //
+    // A picked date is a calendar day. The date picker returns local midnight,
+    // which in UTC+5 is the evening before, so it is read as the day it shows
+    // and stored as that day at UTC midnight — as the joining date is.
+    final picked = effectiveFrom == null
+        ? null
+        : DateTime.utc(
+            effectiveFrom.year, effectiveFrom.month, effectiveFrom.day);
+    final appliesFrom = picked ?? at;
 
     /// The enrolment opened by a plan change, if this save makes one.
     int? newMembershipId;
@@ -625,7 +711,7 @@ class MemberRepository {
           // `repriceOpenCycles` still refuses a cycle that has ended, so the
           // only thing a past date can do here is reach *fewer* cycles, never
           // more.
-          effectiveFrom: effectiveFrom,
+          effectiveFrom: picked,
         );
       }
     });
@@ -672,13 +758,75 @@ class MemberRepository {
           else
             'No unpaid billing cycle needed re-pricing',
           'Paid and part-paid months keep the price that was charged',
-          if (effectiveFrom != null && effectiveFrom.toUtc().isBefore(at))
+          if (picked != null && picked.isBefore(at))
             'Months that had already ended were not changed. Settings → '
                 'Historical billing review lists any that this date now '
                 'brings into question.',
         ],
       );
     }
+
+    // The rest of the profile. Fee and plan are not repeated here — the rows
+    // above already account for them — but everything else the form edits
+    // used to change without trace, and one of those is the joining date:
+    // the floor `cycleContaining` bills from and the earliest day a restart
+    // may go back to. A member whose joining date had moved after months of
+    // paid cycles, with nothing to say when or by whom, is what prompted this.
+    if (memberBefore != null) {
+      String? text(String? value) =>
+          (value == null || value.trim().isEmpty) ? null : value.trim();
+      String shown(String? value) {
+        final trimmed = text(value);
+        return trimmed == null ? '—' : '"$trimmed"';
+      }
+
+      final changes = <String>[
+        if (memberBefore.fullName != fullName)
+          'Name: "${memberBefore.fullName}" → "$fullName"',
+        // Masked, as everywhere in the log: it is read to find out what
+        // happened, not to dial anybody. The last four digits are enough to
+        // tell one number from another.
+        if (memberBefore.phone != phone)
+          'Phone: ${maskPhone(memberBefore.phone)} → ${maskPhone(phone)}',
+        if (text(memberBefore.email) != text(email))
+          'Email: ${shown(memberBefore.email)} → ${shown(email)}',
+        if (text(memberBefore.gender) != text(gender))
+          'Gender: ${text(memberBefore.gender) ?? 'Not specified'} → '
+              '${text(gender) ?? 'Not specified'}',
+        if (text(memberBefore.address) != text(address))
+          'Address: ${shown(memberBefore.address)} → ${shown(address)}',
+        // Usually somebody else's phone number, so masked like one.
+        if (text(memberBefore.emergencyContact) != text(emergencyContact))
+          'Emergency contact: ${maskPhone(text(memberBefore.emergencyContact))}'
+              ' → ${maskPhone(text(emergencyContact))}',
+        // Compared and shown as calendar days. Both are stored as a UTC
+        // midnight, and the instant is not what the owner chose.
+        if (!_sameDay(memberBefore.joiningDate, joiningDate))
+          'Joining date: '
+              '${formatDayMonthYear(memberBefore.joiningDate.toUtc())} → '
+              '${formatDayMonthYear(joiningDate.toUtc())}',
+      ];
+
+      if (changes.isNotEmpty) {
+        await _audit.record(
+          category: AuditCategory.member,
+          action: AuditAction.memberUpdated,
+          outcome: AuditOutcome.success,
+          actorId: actorId,
+          memberId: id,
+          memberName: fullName,
+          summary: '$fullName: details edited '
+              '(member #${memberBefore.memberCode})',
+          detail: changes,
+        );
+      }
+    }
+  }
+
+  static bool _sameDay(DateTime a, DateTime b) {
+    final x = a.toUtc();
+    final y = b.toUtc();
+    return x.year == y.year && x.month == y.month && x.day == y.day;
   }
 
   /// What the member is asked for each month right now: their own fee if they

@@ -1,6 +1,8 @@
 import '../data/database.dart';
 import '../domain/name.dart';
 import '../domain/phone.dart';
+import 'spreadsheet_reader.dart'
+    show formulaWithoutValueMarker, isFormulaWithoutValue;
 
 /// Parsing for the owner's real ledger format.
 ///
@@ -387,27 +389,103 @@ enum MonthCell {
   /// that as "unpaid" would silently wipe out real payment history, so it counts
   /// as paid and the fee is taken from the member's plan instead.
   paidAmountUnknown,
+
+  /// Something is written there that cannot be read as one amount: two
+  /// figures ("2500+500", "3000 (2 months)"), or a formula. Guessing would
+  /// put a wrong sum into the gym's revenue, and calling it unpaid would lose
+  /// a real payment, so the row is held back for the owner to correct — see
+  /// the `problem` that comes with it.
+  unreadable,
 }
 
 final _hashOnly = RegExp(r'^#+$');
 
-({MonthCell kind, int? amountMinor}) classifyMonthCell(String? value) {
-  if (isBlankCell(value)) return (kind: MonthCell.empty, amountMinor: null);
+/// A run of digits, with the thousands separators and decimals a typed amount
+/// carries. Deliberately has to *start* with a digit, so the dot in "Rs." is
+/// never taken for a decimal point.
+final _figure = RegExp(r'\d[\d,]*(?:\.\d+)?');
+
+/// "3,000", "1,50,000" (lakh grouping) or "3000" — and not "2500,3000", which
+/// is two amounts with a comma between them rather than one with a separator.
+final _wellGrouped = RegExp(
+    r'^(?:\d+|\d{1,3}(?:,\d{3})+|\d{1,2}(?:,\d{2})*,\d{3})(?:\.\d+)?$');
+
+({MonthCell kind, int? amountMinor, String? problem}) classifyMonthCell(
+    String? value) {
+  if (isBlankCell(value)) {
+    return (kind: MonthCell.empty, amountMinor: null, problem: null);
+  }
 
   final trimmed = value!.trim();
   if (_hashOnly.hasMatch(trimmed)) {
-    return (kind: MonthCell.paidAmountUnknown, amountMinor: null);
+    return (kind: MonthCell.paidAmountUnknown, amountMinor: null, problem: null);
   }
 
-  // Strip currency symbols, commas and spaces: "Rs. 3,000" -> 3000
-  final cleaned = trimmed.replaceAll(RegExp(r'[^0-9.]'), '');
-  if (cleaned.isEmpty) return (kind: MonthCell.empty, amountMinor: null);
+  // Formula text has digits in it that are cell references and operands, not
+  // money: "=1500+1000" once imported as Rs 15,001,000. The workbook reader
+  // swaps a formula for the value Excel saved, so this is a CSV written by
+  // hand, or a workbook that saved no value at all.
+  if (trimmed.startsWith('=') || trimmed.startsWith(formulaWithoutValueMarker)) {
+    return (
+      kind: MonthCell.unreadable,
+      amountMinor: null,
+      problem: 'a formula with no saved value — paste the values over it in '
+          'Excel and import again',
+    );
+  }
 
-  final parsed = double.tryParse(cleaned);
+  // Whatever surrounds the figure — "Rs. ", "PKR", "/-" — is ignored, and
+  // only the figures themselves count. One is an amount; more than one is a
+  // sum, or a note, that only the owner can say how to read.
+  final figures = _figure.allMatches(trimmed).map((m) => m.group(0)!).toList();
+  if (figures.isEmpty) {
+    return (kind: MonthCell.empty, amountMinor: null, problem: null);
+  }
+  if (figures.length > 1 || !_wellGrouped.hasMatch(figures.single)) {
+    return (
+      kind: MonthCell.unreadable,
+      amountMinor: null,
+      problem: 'more than one figure — enter the single amount paid',
+    );
+  }
+
+  final parsed = double.tryParse(figures.single.replaceAll(',', ''));
   if (parsed == null || parsed <= 0) {
-    return (kind: MonthCell.empty, amountMinor: null);
+    return (kind: MonthCell.empty, amountMinor: null, problem: null);
   }
-  return (kind: MonthCell.amount, amountMinor: (parsed * 100).round());
+  return (
+    kind: MonthCell.amount,
+    amountMinor: (parsed * 100).round(),
+    problem: null,
+  );
+}
+
+final _digits = RegExp(r'\d');
+
+/// The "Enroll." value as a member number, or null where the cell holds none
+/// the import can trust.
+///
+/// A number cell arrives as "41" — or "41.0" from a file that stored it as a
+/// decimal — and is read as the number it is. Typed text such as "RMF-041"
+/// gives up its one run of digits. Anything with more than one run ("12/13",
+/// "5 & 6") used to have its digits run together into a different member's
+/// number altogether, and is now no code at all: the member gets the next
+/// free number, with a warning saying so.
+int? _memberCodeFrom(String? text) {
+  if (text == null) return null;
+  final number = num.tryParse(text);
+  if (number != null) {
+    return number == number.truncate() && number >= 0 ? number.toInt() : null;
+  }
+  final runs = RegExp(r'\d+').allMatches(text).toList();
+  if (runs.length != 1) return null;
+  return int.parse(runs.single.group(0)!);
+}
+
+/// The header the sheet gives [column], for naming it in a problem.
+String _headerOf(List<String?> header, int column) {
+  final text = column < header.length ? header[column]?.trim() : null;
+  return (text == null || text.isEmpty) ? 'Column ${column + 1}' : text;
 }
 
 /// Turns raw sheet rows into member records with their historical payments.
@@ -444,8 +522,16 @@ ParsedLedger parseLedger({
 
   for (var r = headerRow + 1; r < rows.length; r++) {
     final row = rows[r];
-    String? cell(int? index) =>
+    String? rawCell(int? index) =>
         (index == null || index >= row.length) ? null : row[index]?.trim();
+
+    // A formula the file saved no value for reads as nothing at all, so that
+    // its text can never be mistaken for a name, a phone number or a code.
+    // The row is refused below, which is what keeps that from being silent.
+    String? cell(int? index) {
+      final value = rawCell(index);
+      return isFormulaWithoutValue(value) ? null : value;
+    }
 
     final name = cell(mapping.name);
     // Skip entirely blank rows rather than reporting them as errors — real
@@ -461,6 +547,18 @@ ParsedLedger parseLedger({
     // skipping them would silently lose real people.
     if (name == null || name.isEmpty) {
       problems.add('Missing name');
+    }
+
+    // Every column the import reads besides the months, which report their
+    // own below. Named by the sheet's own header, which is what the owner
+    // will be looking for.
+    for (final column in [
+      mapping.memberCode, mapping.name, mapping.phone, mapping.feeSubmit,
+      mapping.reference, mapping.extra, mapping.plan,
+    ]) {
+      if (!isFormulaWithoutValue(rawCell(column))) continue;
+      problems.add('${_headerOf(rows[headerRow], column!)}: a formula with no '
+          'saved value — paste the values over it in Excel and import again');
     }
 
     final rawPhone = cell(mapping.phone);
@@ -484,12 +582,18 @@ ParsedLedger parseLedger({
     }
 
     final codeText = cell(mapping.memberCode);
-    final memberCode =
-        codeText == null ? null : int.tryParse(codeText.replaceAll(RegExp(r'[^0-9]'), ''));
+    final memberCode = _memberCodeFrom(codeText);
+    if (memberCode == null && codeText != null && _digits.hasMatch(codeText)) {
+      warnings.add('Enroll. "$codeText" is not one whole number — given the '
+          'next free member number instead');
+    }
 
     final payments = <ParsedMonthPayment>[];
     mapping.monthColumns.forEach((month, columnIndex) {
-      final classified = classifyMonthCell(cell(columnIndex));
+      // The raw cell, marker and all: a formula with no saved value has to
+      // reach the classifier to be refused, not arrive as a blank month.
+      final value = rawCell(columnIndex);
+      final classified = classifyMonthCell(value);
       switch (classified.kind) {
         case MonthCell.empty:
           break;
@@ -498,6 +602,12 @@ ParsedLedger parseLedger({
               month: month, amountMinor: classified.amountMinor));
         case MonthCell.paidAmountUnknown:
           payments.add(ParsedMonthPayment(month: month));
+        case MonthCell.unreadable:
+          final shown = isFormulaWithoutValue(value)
+              ? value!.substring(formulaWithoutValueMarker.length)
+              : value!;
+          problems.add('${_headerOf(rows[headerRow], columnIndex)} '
+              '"$shown": ${classified.problem}');
       }
     });
     payments.sort((a, b) => a.month.compareTo(b.month));

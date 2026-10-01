@@ -237,31 +237,91 @@ class SettingsRepository {
   /// source, so anyone who has it can use this too — the price of recovery
   /// without an email or phone to send a code to.
   ///
+  /// The owner chose to keep it on those terms (audit SEC-001), so every
+  /// attempt — refused or successful — goes into the audit log the Logs
+  /// screen shows. That is the counterweight: anyone can use the form, but
+  /// nobody can use it without the owner being able to see that they did.
+  /// Neither password is ever written there; the email is, because what was
+  /// typed into it is the only clue to who was trying.
+  ///
   /// Returns null on success, or a message explaining why it was rejected.
   Future<String?> resetPassword({
     required String email,
     required String defaultPassword,
     required String newPassword,
   }) async {
+    final address = email.trim().toLowerCase();
+
     // Checked before the account is looked up, so the reset form cannot be
     // used to find out which emails have accounts.
     if (defaultPassword != defaultAdminPassword) {
-      _log.warning('Password reset refused: wrong default password');
+      await _auditReset(
+        address,
+        refusedBecause: 'the default password was wrong',
+      );
       return 'The default password is incorrect.';
     }
 
     final weak = _rejectNewPassword(newPassword);
-    if (weak != null) return weak;
+    if (weak != null) {
+      await _auditReset(
+        address,
+        refusedBecause: 'the new password was not accepted ($weak)',
+      );
+      return weak;
+    }
 
-    final address = email.trim().toLowerCase();
     final user = await (db.select(db.users)
           ..where((u) => u.email.equals(address)))
         .getSingleOrNull();
-    if (user == null) return 'No account uses that email.';
+    if (user == null) {
+      await _auditReset(address, refusedBecause: 'no account uses that email');
+      return 'No account uses that email.';
+    }
 
     await _setPassword(user.id, newPassword);
     _log.warning('Password reset for ${user.email} using the default password');
+    await _auditReset(user.email, userId: user.id);
     return null;
+  }
+
+  /// One audit row per reset attempt. [refusedBecause] null means the reset
+  /// went through.
+  ///
+  /// Nobody is signed in when this form is used, so there is no actor: the
+  /// row says where it came from instead. The typed email is capped, because
+  /// it is whatever a stranger chose to type and the Logs screen should not
+  /// be made to show a page of it.
+  Future<void> _auditReset(
+    String email, {
+    String? refusedBecause,
+    int? userId,
+  }) {
+    final shown = email.isEmpty
+        ? '(no email entered)'
+        : email.length > 80
+            ? '${email.substring(0, 80)}…'
+            : email;
+    final refused = refusedBecause != null;
+
+    return _audit.record(
+      category: AuditCategory.update,
+      action: refused
+          ? AuditAction.accountPasswordResetRefused
+          : AuditAction.accountPasswordReset,
+      outcome: refused ? AuditOutcome.refused : AuditOutcome.success,
+      summary: refused
+          ? 'Password reset refused: $refusedBecause'
+          : 'Admin password reset with the default password',
+      detail: [
+        'Email entered: $shown',
+        'From "Forgot password?" on the sign-in screen, without signing in',
+        if (!refused)
+          'If the owner did not do this, the same form takes the account '
+              'back; then check this log for anything done since.',
+        if (userId != null) 'Account id: $userId',
+      ],
+    );
   }
 
   static String? _rejectNewPassword(String newPassword) {

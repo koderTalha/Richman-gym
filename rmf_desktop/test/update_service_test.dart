@@ -46,6 +46,9 @@ void main() {
     String host = 'objects.githubusercontent.com',
     String scheme = 'https',
     String notes = 'Fixes the thing.',
+    // Everything between the host and the file name, e.g. a github.com
+    // release-download path. Empty for the object-store default.
+    String path = '',
   }) =>
       jsonEncode({
         'tag_name': tag,
@@ -55,13 +58,14 @@ void main() {
             {
               'name': installerName,
               'size': installerBytes.length,
-              'browser_download_url': '$scheme://$host/installer.exe',
+              'browser_download_url': '$scheme://$host$path/installer.exe',
             },
           if (checksumName != null)
             {
               'name': checksumName,
               'size': 64,
-              'browser_download_url': '$scheme://$host/installer.exe.sha256',
+              'browser_download_url':
+                  '$scheme://$host$path/installer.exe.sha256',
             },
         ],
       });
@@ -169,6 +173,62 @@ void main() {
 
       expect(result, isA<UpdateCheckFailed>(),
           reason: 'this URL becomes an executable on the gym computer');
+    });
+
+    test('takes a download link from this repository\'s releases', () async {
+      for (final path in [
+        '/koderTalha/Richman-gym/releases/download/v1.2.0',
+        // GitHub reads owner and repository without regard to case.
+        '/kodertalha/richman-gym/releases/download/v1.2.0',
+      ]) {
+        final result = await serviceWith(serving(
+                releaseJson: release(host: 'github.com', path: path)))
+            .check();
+
+        expect(result, isA<UpdateAvailable>(), reason: path);
+        expect((result as UpdateAvailable).installerUrl.path,
+            '$path/installer.exe');
+      }
+    });
+
+    test('ignores a github.com link to anybody else\'s release', () async {
+      // The host check alone let every one of these through (audit SEC-003):
+      // github.com holds every account's release assets side by side.
+      for (final path in [
+        '/someone-else/Richman-gym/releases/download/v1.2.0',
+        '/koderTalha/other-repo/releases/download/v1.2.0',
+        // Climbs back out once the dot segments are resolved.
+        '/koderTalha/Richman-gym/releases/download/../../../evil/x/'
+            'releases/download/v1.2.0',
+        // An encoded separator hiding inside one segment.
+        '/koderTalha/Richman-gym/releases/download/v1.2.0%2F..',
+        // This repository, but not a release download.
+        '/koderTalha/Richman-gym/raw/main',
+        '/koderTalha/Richman-gym/releases/download',
+      ]) {
+        final result = await serviceWith(serving(
+                releaseJson: release(host: 'github.com', path: path)))
+            .check();
+
+        expect(result, isA<UpdateCheckFailed>(), reason: path);
+        expect((result as UpdateCheckFailed).reason,
+            contains('points somewhere unexpected'));
+      }
+    });
+
+    test('ignores a link dressed up with credentials or another port',
+        () async {
+      for (final host in [
+        'koderTalha@github.com',
+        'github.com:8443',
+      ]) {
+        final result = await serviceWith(serving(
+                releaseJson: release(
+                    host: host,
+                    path: '/koderTalha/Richman-gym/releases/download/v1.2.0')))
+            .check();
+        expect(result, isA<UpdateCheckFailed>(), reason: host);
+      }
     });
 
     test('ignores an asset served over plain http', () async {

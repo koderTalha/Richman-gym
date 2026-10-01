@@ -8,6 +8,7 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../bloc/auth_bloc.dart';
 import '../../data/database.dart';
 import '../../services/backup_service.dart';
 import '../../services/excel_export_service.dart';
@@ -90,34 +91,28 @@ class _BackupCardState extends State<BackupCard> {
     final file = await openFile(acceptedTypeGroups: [typeGroup]);
     if (file == null || !mounted) return;
 
+    // Read before the dialog's await, and checked: a restore is staged in the
+    // name of whoever proved they know the password, so there has to be one.
+    final user = context.read<AuthBloc>().state.user;
+    if (user == null) {
+      _report('Sign in again before restoring a backup.', isError: true);
+      return;
+    }
+    final service = _service;
+
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        backgroundColor: context.palette.surfaceRaised,
-        title: const Text('Replace all current data?'),
-        content: Text(
-          'Restoring replaces every member, payment and receipt record with '
-          'the contents of the backup. The current database is kept alongside '
-          'as a copy, and the app must be restarted to finish.',
-          style: mutedStyleOf(context),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('Restore'),
-          ),
-        ],
+      builder: (_) => RestoreConfirmDialog(
+        verify: (password) =>
+            service.passwordMatches(userId: user.id, password: password),
       ),
     );
 
     if (confirmed != true) return;
 
     setState(() => _busy = true);
-    final problem = await _service.stageRestore(File(file.path));
+    final problem =
+        await service.stageRestore(File(file.path), stagedBy: user.name);
 
     if (problem != null) {
       _report(problem, isError: true);
@@ -277,5 +272,113 @@ class _BackupCardState extends State<BackupCard> {
     String two(int v) => v.toString().padLeft(2, '0');
     return '${two(at.day)} ${months[at.month - 1]} ${at.year}, '
         '${two(at.hour)}:${two(at.minute)}';
+  }
+}
+
+/// Keys for tests.
+const restorePasswordFieldKey = Key('restore-password-field');
+
+/// "Replace all current data?", answered with the signed-in account's
+/// password rather than one more click.
+///
+/// The session survives quitting the app, so being signed in proves only
+/// that the owner signed in at some point. A restore replaces every record —
+/// the audit trail and the password among them — and is the one action here
+/// that could undo everything else the log would have shown, so it asks who
+/// is at the keyboard (audit SEC-002). Pops true only once [verify] has
+/// accepted the password; a wrong one keeps the dialog open with a reason.
+class RestoreConfirmDialog extends StatefulWidget {
+  const RestoreConfirmDialog({super.key, required this.verify});
+
+  final Future<bool> Function(String password) verify;
+
+  @override
+  State<RestoreConfirmDialog> createState() => _RestoreConfirmDialogState();
+}
+
+class _RestoreConfirmDialogState extends State<RestoreConfirmDialog> {
+  final _password = TextEditingController();
+  bool _checking = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _password.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    if (_checking) return;
+    setState(() {
+      _checking = true;
+      _error = null;
+    });
+
+    var ok = false;
+    try {
+      ok = await widget.verify(_password.text);
+    } catch (e, s) {
+      _log.severe('The password for a restore could not be checked', e, s);
+    }
+    if (!mounted) return;
+
+    if (ok) {
+      Navigator.of(context).pop(true);
+      return;
+    }
+    setState(() {
+      _checking = false;
+      _error = 'That is not the password for this account. '
+          'Nothing has been restored.';
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: context.palette.surfaceRaised,
+      title: const Text('Replace all current data?'),
+      content: SizedBox(
+        width: 420,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              'Restoring replaces every member, payment and receipt record '
+              'with the contents of the backup. The current database is kept '
+              'alongside as a copy, and the app must be restarted to finish.',
+              style: mutedStyleOf(context),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              key: restorePasswordFieldKey,
+              controller: _password,
+              obscureText: true,
+              autofocus: true,
+              enabled: !_checking,
+              decoration: InputDecoration(
+                labelText: 'Your password',
+                helperText: 'The one you sign in with',
+                errorText: _error,
+                errorMaxLines: 2,
+                isDense: true,
+              ),
+              onSubmitted: (_) => _submit(),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: _checking ? null : () => Navigator.of(context).pop(false),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: _checking ? null : _submit,
+          child: Text(_checking ? 'Checking…' : 'Restore'),
+        ),
+      ],
+    );
   }
 }

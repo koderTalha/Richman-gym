@@ -6,6 +6,7 @@ import '../data/cycle_pricing_log.dart';
 import '../data/cycle_waivers.dart';
 import '../data/database.dart';
 import '../data/membership_queries.dart';
+import '../data/payment_cycles.dart';
 import '../domain/billing_month_check.dart';
 import '../domain/billing_period.dart';
 import '../domain/dates.dart';
@@ -322,6 +323,18 @@ class RecordPaymentService {
     final alreadyRecorded = await _resultForKey(input.idempotencyKey);
     if (alreadyRecorded != null) return alreadyRecorded;
 
+    // Checked here as well as on the form: the service is the last thing
+    // between a mistyped amount and the ledger, and `recordAdvancePayment`
+    // already refuses these.
+    if (input.amountMinor <= 0) {
+      throw PaymentRuleException('Enter an amount greater than zero.');
+    }
+    if (input.amountMinor > maxAmountMinor) {
+      throw PaymentRuleException(
+          'That is more than ${formatMinorUnits(maxAmountMinor)} — check the '
+          'amount.');
+    }
+
     final member = await (db.select(db.members)
           ..where((m) => m.id.equals(input.memberId)))
         .getSingle();
@@ -563,6 +576,11 @@ class RecordPaymentService {
 
     if (input.amountMinor <= 0) {
       throw PaymentRuleException('Enter an amount greater than zero.');
+    }
+    if (input.amountMinor > maxAmountMinor) {
+      throw PaymentRuleException(
+          'That is more than ${formatMinorUnits(maxAmountMinor)} — check the '
+          'amount.');
     }
 
     final member = await (db.select(db.members)
@@ -1010,23 +1028,19 @@ class RecordPaymentService {
         await (db.select(db.gymSettings)..where((s) => s.id.equals(1)))
             .getSingle();
 
+    // Named from what the payment actually paid for, and with its timing, so
+    // a retry carries the same words as the first send: a three-month payment
+    // used to be re-sent as its first month alone, without the "(paid in
+    // advance)" the original caption and the receipt image both carried.
     var periodLabel = '—';
-    if (payment.membershipPeriodId != null) {
-      final period = await (db.select(db.membershipPeriods)
-            ..where((p) => p.id.equals(payment.membershipPeriodId!)))
-          .getSingleOrNull();
-      if (period != null) {
-        final membership = await (db.select(db.memberships)
-              ..where((m) => m.id.equals(period.membershipId)))
-            .getSingleOrNull();
-        final plan = membership == null
-            ? null
-            : await (db.select(db.membershipPlans)
-                  ..where((p) => p.id.equals(membership.planId)))
-                .getSingleOrNull();
-        periodLabel = formatBillingPeriod(
-            period.periodStart, plan?.durationMonths ?? 1);
-      }
+    final paid = (await cyclesPaidBy(db, [payment]))[payment.id];
+    if (paid != null) {
+      final timing = classifyTiming(
+        paidAt: payment.paymentDate,
+        periodStart: paid.first.period.periodStart,
+        window: _timingWindowFrom(settings),
+      );
+      periodLabel = _labelWithTiming(formatPaidCycles(paid)!, timing);
     }
 
     return sendReceipt(

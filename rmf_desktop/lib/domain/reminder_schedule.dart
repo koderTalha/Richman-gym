@@ -129,8 +129,16 @@ class ReminderSettings {
 
 /// Which reminder, if any, is owed for a cycle due on [dueDate] as of [today].
 ///
-/// [alreadyHandled] is every key already sent, skipped or failed for this
-/// cycle, so nothing is offered twice.
+/// [alreadyHandled] is every key already dealt with for this cycle — sent or
+/// skipped, and failed too where retrying is pointless — so nothing is
+/// offered twice. A failure the caller wants re-offered is simply left out.
+///
+/// A stage whose moment falls on or before one already handled is superseded
+/// by it rather than sent. That is what keeps a reminder sent by hand from the
+/// member's screen — "7 days overdue", say — from being followed the same day
+/// by the 3-days-overdue one the schedule had not yet got round to, and what
+/// stops a stage newly added in Settings arriving after a later one already
+/// went.
 ReminderDecision decideReminder({
   required ReminderSettings settings,
   required DateTime dueDate,
@@ -140,13 +148,31 @@ ReminderDecision decideReminder({
   final due = _dayStart(dueDate);
   final on = _dayStart(today);
 
+  DateTime? latestHandled;
+  for (final key in alreadyHandled) {
+    final when = switch (key.stage) {
+      ReminderStage.beforeDue => due.subtract(Duration(days: key.offsetDays)),
+      ReminderStage.onDue => due,
+      ReminderStage.overdue => due.add(Duration(days: key.offsetDays)),
+    };
+    if (latestHandled == null || when.isAfter(latestHandled)) {
+      latestHandled = when;
+    }
+  }
+
   final owed = <ScheduledReminder>[];
+  final overtaken = <ScheduledReminder>[];
 
   void consider(ReminderKey key, DateTime when) {
     if (alreadyHandled.contains(key)) return;
     // Owed once its day has arrived; a moment still in the future is not.
     if (when.isAfter(on)) return;
-    owed.add(ScheduledReminder(key: key, on: when));
+    final reminder = ScheduledReminder(key: key, on: when);
+    if (latestHandled != null && !when.isAfter(latestHandled)) {
+      overtaken.add(reminder);
+    } else {
+      owed.add(reminder);
+    }
   }
 
   for (final days in settings.daysBefore) {
@@ -169,7 +195,11 @@ ReminderDecision decideReminder({
     );
   }
 
-  if (owed.isEmpty) return const ReminderDecision.nothing();
+  if (owed.isEmpty) {
+    return overtaken.isEmpty
+        ? const ReminderDecision.nothing()
+        : ReminderDecision(superseded: overtaken);
+  }
 
   // Latest moment wins. Ties break towards the later stage, so a due-date
   // reminder beats a nudge scheduled for the same day.
@@ -181,7 +211,7 @@ ReminderDecision decideReminder({
 
   return ReminderDecision(
     send: owed.last,
-    superseded: owed.sublist(0, owed.length - 1),
+    superseded: [...overtaken, ...owed.sublist(0, owed.length - 1)],
   );
 }
 

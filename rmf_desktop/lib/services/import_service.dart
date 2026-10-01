@@ -1,5 +1,7 @@
 import 'package:drift/drift.dart';
+import 'package:intl/intl.dart';
 
+import '../data/audit_repository.dart';
 import '../data/cycle_pricing_log.dart';
 import '../data/database.dart';
 import '../data/membership_queries.dart';
@@ -13,6 +15,9 @@ class ImportSummary {
     required this.membersMergedByName,
     required this.membersAddedAsInactive,
     this.membersLapsed = 0,
+    this.membersMatchedOnCode = 0,
+    this.membersReactivated = const [],
+    this.codesReassigned = const [],
     required this.paymentsCreated,
     required this.paymentsSkipped,
     required this.rowsNeedingAttention,
@@ -26,6 +31,24 @@ class ImportSummary {
   /// other detail are indistinguishable, so these are reported separately for
   /// the owner to check rather than folded into [membersMatched].
   final int membersMergedByName;
+
+  /// Rows recognised by their "Enroll." number and name although the phone
+  /// number on file is a different one — most often a number the owner has
+  /// corrected since the last import. Counted inside [membersMatched], and
+  /// reported for the same reason as [membersMergedByName]: only the owner can
+  /// say it really is one person.
+  final int membersMatchedOnCode;
+
+  /// Members an earlier import had marked as having left — a year-end or
+  /// lapsed stamp the importer wrote itself, never a deactivation the owner
+  /// made — whom this sheet shows paying again, and who are active again as
+  /// a result. Names, in sheet order. See [ImportService.commit].
+  final List<String> membersReactivated;
+
+  /// Rows whose "Enroll." number already belonged to somebody else, and who
+  /// were given the next free number instead: one line each, saying who has
+  /// the number and what the row was given.
+  final List<String> codesReassigned;
 
   final int paymentsCreated;
 
@@ -51,15 +74,21 @@ class ImportSummary {
 /// row comparisons inside a single write transaction, with the window frozen
 /// throughout. Loading the roster once and indexing it costs one query.
 class _Roster {
-  _Roster(List<Member> members) {
+  _Roster(List<Member> members, {Iterable<int> reservedCodes = const []}) {
+    _reserved.addAll(reservedCodes);
     for (final member in members) {
       _add(member.id, member.phone, member.fullName, member.memberCode);
     }
   }
 
   final _byPhone = <String, List<_Candidate>>{};
-  final _takenCodes = <int>{};
-  final _phonelessByCode = <int, _Candidate>{};
+
+  /// Every member by code, phone or not. Codes are unique on the table.
+  final _byCode = <int, _Candidate>{};
+
+  /// Codes the sheet being imported uses, whether or not anybody on file has
+  /// them yet. See [nextCode].
+  final _reserved = <int>{};
 
   /// First writer wins, so re-importing a sheet keeps resolving each name to
   /// the member it created the first time.
@@ -67,14 +96,13 @@ class _Roster {
   var _highestCode = 0;
 
   void _add(int id, String phone, String fullName, int memberCode) {
-    final candidate = _Candidate(id, fullName, memberCode);
+    final candidate = _Candidate(id, fullName, memberCode, phone);
     if (phone.isEmpty) {
       _phonelessByName.putIfAbsent(normalizeName(fullName), () => candidate);
-      _phonelessByCode[memberCode] = candidate;
     } else {
       _byPhone.putIfAbsent(phone, () => []).add(candidate);
     }
-    _takenCodes.add(memberCode);
+    _byCode[memberCode] = candidate;
     if (memberCode > _highestCode) _highestCode = memberCode;
   }
 
@@ -90,21 +118,35 @@ class _Roster {
 
   List<_Candidate> onPhone(String phone) => _byPhone[phone] ?? const [];
 
-  bool codeIsTaken(int code) => _takenCodes.contains(code);
-
-  _Candidate? phonelessWithCode(int code) => _phonelessByCode[code];
+  /// Whoever holds [code], or null where it is free.
+  _Candidate? withCode(int code) => _byCode[code];
 
   _Candidate? phonelessNamed(String fullName) =>
       _phonelessByName[normalizeName(fullName)];
 
-  int nextCode() => ++_highestCode;
+  /// The next code nobody holds and the sheet does not use.
+  ///
+  /// Skipping the sheet's own codes matters more than it looks. A row with no
+  /// "Enroll." value used to be handed the next number up — which could be
+  /// the real enrolment number of somebody further down the same sheet, who
+  /// then lost it to the made-up one and was renumbered in turn.
+  int nextCode() {
+    do {
+      _highestCode++;
+    } while (_byCode.containsKey(_highestCode) ||
+        _reserved.contains(_highestCode));
+    return _highestCode;
+  }
 }
 
 class _Candidate {
-  const _Candidate(this.id, this.fullName, this.memberCode);
+  const _Candidate(this.id, this.fullName, this.memberCode, this.phone);
   final int id;
   final String fullName;
   final int memberCode;
+
+  /// Normalised, or empty for a member with no number on file.
+  final String phone;
 }
 
 /// One enrolment written for a ledger row, and the month it takes over from.
@@ -125,6 +167,11 @@ enum _MatchKind {
   /// same name and no other detail are indistinguishable from here, and only
   /// the owner can say whether the merge was right.
   mergedByName,
+
+  /// On the "Enroll." number and the name, with a phone number that is not
+  /// the one on file. Almost always a number the owner corrected in the app
+  /// since the last import — but a sheet can be wrong too, so it is reported.
+  matchedOnCode,
 }
 
 class ImportService {
@@ -168,6 +215,9 @@ class ImportService {
     var membersMergedByName = 0;
     var membersAddedAsInactive = 0;
     var membersLapsed = 0;
+    var membersMatchedOnCode = 0;
+    final membersReactivated = <String>[];
+    final codesReassigned = <String>[];
     var paymentsCreated = 0;
     var paymentsSkipped = 0;
 
@@ -188,7 +238,17 @@ class ImportService {
     };
 
     await db.transaction(() async {
-      final roster = _Roster(await db.select(db.members).get());
+      final onFile = await db.select(db.members).get();
+      final membersById = {for (final member in onFile) member.id: member};
+
+      // Every code the sheet uses, read before any row is written, so that a
+      // row with no code of its own is never handed one that a row further
+      // down is about to claim — see [_Roster.nextCode]. Rows that cannot be
+      // imported count too: the owner fixes them and imports again.
+      final roster = _Roster(onFile, reservedCodes: {
+        for (final row in ledger.rows)
+          if (row.memberCode != null) row.memberCode!,
+      });
 
       for (final row in ledger.valid) {
         // Members with no recorded phone are imported too — they simply cannot
@@ -202,11 +262,21 @@ class ImportService {
           memberId = resolved.id;
           membersMatched++;
           if (resolved.kind == _MatchKind.mergedByName) membersMergedByName++;
+          if (resolved.kind == _MatchKind.matchedOnCode) membersMatchedOnCode++;
         } else {
           // Keep the ledger's enrolment number when it is free, otherwise
-          // continue from the highest existing one.
+          // continue from the highest existing one — and say so. Audit
+          // summaries and the owner's own paper both name members by number,
+          // and a ledger number quietly swapped for another is a member the
+          // owner will look up under the wrong one.
           var code = row.memberCode;
-          if (code == null || roster.codeIsTaken(code)) code = roster.nextCode();
+          final holder = code == null ? null : roster.withCode(code);
+          if (code == null || holder != null) code = roster.nextCode();
+          if (holder != null) {
+            codesReassigned.add('Row ${row.sourceRow}: ${row.name} — '
+                'Enroll. ${row.memberCode} already belongs to '
+                '${holder.fullName}, so they were given #$code');
+          }
 
           final joiningDate = _earliestPeriod(row, ledger.year);
 
@@ -379,19 +449,46 @@ class ImportService {
           paymentsCreated++;
         }
 
+        // A member an earlier sheet marked as having left, whom this one
+        // shows still paying. Importing the years oldest first — the natural
+        // order — used to leave everybody who appears in two of them
+        // deactivated as of the first one's 31 December, with no cycle
+        // covering them and nothing on screen saying why.
+        final reactivated = resolved != null &&
+            await _overtakeImportersStamp(
+              member: membersById[memberId],
+              row: row,
+              year: ledger.year,
+              freshStamp: leftAt ??
+                  (row.hasLapsed ? _lastMonthPaidFor(row, ledger.year) : null),
+              recordedById: recordedById,
+            );
+        if (reactivated) {
+          membersReactivated.add(row.name);
+          // Once is enough: a sheet listing them twice is not two returns.
+          membersById.remove(memberId);
+        }
+
         // Nobody arrives owing anything. A member the ledger has just
         // introduced is covered up to their first real bill, so the months in
-        // the sheet stay history and the app starts billing them fresh.
-        // Members already on file are left alone: the app knows their state,
-        // and a spreadsheet is not an instruction to forgive what it says.
-        // Nobody deactivated is covered: they are not being billed at all, and
-        // a cycle running to a bill they will never be sent reads as though
-        // somebody still expects them.
-        if (resolved == null && !isHistoricalLedger && !row.hasLapsed) {
+        // the sheet stay history and the app starts billing them fresh. So is
+        // one it has just reactivated, exactly as if this sheet had introduced
+        // them. Other members already on file are left alone: the app knows
+        // their state, and a spreadsheet is not an instruction to forgive what
+        // it says. Nobody deactivated is covered: they are not being billed at
+        // all, and a cycle running to a bill they will never be sent reads as
+        // though somebody still expects them.
+        //
+        // The billing day is the enrolment's, which for a member created here
+        // is the sheet's own; for one reactivated it is what billing will
+        // carry on from, and the cover has to end where billing starts.
+        if ((resolved == null || reactivated) &&
+            !isHistoricalLedger &&
+            !row.hasLapsed) {
           await _coverUntilFirstBill(
             membership: openEnrolment,
             memberId: memberId,
-            anchorDay: row.anchorDay,
+            anchorDay: openEnrolment.billingAnchorDay,
             at: at,
           );
         }
@@ -404,6 +501,9 @@ class ImportService {
       membersMergedByName: membersMergedByName,
       membersAddedAsInactive: membersAddedAsInactive,
       membersLapsed: membersLapsed,
+      membersMatchedOnCode: membersMatchedOnCode,
+      membersReactivated: membersReactivated,
+      codesReassigned: codesReassigned,
       paymentsCreated: paymentsCreated,
       paymentsSkipped: paymentsSkipped,
       rowsNeedingAttention: ledger.invalid.length,
@@ -422,13 +522,25 @@ class ImportService {
   ///     was corrected since the last import, not a new member. Without this
   ///     step, fixing a typo in the app made the next re-import duplicate them
   ///     and double-count the year's revenue.
-  ///  3. **Enrolment number among phoneless members.** Scoped to members who
-  ///     are themselves phoneless, so a row with no number cannot claim
-  ///     somebody who has one on file.
+  ///  3. **Enrolment number + name, whatever the phone.** The owner corrects
+  ///     a phone number on the member screen, and the sheet still carries the
+  ///     old one: rungs 1 and 2 look only at the sheet's number, so the next
+  ///     re-import used to create a second member and import every month
+  ///     again. The "Enroll." value and the name together are one person
+  ///     whatever number either side has. Reported unless both sides are
+  ///     phoneless, in which case it is simply the key the row has.
+  ///
+  ///     The name is required, never the code alone. A row with no "Enroll."
+  ///     value is given a made-up code, and that code can be another
+  ///     person's real one in another year's sheet — a phoneless Bilal
+  ///     carrying 51 was folded into a phoneless Zara the importer had once
+  ///     numbered 51, and counted as a plain match.
   ///  4. **Name among phoneless members.** All a sheet with no "Enroll." column
   ///     offers. Reported separately in the summary, because two different
   ///     people recorded with the same name and nothing else are genuinely
-  ///     indistinguishable here.
+  ///     indistinguishable here. Scoped to members who are themselves
+  ///     phoneless, so a row with no number cannot claim somebody who has one
+  ///     on name alone.
   ({int id, _MatchKind kind})? _resolve(
     _Roster roster, {
     required ParsedMemberRow row,
@@ -450,15 +562,21 @@ class ImportService {
           }
         }
       }
-      return null;
     }
 
-    // No phone number. Everything below is scoped to members who are themselves
-    // phoneless, so a row with no number can never claim somebody who has one.
     if (row.memberCode != null) {
-      final byCode = roster.phonelessWithCode(row.memberCode!);
-      if (byCode != null) return (id: byCode.id, kind: _MatchKind.matched);
+      final byCode = roster.withCode(row.memberCode!);
+      if (byCode != null && namesMatch(byCode.fullName, row.name)) {
+        return (
+          id: byCode.id,
+          kind: byCode.phone == phone
+              ? _MatchKind.matched
+              : _MatchKind.matchedOnCode,
+        );
+      }
     }
+
+    if (phone.isNotEmpty) return null;
 
     final byName = roster.phonelessNamed(row.name);
     if (byName == null) return null;
@@ -471,6 +589,103 @@ class ImportService {
     }
 
     return (id: byName.id, kind: _MatchKind.mergedByName);
+  }
+
+  /// Lifts the importer's own "left" stamp from [member] where this sheet
+  /// shows them paying after it, and says whether that made them active.
+  ///
+  /// The importer deactivates two kinds of member as it creates them: everyone
+  /// new in a sheet for a year that has ended (stamped 31 December of it), and
+  /// anyone whose months end in a run of unpaid ones (stamped the 1st of the
+  /// month after they last paid). Both are the importer's reading of one
+  /// sheet, and a later sheet showing the same person paying overturns it.
+  ///
+  /// A deactivation the owner made is never touched, however the sheet reads:
+  /// whether somebody is a member is theirs to decide. Two things tell the
+  /// importer's stamp apart from the owner's, and both must hold. The owner
+  /// deactivates through the member screen, which writes a `member.deactivated`
+  /// audit event and stamps the moment they pressed the button; the importer
+  /// writes no event and stamps midnight exactly, on a 1st or a 31 December.
+  ///
+  /// [freshStamp] is what importing this row as somebody new would stamp. Null
+  /// means they would arrive active, so they are made active, and the caller
+  /// covers them up to their first bill as it would a new member. A stamp
+  /// means this sheet has them leaving too — it covers a year that has ended,
+  /// or ends in unpaid months — and they stay deactivated, but as of the later
+  /// date: the record says when they were last known to be a member.
+  Future<bool> _overtakeImportersStamp({
+    required Member? member,
+    required ParsedMemberRow row,
+    required int year,
+    required DateTime? freshStamp,
+    required int recordedById,
+  }) async {
+    final stamp = member?.deactivatedAt?.toUtc();
+    if (member == null || stamp == null || row.payments.isEmpty) return false;
+    if (!_looksLikeImportersStamp(stamp)) return false;
+
+    // Paid for a month that starts on or after the day they were taken to
+    // have left. Re-importing the sheet that stamped them never qualifies:
+    // its last paid month is the one the stamp was worked out from.
+    final lastPaid = row.payments.last.month;
+    if (DateTime.utc(year, lastPaid, 1).isBefore(stamp)) return false;
+
+    if (await _deactivatedByHand(member.id)) return false;
+
+    final memberId = member.id;
+    if (freshStamp != null) {
+      if (freshStamp.isAfter(stamp)) {
+        await (db.update(db.members)..where((m) => m.id.equals(memberId)))
+            .write(MembersCompanion(deactivatedAt: Value(freshStamp)));
+      }
+      return false;
+    }
+
+    await (db.update(db.members)..where((m) => m.id.equals(memberId)))
+        .write(const MembersCompanion(deactivatedAt: Value(null)));
+
+    // Nobody pressed a button, so the log says what did.
+    await AuditRepository(db).record(
+      category: AuditCategory.member,
+      action: AuditAction.memberReactivated,
+      outcome: AuditOutcome.success,
+      actorId: recordedById,
+      memberId: memberId,
+      memberName: member.fullName,
+      summary: '${member.fullName} reactivated by the ledger import',
+      detail: [
+        'The $year sheet shows them paying for '
+            '${DateFormat('MMMM yyyy').format(DateTime.utc(year, lastPaid))}.',
+        'An earlier import had marked them as having left on '
+            '${DateFormat('d MMMM yyyy').format(stamp)}; nobody had '
+            'deactivated them by hand.',
+      ],
+    );
+    return true;
+  }
+
+  /// Midnight exactly, on the 1st of a month or on 31 December: the only
+  /// stamps the importer writes. See [_overtakeImportersStamp].
+  static bool _looksLikeImportersStamp(DateTime stamp) {
+    final utc = stamp.toUtc();
+    final midnight = utc.hour == 0 &&
+        utc.minute == 0 &&
+        utc.second == 0 &&
+        utc.millisecond == 0 &&
+        utc.microsecond == 0;
+    return midnight && (utc.day == 1 || (utc.month == 12 && utc.day == 31));
+  }
+
+  /// Whether the member screen has ever deactivated this member, which is the
+  /// only way the owner can.
+  Future<bool> _deactivatedByHand(int memberId) async {
+    final events = await (db.select(db.auditEvents)
+          ..where((e) =>
+              e.memberId.equals(memberId) &
+              e.action.equals(AuditAction.memberDeactivated))
+          ..limit(1))
+        .get();
+    return events.isNotEmpty;
   }
 
   /// Covers a newly imported member from where the ledger leaves them up to

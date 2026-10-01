@@ -837,7 +837,7 @@ class _PlanDialogState extends State<_PlanDialog> {
   late final _price = TextEditingController(
       text: widget.plan == null
           ? ''
-          : fromMinorUnits(widget.plan!.priceMinor).toStringAsFixed(0));
+          : formatAmountInput(widget.plan!.priceMinor));
 
   @override
   void dispose() {
@@ -888,8 +888,10 @@ class _PlanDialogState extends State<_PlanDialog> {
                     decoration: const InputDecoration(labelText: 'Price (PKR)'),
                     keyboardType: TextInputType.number,
                     validator: (v) {
-                      final parsed = double.tryParse((v ?? '').trim());
-                      return (parsed == null || parsed <= 0)
+                      final parsed = parseAmountMinor(v ?? '');
+                      return (parsed == null ||
+                              parsed <= 0 ||
+                              parsed > maxAmountMinor)
                           ? 'Enter a price'
                           : null;
                     },
@@ -912,7 +914,7 @@ class _PlanDialogState extends State<_PlanDialog> {
               id: widget.plan?.id,
               name: _name.text.trim(),
               durationMonths: int.parse(_months.text.trim()),
-              priceMinor: toMinorUnits(double.parse(_price.text.trim())),
+              priceMinor: parseAmountMinor(_price.text)!,
               isActive: widget.plan?.isActive ?? true,
             ));
           },

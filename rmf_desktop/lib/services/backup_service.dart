@@ -1,10 +1,14 @@
+import 'dart:convert';
 import 'dart:io';
 
+import 'package:bcrypt/bcrypt.dart';
 import 'package:logging/logging.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
+import '../data/audit_repository.dart';
 import '../data/database.dart';
+import '../domain/dates.dart';
 import 'excel_export_service.dart';
 
 final _log = Logger('backup');
@@ -66,6 +70,19 @@ class BackupService {
   static const _receiptsFolderName = 'receipts';
   static const _pendingRestoreName = 'pending-restore.sqlite';
   static const _pendingReceiptsName = 'pending-restore-receipts';
+
+  /// What is known about a staged restore — which backup, how old, who chose
+  /// it — written beside it when it is staged. The restored database cannot
+  /// carry that itself: its audit trail is the backup's, and stops at the
+  /// moment the backup was taken.
+  static const _pendingDetailsName = 'pending-restore.json';
+
+  /// The same, plus the name of the copy the previous data was kept in,
+  /// written when the restore is applied at launch and consumed once the
+  /// restored database is open — see [recordAppliedRestore]. A file rather
+  /// than a return value so that a launch which applies the restore and then
+  /// fails to open the database still gets its audit row on the next one.
+  static const _appliedDetailsName = 'restore-applied.json';
 
   /// How many superseded databases to keep after a restore. Enough to undo a
   /// mistake by hand; not so many that the folder grows without bound.
@@ -242,7 +259,7 @@ class BackupService {
             'Update the app before restoring it.';
       }
 
-      return null;
+      return await _checkIntegrity(alias);
     } catch (error, stack) {
       _log.severe('Restore candidate could not be read', error, stack);
       return 'That file could not be read as a backup.';
@@ -255,6 +272,59 @@ class BackupService {
     }
   }
 
+  /// Reads every page of the attached candidate with `quick_check`.
+  ///
+  /// Everything above reads only the first page or two of the file, which is
+  /// where the schema lives. A backup whose data pages were damaged — a bad
+  /// sector on a USB stick, a copy interrupted over an older file of the same
+  /// size — passes all of it, replaces the live database at the next launch,
+  /// and leaves the owner on the startup-failure screen with the good data
+  /// set aside. `quick_check` is the cheaper half of `integrity_check` (it
+  /// skips cross-checking indexes against their tables), and takes well under
+  /// a second on the gym's few-megabyte file.
+  ///
+  /// SQLite answers a single row reading `ok`, or rows describing what is
+  /// wrong. Badly enough damaged, it refuses to read at all and throws
+  /// "database disk image is malformed" instead; that is the same answer.
+  Future<String?> _checkIntegrity(String alias) async {
+    const damaged = 'That backup is damaged — some of the data inside it '
+        'cannot be read — so it was not restored. Try another backup, such '
+        'as one of the automatic ones listed below.';
+
+    final List<String> findings;
+    try {
+      findings = (await db.customSelect('PRAGMA $alias.quick_check').get())
+          .map((row) => '${row.data.values.first}')
+          .toList();
+    } catch (error) {
+      _log.warning('Restore candidate failed its integrity check', error);
+      return damaged;
+    }
+
+    if (findings.length == 1 && findings.single == 'ok') return null;
+
+    _log.warning('Restore candidate failed its integrity check: '
+        '${findings.take(5).join('; ')}');
+    return damaged;
+  }
+
+  /// Whether [password] is the current password of the account [userId].
+  ///
+  /// Asked before a restore is staged. The session survives quitting the app,
+  /// so "somebody is signed in" says only that the owner signed in once; a
+  /// restore replaces every record and the audit trail with them, and is the
+  /// one action worth stopping to ask who is at the keyboard.
+  Future<bool> passwordMatches({
+    required int userId,
+    required String password,
+  }) async {
+    if (password.isEmpty) return false;
+    final user = await (db.select(db.users)
+          ..where((u) => u.id.equals(userId)))
+        .getSingleOrNull();
+    return user != null && BCrypt.checkpw(password, user.passwordHash);
+  }
+
   /// Stages a restore to be applied on next launch.
   ///
   /// The live database is open and locked, so swapping it underneath a running
@@ -265,17 +335,48 @@ class BackupService {
   /// database left every receipt row pointing at a file that was not there, so
   /// "View Receipt" did nothing and every resend failed — a restore that threw
   /// away exactly the paperwork the owner restored the backup to get back.
-  Future<String?> stageRestore(File backupDatabase) async {
+  ///
+  /// [stagedBy] is who chose the restore, for the audit row the restored
+  /// database gets on its first launch.
+  Future<String?> stageRestore(
+    File backupDatabase, {
+    String? stagedBy,
+    DateTime? now,
+  }) async {
     final problem = await validateBackup(backupDatabase);
     if (problem != null) return problem;
 
     final pending = await _pendingRestoreFile();
     await pending.parent.create(recursive: true);
+
+    // Cleared first: details left over from an earlier staging must never be
+    // read back as describing this one.
+    final details = File(p.join(pending.parent.path, _pendingDetailsName));
+    if (await details.exists()) await details.delete();
+
     await backupDatabase.copy(pending.path);
 
     await _stageReceipts(
       Directory(p.join(backupDatabase.parent.path, _receiptsFolderName)),
     );
+
+    // Best-effort. Without it the restore still happens and is still logged,
+    // just without saying which backup it was.
+    try {
+      final takenAt =
+          _parseFolderName(p.basename(backupDatabase.parent.path));
+      await details.writeAsString(jsonEncode({
+        'source': backupDatabase.path,
+        'backupTakenAt': takenAt?.toIso8601String(),
+        'fileModifiedAt':
+            (await backupDatabase.lastModified()).toIso8601String(),
+        'stagedAt': (now ?? DateTime.now()).toIso8601String(),
+        'stagedBy': stagedBy,
+      }));
+    } catch (error, stack) {
+      _log.warning('The staged restore\'s details were not written',
+          error, stack);
+    }
     return null;
   }
 
@@ -308,9 +409,11 @@ class BackupService {
     await live.parent.create(recursive: true);
 
     // Keep the replaced database alongside, so a mistaken restore is not fatal.
+    String? replacedCopy;
     if (await live.exists()) {
       final stamp = DateTime.now().millisecondsSinceEpoch;
-      await live.copy('${live.path}.replaced-$stamp');
+      final copy = await live.copy('${live.path}.replaced-$stamp');
+      replacedCopy = p.basename(copy.path);
     }
 
     await pending.copy(live.path);
@@ -324,8 +427,130 @@ class BackupService {
 
     await _applyStagedReceipts(support);
     await _pruneReplacedCopies(live);
+    await _noteAppliedRestore(support, replacedCopy: replacedCopy);
 
     return true;
+  }
+
+  /// Hands what is known about the restore just applied to
+  /// [recordAppliedRestore], which runs once the database is open.
+  ///
+  /// Never throws: by this point the restore has happened, and failing the
+  /// launch over its paperwork would be the worse outcome. The log line is
+  /// the fallback record.
+  static Future<void> _noteAppliedRestore(
+    Directory support, {
+    required String? replacedCopy,
+  }) async {
+    final staged = File(p.join(support.path, _pendingDetailsName));
+    var details = <String, Object?>{};
+    try {
+      if (await staged.exists()) {
+        final decoded = jsonDecode(await staged.readAsString());
+        if (decoded is Map<String, dynamic>) details = decoded;
+        await staged.delete();
+      }
+    } catch (error) {
+      _log.warning('The staged restore\'s details could not be read', error);
+    }
+
+    details['replacedCopy'] = replacedCopy;
+    details['appliedAt'] = DateTime.now().toIso8601String();
+    _log.warning('A staged restore was applied: ${jsonEncode(details)}');
+
+    try {
+      await File(p.join(support.path, _appliedDetailsName))
+          .writeAsString(jsonEncode(details));
+    } catch (error, stack) {
+      _log.severe('The applied restore could not be noted for the audit log',
+          error, stack);
+    }
+  }
+
+  /// Writes the audit row for a restore applied at this launch, into the
+  /// database it restored. Call once the database is open. Returns whether
+  /// there was one to record.
+  ///
+  /// Without this a restore was invisible inside the app: the restored audit
+  /// trail is the backup's, and ends the moment the backup was taken. That
+  /// made "restore an old backup" a way to undo a password reset or a deleted
+  /// payment and leave no trace of having done it. The row names the backup's
+  /// date and the `.replaced-*` file the previous data was kept in, which is
+  /// where anything recorded since the backup still is.
+  ///
+  /// Never throws — see [_noteAppliedRestore] — and consumes the note only
+  /// once the row has been offered to the audit log.
+  static Future<bool> recordAppliedRestore(
+    AppDatabase db, {
+    Future<Directory> Function()? supportDirectory,
+  }) async {
+    try {
+      final support =
+          await (supportDirectory ?? getApplicationSupportDirectory)();
+      final note = File(p.join(support.path, _appliedDetailsName));
+      if (!await note.exists()) return false;
+
+      var details = const <String, dynamic>{};
+      try {
+        final decoded = jsonDecode(await note.readAsString());
+        if (decoded is Map<String, dynamic>) details = decoded;
+      } catch (error) {
+        _log.warning('The applied restore\'s details could not be read', error);
+      }
+
+      DateTime? at(String key) {
+        final value = details[key];
+        return value is String ? DateTime.tryParse(value) : null;
+      }
+
+      String? text(String key) {
+        final value = details[key];
+        return value is String && value.isNotEmpty ? value : null;
+      }
+
+      final takenAt = at('backupTakenAt');
+      final modifiedAt = at('fileModifiedAt');
+      final stagedAt = at('stagedAt');
+      final stagedBy = text('stagedBy');
+      final source = text('source');
+      final replaced = text('replacedCopy');
+
+      await AuditRepository(db).record(
+        category: AuditCategory.update,
+        action: AuditAction.backupRestored,
+        outcome: AuditOutcome.success,
+        summary: takenAt == null
+            ? 'Data restored from a backup'
+            : 'Data restored from the backup taken ${_readable(takenAt)}',
+        actorName: stagedBy,
+        detail: [
+          if (source != null) 'Backup file: $source',
+          if (takenAt == null && modifiedAt != null)
+            'Backup date unknown; the file was last changed '
+                '${_readable(modifiedAt)}',
+          if (stagedAt != null) 'Restore chosen ${_readable(stagedAt)}',
+          replaced == null
+              ? 'There was no previous database to keep'
+              : 'The data it replaced was kept as $replaced',
+          'Entries below this one come from the backup. Anything recorded '
+              'after the backup was taken is only in the kept copy.',
+        ],
+      );
+
+      await note.delete();
+      return true;
+    } catch (error, stack) {
+      _log.severe('The applied restore was not recorded in the audit log',
+          error, stack);
+      return false;
+    }
+  }
+
+  static String _readable(DateTime at) {
+    final local = at.toLocal();
+    String two(int v) => v.toString().padLeft(2, '0');
+    return '${formatDayMonthYear(local)}, '
+        '${two(local.hour)}:${two(local.minute)}';
   }
 
   /// Copies the backup's receipt images into the live receipts folder.

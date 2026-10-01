@@ -128,12 +128,19 @@ class PaymentHistoryTable extends StatelessWidget {
                       flex: 2,
                       child: Row(
                         children: [
+                          // Every month the payment paid for, which for money
+                          // taken months ahead is a span longer than the
+                          // column: the tooltip keeps the whole of it
+                          // readable where the ellipsis cuts it off.
                           Flexible(
-                            child: Text(row.periodLabel,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                    fontSize: 13,
-                                    color: context.palette.textSecondary)),
+                            child: Tooltip(
+                              message: row.periodLabel,
+                              child: Text(row.periodLabel,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                      fontSize: 13,
+                                      color: context.palette.textSecondary)),
+                            ),
                           ),
                           // Beside the period rather than beside the date, so
                           // the answer sits next to the question: this is the

@@ -347,9 +347,20 @@ class _Preview extends StatelessWidget {
         const SizedBox(height: 6),
         Text(
           'Rows are matched on phone number and name, falling back to the '
-          '"Enroll." number. A member renamed in this sheet but not in the app '
-          '— and with no "Enroll." column to go on — will come in as a second '
-          'record.',
+          '"Enroll." number. A member whose phone number you have corrected in '
+          'the app is still recognised by their "Enroll." number and name. A '
+          'member renamed in this sheet but not in the app — and with no '
+          '"Enroll." column to go on — will come in as a second record.',
+          style: mutedStyleOf(context),
+        ),
+        const SizedBox(height: 6),
+        // Said before the import rather than only after it, because it is
+        // the one thing an import does to members already on file.
+        Text(
+          'Anyone an earlier import marked as having left — because their '
+          'sheet covered a year that had ended, or they had stopped paying — '
+          'is made active again if this sheet shows them paying since. A '
+          'member you deactivated yourself always stays deactivated.',
           style: mutedStyleOf(context),
         ),
         if (ledger.namesPlans) ...[
@@ -515,6 +526,40 @@ class _SummaryCard extends StatelessWidget {
                 '${summary.membersMergedByName} rows matched on name alone — '
                 'check these are the same people, not namesakes',
                 tone: context.palette.due),
+          // Reported because the member screen saw no button pressed: the
+          // import made these people active again on its own reading of the
+          // sheet, and the owner should know whose status moved.
+          if (summary.membersReactivated.isNotEmpty)
+            _line(
+                context,
+                '${summary.membersReactivated.length} marked as having left '
+                'by an earlier import are paying in this sheet, and are active '
+                'again: ${_names(summary.membersReactivated)}',
+                tone: context.palette.due),
+          // A different phone number on file, matched on the "Enroll."
+          // number and the name. Usually a number corrected in the app, but
+          // the sheet may be the one that is right.
+          if (summary.membersMatchedOnCode > 0)
+            _line(
+                context,
+                '${summary.membersMatchedOnCode} rows matched on "Enroll." '
+                'number and name although the phone number differs from the '
+                'one on file — check these are the same people',
+                tone: context.palette.due),
+          if (summary.codesReassigned.isNotEmpty) ...[
+            _line(
+                context,
+                '${summary.codesReassigned.length} rows had an "Enroll." '
+                'number that already belongs to somebody else, and were given '
+                'a new one:',
+                tone: context.palette.due),
+            for (final line in summary.codesReassigned.take(6))
+              _line(context, '  $line', tone: context.palette.due),
+            if (summary.codesReassigned.length > 6)
+              _line(context,
+                  '  and ${summary.codesReassigned.length - 6} more',
+                  tone: context.palette.due),
+          ],
           if (summary.membersLapsed > 0)
             _line(
                 context,
@@ -541,6 +586,10 @@ class _SummaryCard extends StatelessWidget {
       ),
     );
   }
+
+  static String _names(List<String> names) => names.length <= 4
+      ? names.join(', ')
+      : '${names.take(4).join(', ')} and ${names.length - 4} more';
 
   Widget _line(BuildContext context, String text, {Color? tone}) => Padding(
         padding: const EdgeInsets.only(bottom: 6),

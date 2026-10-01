@@ -257,9 +257,16 @@ void main() {
       expect(row.status, ReminderSendStatus.failed);
       expect(row.attempts, 1);
 
+      // The retry goes through a fresh queue build, as the screen and the next
+      // automatic run do. Re-sending the old in-memory candidate is how this
+      // test used to pass while a failed reminder never reappeared at all.
       client = _RecordingClient();
       service = ReminderService(db: db, clientFactory: () async => client);
-      await service.send(queue.single);
+      final again = await service.buildQueue(now: DateTime.utc(2026, 9, 6));
+      expect(again, hasLength(1), reason: 'the failure is offered again');
+      expect(again.single.stage, ReminderStage.onDue);
+      expect(again.single.retry, isTrue);
+      expect(await service.send(again.single), isA<ReminderSent>());
 
       final retried = await onDueRow();
       expect(retried.status, ReminderSendStatus.sent);

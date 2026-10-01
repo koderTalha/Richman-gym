@@ -2,9 +2,12 @@ import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:logging/logging.dart';
 
-import '../data/database.dart';
 import '../data/receipt_repository.dart';
 import '../services/record_payment_service.dart';
+
+// The filter is applied in SQL by the repository, so it lives there; it is
+// re-exported because the screen and its callers have always found it here.
+export '../data/receipt_repository.dart' show ReceiptFilter;
 
 final _log = Logger('receipts');
 
@@ -39,8 +42,6 @@ class ReceiptResendRequested extends ReceiptsEvent {
   List<Object?> get props => [receiptId];
 }
 
-enum ReceiptFilter { all, sent, failed, notSent }
-
 extension ReceiptFilterLabel on ReceiptFilter {
   String get label => switch (this) {
         ReceiptFilter.all => 'All',
@@ -56,6 +57,7 @@ class ReceiptsState extends Equatable {
   const ReceiptsState({
     this.status = ReceiptsStatus.loading,
     this.rows = const [],
+    this.matchCount = 0,
     this.search = '',
     this.filter = ReceiptFilter.all,
     this.resendingId,
@@ -64,7 +66,13 @@ class ReceiptsState extends Equatable {
   });
 
   final ReceiptsStatus status;
+
+  /// The newest matching receipts, up to the repository's page size.
   final List<ReceiptRow> rows;
+
+  /// How many receipts match the search and filter in all, so the header can
+  /// say when [rows] is only the newest part of them.
+  final int matchCount;
   final String search;
   final ReceiptFilter filter;
 
@@ -73,9 +81,13 @@ class ReceiptsState extends Equatable {
   final String? message;
   final String? error;
 
+  /// Whether [rows] is only the newest part of what matched.
+  bool get isCapped => matchCount > rows.length;
+
   ReceiptsState copyWith({
     ReceiptsStatus? status,
     List<ReceiptRow>? rows,
+    int? matchCount,
     String? search,
     ReceiptFilter? filter,
     int? resendingId,
@@ -86,6 +98,7 @@ class ReceiptsState extends Equatable {
       ReceiptsState(
         status: status ?? this.status,
         rows: rows ?? this.rows,
+        matchCount: matchCount ?? this.matchCount,
         search: search ?? this.search,
         filter: filter ?? this.filter,
         resendingId: clearResending ? null : (resendingId ?? this.resendingId),
@@ -95,7 +108,8 @@ class ReceiptsState extends Equatable {
 
   @override
   List<Object?> get props =>
-      [status, rows.length, search, filter, resendingId, message, error];
+      [status, rows.length, matchCount, search, filter, resendingId, message,
+        error];
 }
 
 class ReceiptsBloc extends Bloc<ReceiptsEvent, ReceiptsState> {
@@ -123,32 +137,23 @@ class ReceiptsBloc extends Bloc<ReceiptsEvent, ReceiptsState> {
   Future<void> _load(Emitter<ReceiptsState> emit) async {
     emit(state.copyWith(status: ReceiptsStatus.loading));
     try {
-      final all = await _repository.list(search: state.search);
+      // Search and filter both go to SQL, before the page limit. Applying the
+      // filter here to the newest 300 hid every older failure the dashboard
+      // was counting.
+      final rows = await _repository.list(
+          search: state.search, filter: state.filter);
+      final matchCount = await _repository.count(
+          search: state.search, filter: state.filter);
       emit(state.copyWith(
         status: ReceiptsStatus.ready,
-        rows: _applyFilter(all),
+        rows: rows,
+        matchCount: matchCount,
         clearResending: true,
       ));
     } catch (e, s) {
       _log.severe('Loading receipts failed', e, s);
       emit(state.copyWith(status: ReceiptsStatus.failed, error: '$e'));
     }
-  }
-
-  List<ReceiptRow> _applyFilter(List<ReceiptRow> rows) {
-    return switch (state.filter) {
-      ReceiptFilter.all => rows,
-      ReceiptFilter.sent => rows
-          .where((r) =>
-              r.whatsAppStatus == WhatsAppStatus.sent ||
-              r.whatsAppStatus == WhatsAppStatus.delivered ||
-              r.whatsAppStatus == WhatsAppStatus.read)
-          .toList(),
-      ReceiptFilter.failed =>
-        rows.where((r) => r.whatsAppStatus == WhatsAppStatus.failed).toList(),
-      ReceiptFilter.notSent =>
-        rows.where((r) => r.whatsAppStatus == null).toList(),
-    };
   }
 
   Future<void> _onResend(

@@ -1,4 +1,5 @@
 import 'package:drift/drift.dart';
+import 'package:logging/logging.dart';
 
 import '../data/cycle_pricing_log.dart';
 import '../data/database.dart';
@@ -16,6 +17,8 @@ import '../domain/billing_cycle.dart';
 /// the 1st of the calendar month. A member billed on the 6th therefore rolls
 /// into 6 Oct – 6 Nov, and a member with no anchor — every membership that
 /// predates v10 — resolves to the 1st and rolls exactly as before.
+final _log = Logger('billing');
+
 class BillingMaintenance {
   BillingMaintenance(this.db);
 
@@ -36,9 +39,19 @@ class BillingMaintenance {
     final at = (now ?? DateTime.now()).toUtc();
     final today = DateTime.utc(at.year, at.month, at.day);
 
-    final memberships = await (db.select(db.memberships)
-          ..where((m) => m.endDate.isNull()))
-        .get();
+    // One enrolment per member: the newest open one, the same answer
+    // `openMembershipFor` gives. A database that predates the one-open-
+    // enrolment index can hold two for one person, and rolling both gave that
+    // member the same cycle twice — which the one-cycle-per-member trigger
+    // refused, taking the whole roll, and with it the app's startup, down.
+    final newestOpen = <int, Membership>{};
+    for (final m in await (db.select(db.memberships)
+          ..where((m) => m.endDate.isNull())
+          ..orderBy([(m) => OrderingTerm(expression: m.id)]))
+        .get()) {
+      newestOpen[m.memberId] = m;
+    }
+    final memberships = newestOpen.values.toList();
     if (memberships.isEmpty) return 0;
 
     // A member who has left the gym must stop accruing debt. Without this a
@@ -79,60 +92,104 @@ class BillingMaintenance {
         final member = activeMembers[membership.memberId];
         if (member == null) continue;
 
-        final plan = plans[membership.planId];
-        final duration = plan?.durationMonths ?? 1;
-        final periods = periodsByMember[membership.memberId] ?? const [];
-
-        // Drift hands DateTimes back in local time. The instant is right, but
-        // reading .month off a local value lands on the wrong month in any
-        // negative-offset timezone, so normalise before doing calendar maths.
-        final covered = periods.any((p) =>
-            !p.periodStart.toUtc().isAfter(today) &&
-            today.isBefore(p.periodEnd.toUtc()));
-        if (covered) continue;
-
-        final anchorDay = resolveAnchorDay(
-          billingAnchorDay: membership.billingAnchorDay,
-          latestPeriodStart:
-              periods.isEmpty ? null : periods.last.periodStart,
-          joiningDate: member.joiningDate,
-        );
-
-        final cycle = _cycleCovering(
-          periods: periods,
-          joiningDate: member.joiningDate,
-          anchorDay: anchorDay,
-          duration: duration,
-          today: today,
-        );
-        if (cycle == null) continue;
-
-        final expected = membership.feeOverrideMinor ?? plan?.priceMinor ?? 0;
-        final opened =
-            await db.into(db.membershipPeriods).insertReturning(
-                  MembershipPeriodsCompanion.insert(
-                    membershipId: membership.id,
-                    periodStart: cycle.start,
-                    periodEnd: cycle.end,
-                    expectedAmountMinor: expected,
-                  ),
-                );
-        // Why this cycle carries this figure, recorded beside the figure
-        // itself. See `data/cycle_pricing_log.dart`.
-        await recordCycleOpened(
-          db,
-          membershipPeriodId: opened.id,
-          amountMinor: expected,
-          membership: membership,
-          plan: plan,
-          reason: 'Opened by the startup roll to cover today.',
-          at: at,
-        );
-        created++;
+        // One member's bad row is logged and skipped, never allowed to stop
+        // everyone else being rolled. SQLite aborts only the failing
+        // statement, so the transaction carries on with the next member.
+        try {
+          if (await _rollOne(
+            membership: membership,
+            member: member,
+            plan: plans[membership.planId],
+            periodsByMember: periodsByMember,
+            today: today,
+            at: at,
+          )) {
+            created++;
+          }
+        } catch (error, stack) {
+          _log.severe(
+              'Could not roll the billing cycle for member ${member.id}',
+              error,
+              stack);
+        }
       }
     });
 
     return created;
+  }
+
+  /// Opens [membership]'s cycle covering [today] if it has none. True when a
+  /// cycle was opened.
+  ///
+  /// [periodsByMember] is the roll's snapshot, and the cycle opened here is
+  /// added to it, so nothing later in the same run can see the member as
+  /// uncovered and open it again.
+  Future<bool> _rollOne({
+    required Membership membership,
+    required Member member,
+    required MembershipPlan? plan,
+    required Map<int, List<MembershipPeriod>> periodsByMember,
+    required DateTime today,
+    required DateTime at,
+  }) async {
+    final duration = plan?.durationMonths ?? 1;
+    final periods = periodsByMember[membership.memberId] ?? const [];
+
+    // Drift hands DateTimes back in local time. The instant is right, but
+    // reading .month off a local value lands on the wrong month in any
+    // negative-offset timezone, so normalise before doing calendar maths.
+    final covered = periods.any((p) =>
+        !p.periodStart.toUtc().isAfter(today) &&
+        today.isBefore(p.periodEnd.toUtc()));
+    if (covered) return false;
+
+    final anchorDay = resolveAnchorDay(
+      billingAnchorDay: membership.billingAnchorDay,
+      latestPeriodStart: periods.isEmpty ? null : periods.last.periodStart,
+      joiningDate: member.joiningDate,
+    );
+
+    final cycle = _cycleCovering(
+      periods: periods,
+      joiningDate: member.joiningDate,
+      anchorDay: anchorDay,
+      duration: duration,
+      today: today,
+    );
+    if (cycle == null) return false;
+
+    final fee = membership.feeOverrideMinor ?? plan?.priceMinor ?? 0;
+    // A transition onto a new billing day runs anywhere from about 15 to 46
+    // days, and used to be charged one full month whatever its length. Charged
+    // for its own days instead — see `feeForCycle`.
+    final expected = feeForCycle(
+          feeMinor: fee,
+          start: cycle.start,
+          end: cycle.end,
+          durationMonths: duration,
+        ) ??
+        fee;
+    final opened = await db.into(db.membershipPeriods).insertReturning(
+          MembershipPeriodsCompanion.insert(
+            membershipId: membership.id,
+            periodStart: cycle.start,
+            periodEnd: cycle.end,
+            expectedAmountMinor: expected,
+          ),
+        );
+    // Why this cycle carries this figure, recorded beside the figure itself.
+    // See `data/cycle_pricing_log.dart`.
+    await recordCycleOpened(
+      db,
+      membershipPeriodId: opened.id,
+      amountMinor: expected,
+      membership: membership,
+      plan: plan,
+      reason: 'Opened by the startup roll to cover today.',
+      at: at,
+    );
+    periodsByMember.putIfAbsent(membership.memberId, () => []).add(opened);
+    return true;
   }
 
   /// The cycle containing [today], continuing the member's own cadence.

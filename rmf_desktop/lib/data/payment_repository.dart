@@ -1,9 +1,10 @@
 import 'package:drift/drift.dart';
 
-import '../domain/billing_period.dart';
 import '../domain/payment_timing.dart';
 import '../domain/reminder_schedule.dart';
 import 'database.dart';
+import 'listing_search.dart';
+import 'payment_cycles.dart';
 
 /// A payment joined with the context needed to display it.
 class PaymentRow {
@@ -21,6 +22,10 @@ class PaymentRow {
 
   final Payment payment;
   final Member member;
+
+  /// The months this payment paid for, read from its allocations: "January
+  /// 2026 - March 2026" for three months taken at once, not just the first
+  /// one. See `payment_cycles.dart`.
   final String periodLabel;
 
   /// Length of the plan the cycle was billed under. Carried so the edit form
@@ -48,25 +53,29 @@ class PaymentRepository {
   final AppDatabase db;
 
   /// Payment history, newest first. [memberId] scopes it to one member's profile.
+  ///
+  /// [search] matches the member's name or phone, or the receipt number, and
+  /// is applied in SQL *before* [limit] — as is [method]. Filtering the
+  /// newest page in Dart instead made anything older than the cap impossible
+  /// to find: the owner searched for a member, was told there was no
+  /// payment, and could have charged them again. [historyTotals] answers how
+  /// many rows matched in all, and what they add up to.
   Future<List<PaymentRow>> history({
     int? memberId,
     String? search,
     PaymentMethod? method,
     int limit = 500,
   }) async {
-    var query = db.select(db.payments)
+    final query = db.select(db.payments)
       ..orderBy([
         (p) => OrderingTerm(expression: p.paymentDate, mode: OrderingMode.desc),
         (p) => OrderingTerm(expression: p.id, mode: OrderingMode.desc),
       ])
       ..limit(limit);
 
-    if (memberId != null) {
-      query = query..where((p) => p.memberId.equals(memberId));
-    }
-    if (method != null) {
-      query = query..where((p) => p.method.equalsValue(method));
-    }
+    final filter =
+        _historyFilter(memberId: memberId, search: search, method: method);
+    if (filter != null) query.where((_) => filter);
 
     final payments = await query.get();
     if (payments.isEmpty) return const [];
@@ -130,6 +139,11 @@ class PaymentRepository {
       for (final p in await db.select(db.membershipPlans).get()) p.id: p
     };
 
+    // Every month each payment paid for, not only the first cycle the column
+    // above names. The cycle, timing and plan length below stay on that first
+    // cycle: they are what the edit form opens on.
+    final labels = await paymentPeriodLabels(db, payments);
+
     // One read for the whole page: the on-time window is a property of the
     // gym's reminder schedule, not of any individual payment.
     final settings = await (db.select(db.gymSettings)
@@ -165,15 +179,65 @@ class PaymentRepository {
                 periodStart: period.periodStart,
                 window: window,
               ),
-        periodLabel: period == null
-            ? '—'
-            : formatBillingPeriod(period.periodStart, duration),
+        periodLabel: labels[payment.id] ?? '—',
         receipt: receipt,
         whatsAppStatus:
             receipt == null ? null : latestStatus[receipt.id],
         recordedByName: users[payment.recordedById]?.name ?? 'Unknown',
       );
     }).toList();
+  }
+
+  /// How many payments match the same filters as [history], and what they
+  /// add up to — over every matching row, not just the page [history]
+  /// returns. The Payments screen's header total is this figure: summing the
+  /// shown rows understated it as soon as there were more than [history]'s
+  /// limit.
+  Future<({int count, int totalMinor})> historyTotals({
+    int? memberId,
+    String? search,
+    PaymentMethod? method,
+  }) async {
+    final count = db.payments.id.count();
+    final total = db.payments.amountMinor.sum();
+    final query = db.selectOnly(db.payments)..addColumns([count, total]);
+
+    final filter =
+        _historyFilter(memberId: memberId, search: search, method: method);
+    if (filter != null) query.where(filter);
+
+    final row = await query.getSingle();
+    return (count: row.read(count) ?? 0, totalMinor: row.read(total) ?? 0);
+  }
+
+  /// The WHERE clause [history] and [historyTotals] share, so the rows shown
+  /// and the total above them can never be answering different questions.
+  /// Null when nothing narrows the list.
+  Expression<bool>? _historyFilter({
+    int? memberId,
+    String? search,
+    PaymentMethod? method,
+  }) {
+    final conditions = <Expression<bool>>[
+      if (memberId != null) db.payments.memberId.equals(memberId),
+      if (method != null) db.payments.method.equalsValue(method),
+    ];
+
+    final term = search?.trim() ?? '';
+    if (term.isNotEmpty) {
+      final members = db.selectOnly(db.members)
+        ..addColumns([db.members.id])
+        ..where(memberMatches(db.members, term));
+      final receipts = db.selectOnly(db.receipts)
+        ..addColumns([db.receipts.paymentId])
+        ..where(db.receipts.receiptNumber
+            .lower()
+            .like(containsPattern(term), escapeChar: r'\'));
+      conditions.add(db.payments.memberId.isInQuery(members) |
+          db.payments.id.isInQuery(receipts));
+    }
+
+    return conditions.isEmpty ? null : conditions.reduce((a, b) => a & b);
   }
 
   /// What the gym took in over `[from, to)`.

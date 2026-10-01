@@ -97,7 +97,20 @@ class MembersBloc extends Bloc<MembersEvent, MembersState> {
 
   final MemberRepository _repository;
 
+  /// Which load is the latest one asked for.
+  ///
+  /// Bloc runs these handlers concurrently, and a search for "a" walks far
+  /// more of the roster than the "al" typed a moment later — so the slower,
+  /// older query could finish second and paint its rows over the newer ones,
+  /// leaving the list out of step with the box above it. Each load takes a
+  /// number before it awaits and only the one still holding the latest may
+  /// emit. A counter rather than `bloc_concurrency`'s `restartable()` so the
+  /// app takes on no dependency for four lines; the query an older load
+  /// started still runs to the end, it is just not shown.
+  int _latestLoad = 0;
+
   Future<void> _load(Emitter<MembersState> emit) async {
+    final load = ++_latestLoad;
     emit(state.copyWith(status: MembersStatus.loading));
     try {
       // One fetch for both the visible rows and every chip's count — see
@@ -108,6 +121,7 @@ class MembersBloc extends Bloc<MembersEvent, MembersState> {
         search: state.search,
         filter: state.filter,
       );
+      if (load != _latestLoad) return;
       emit(state.copyWith(
         status: MembersStatus.ready,
         rows: result.rows,
@@ -115,6 +129,7 @@ class MembersBloc extends Bloc<MembersEvent, MembersState> {
       ));
     } catch (e, s) {
       _log.severe('Loading members failed', e, s);
+      if (load != _latestLoad) return;
       emit(state.copyWith(status: MembersStatus.failed, error: '$e'));
     }
   }
