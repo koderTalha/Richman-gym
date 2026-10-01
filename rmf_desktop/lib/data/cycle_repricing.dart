@@ -1,5 +1,6 @@
 import 'package:drift/drift.dart';
 
+import '../domain/billing_cycle.dart';
 import 'cycle_pricing_log.dart';
 import 'database.dart';
 import 'membership_queries.dart';
@@ -47,9 +48,9 @@ import 'membership_queries.dart';
 /// day, which is what the owner is choosing on the member form when they say a
 /// new plan applies "from today" rather than from the start of the month. A
 /// cycle is billed on its start, so one that began before the new fee was
-/// meant to apply keeps the figure it was billed at. Null — the default, and
-/// what the startup sweep passes — means every cycle the guards below allow,
-/// which is the behaviour this function has always had.
+/// meant to apply keeps the figure it was billed at. Null means every cycle
+/// the guards below allow. The startup sweep passes the member's latest
+/// recorded change, so the choice survives the next launch.
 ///
 /// A back-dated [effectiveFrom] does **not** widen what may be touched. Guard
 /// (c) still refuses a cycle that has ended, whatever date is passed here, so
@@ -89,13 +90,37 @@ Future<int> repriceOpenCycles(
       : DateTime.utc(effectiveFrom.toUtc().year, effectiveFrom.toUtc().month,
           effectiveFrom.toUtc().day);
 
-  final candidates = [
+  // What each still-open cycle should cost now. Only a cycle the plan's own
+  // length can price is a candidate: re-pricing used to copy the fee onto
+  // whatever cycle was open, so moving a member from Monthly to Quarterly
+  // billed their current month 8,000, moving them back billed a whole quarter
+  // 3,000, and the startup sweep put the wrong figure back after every
+  // correction. A cycle of another length keeps what it was billed at, and
+  // the next cycle opens at the new plan's length and price.
+  final open = [
     for (final period in await periodsForMember(db, memberId))
       if (period.settledAt == null &&
-          period.expectedAmountMinor != feeMinor &&
           period.periodEnd.toUtc().isAfter(today) &&
           (from == null || !period.periodStart.toUtc().isBefore(from)))
         period,
+  ];
+  if (open.isEmpty) return 0;
+
+  final targets = <int, int>{};
+  for (final period in open) {
+    final target = await _targetFor(
+      db,
+      period: period,
+      feeMinor: feeMinor,
+      durationMonths: plan.durationMonths,
+    );
+    if (target != null && target != period.expectedAmountMinor) {
+      targets[period.id] = target;
+    }
+  }
+  final candidates = [
+    for (final period in open)
+      if (targets.containsKey(period.id)) period,
   ];
   if (candidates.isEmpty) return 0;
 
@@ -105,6 +130,8 @@ Future<int> repriceOpenCycles(
 
   var repriced = 0;
   for (final period in candidates) {
+    final target = targets[period.id]!;
+
     // Money against a cycle is the member acting on the price they were
     // quoted — so a **rise** must not reach it, or the increase is backdated
     // onto somebody who had already paid what was asked.
@@ -117,21 +144,21 @@ Future<int> repriceOpenCycles(
     // the month, paid the new, lower fee, and the cycle went on wanting the
     // old one for ever — because from the moment their money landed nothing
     // would re-price it again.
-    if (funded.contains(period.id) && feeMinor > period.expectedAmountMinor) {
+    if (funded.contains(period.id) && target > period.expectedAmountMinor) {
       continue;
     }
 
     await (db.update(db.membershipPeriods)
           ..where((p) => p.id.equals(period.id)))
         .write(MembershipPeriodsCompanion(
-          expectedAmountMinor: Value(feeMinor),
+          expectedAmountMinor: Value(target),
           // Recomputed here rather than left to a later caller: a cut can be
           // the very thing that closes the cycle, and a stamp that disagreed
           // with the money behind it is what `refreshSettlement` exists to
           // prevent everywhere else. Every candidate arrived unsettled, so
           // this only ever closes one — it cannot reopen anything.
           settledAt: Value(
-              (collected[period.id] ?? 0) >= feeMinor ? at : null),
+              (collected[period.id] ?? 0) >= target ? at : null),
         ));
 
     // What moved the figure, recorded beside the figure. A cycle that has been
@@ -141,13 +168,13 @@ Future<int> repriceOpenCycles(
     await recordCyclePricing(
       db,
       membershipPeriodId: period.id,
-      amountMinor: feeMinor,
+      amountMinor: target,
       previousAmountMinor: period.expectedAmountMinor,
       source: sourceFor(membership),
       planId: membership.planId,
       planPriceMinor: plan.priceMinor,
       feeOverrideMinor: membership.feeOverrideMinor,
-      reason: feeMinor < period.expectedAmountMinor
+      reason: target < period.expectedAmountMinor
           ? 'Re-priced down to the fee the member is on now.'
           : 'Re-priced to the fee the member is on now.',
       at: at,
@@ -187,6 +214,44 @@ Future<int> repriceOpenCyclesForPlan(
         await repriceOpenCycles(db, memberId: membership.memberId, now: now);
   }
   return repriced;
+}
+
+/// What [period] should cost at [feeMinor] on a plan of [durationMonths], or
+/// null when it should be left alone.
+///
+/// A whole cycle costs the fee. A transition onto a new billing day is priced
+/// in proportion to its days when it opens (see `feeForCycle`), but only from
+/// 1 October 2026 — those opened before then were charged a full month, and
+/// the owner chose to leave them as they are. So a transition is never
+/// re-priced from its dates: it follows a fee change by the same ratio the
+/// fee moved, measured from the fee its own pricing history says it was set
+/// against. With no such history there is nothing to scale from, and the
+/// cycle keeps its figure.
+Future<int?> _targetFor(
+  AppDatabase db, {
+  required MembershipPeriod period,
+  required int feeMinor,
+  required int durationMonths,
+}) async {
+  switch (cycleShapeFor(
+    start: period.periodStart,
+    end: period.periodEnd,
+    durationMonths: durationMonths,
+  )) {
+    case CycleShape.whole:
+      return feeMinor;
+    case CycleShape.otherLength:
+      return null;
+    case CycleShape.transition:
+      final history = await pricingHistoryFor(db, period.id);
+      if (history.isEmpty) return null;
+      final latest = history.last;
+      if (latest.source == CyclePricingSource.unknown) return null;
+      final basis = latest.feeOverrideMinor ?? latest.planPriceMinor;
+      if (basis == null || basis <= 0 || basis == feeMinor) return null;
+      return (period.expectedAmountMinor * feeMinor / basis / 100).round() *
+          100;
+  }
 }
 
 /// Which of [periodIds] already have money recorded against them.
@@ -236,15 +301,44 @@ Future<Set<int>> _periodsHoldingMoney(
 ///
 /// Every guard [repriceOpenCycles] makes still applies, so this leaves alone
 /// settled cycles, cycles holding any money at all, and cycles that have
-/// already ended — arrears stay at the price they were incurred at.
+/// already ended — arrears stay at the price they were incurred at. So does
+/// the member's most recent "applies from" date, where they have one.
 Future<int> repriceAllOpenCycles(AppDatabase db, {DateTime? now}) async {
   final active = await (db.select(db.members)
         ..where((m) => m.deactivatedAt.isNull()))
       .get();
 
+  // The owner's latest "applies from" answer for each member. A fee change
+  // saved as applying from 10 September leaves the cycle that began on the 1st
+  // at its old price — and the next launch used to re-price it anyway, because
+  // this sweep passed no date and so undid the choice the save had honoured.
+  final appliesFrom = <int, DateTime>{};
+  for (final change in await (db.select(db.membershipChanges)
+        ..orderBy([
+          (c) => OrderingTerm(expression: c.recordedAt),
+          (c) => OrderingTerm(expression: c.id),
+        ]))
+      .get()) {
+    // A change saved as applying "today" carries its own timestamp as the
+    // date, and its save re-priced without a cut-off; mirroring the save means
+    // passing none here either. Only a date the owner actually picked limits
+    // the sweep.
+    final picked = change.effectiveFrom.toUtc() != change.recordedAt.toUtc();
+    if (picked) {
+      appliesFrom[change.memberId] = change.effectiveFrom;
+    } else {
+      appliesFrom.remove(change.memberId);
+    }
+  }
+
   var repriced = 0;
   for (final member in active) {
-    repriced += await repriceOpenCycles(db, memberId: member.id, now: now);
+    repriced += await repriceOpenCycles(
+      db,
+      memberId: member.id,
+      now: now,
+      effectiveFrom: appliesFrom[member.id],
+    );
   }
   return repriced;
 }

@@ -16,6 +16,7 @@ import '../payments/payment_history_table.dart';
 import '../widgets/status_badge.dart';
 import 'billing_day_action.dart';
 import 'member_form_screen.dart';
+import 'restart_billing_action.dart';
 
 class MemberDetailScreen extends StatelessWidget {
   const MemberDetailScreen({super.key, required this.memberId});
@@ -30,6 +31,7 @@ class MemberDetailScreen extends StatelessWidget {
         paymentRepository: context.read<PaymentRepository>(),
         memberId: memberId,
         actorId: context.read<AuthBloc>().state.user!.id,
+        cycles: context.read<BillingCycleService>(),
       )..add(const MemberDetailRequested()),
       child: const _MemberDetailView(),
     );
@@ -45,6 +47,24 @@ class _MemberDetailView extends StatelessWidget {
   ) async {
     final bloc = context.read<MemberDetailBloc>();
     final deactivating = row.member.deactivatedAt == null;
+
+    // A member coming back after a gap starts again from the day they came
+    // back, so reactivating them asks for that day. One still inside time
+    // they already paid for — deactivated by mistake, say — just comes back.
+    if (!deactivating &&
+        !await context.read<BillingCycleService>().isCoveredOn(row.id)) {
+      if (!context.mounted) return;
+      final choice = await showRestartBillingDialog(
+        context,
+        member: row,
+        reactivate: true,
+      );
+      if (choice != null) {
+        bloc.add(MemberActiveToggled(active: true, restartFrom: choice.from));
+      }
+      return;
+    }
+    if (!context.mounted) return;
 
     final confirmed = await showDialog<bool>(
       context: context,
@@ -171,9 +191,14 @@ class _MemberDetailView extends StatelessWidget {
                   onToggleActive: () =>
                       _confirmToggleActive(context, state.member!),
                   onDelete: () => _confirmDelete(context, state.member!),
+                  // Every mutation on this screen reloads through here or
+                  // the two buttons below — payments edited, deleted or
+                  // cleared, the billing day moved, billing restarted — and
+                  // each says so, or the Members list behind would go on
+                  // showing a member who just paid as DUE.
                   onPaymentsChanged: () => context
                       .read<MemberDetailBloc>()
-                      .add(const MemberDetailRequested()),
+                      .add(const MemberDetailRequested(afterChange: true)),
                 ),
             },
           ),
@@ -281,7 +306,7 @@ class _Body extends StatelessWidget {
                       ),
                     );
                     if (saved == true) {
-                      bloc.add(const MemberDetailRequested());
+                      bloc.add(const MemberDetailRequested(afterChange: true));
                     }
                   },
                   icon: const Icon(Icons.edit_outlined, size: 16),
@@ -303,7 +328,7 @@ class _Body extends StatelessWidget {
                     final recorded =
                         await showAdvancePaymentDialog(context, member: row);
                     if (recorded == true) {
-                      bloc.add(const MemberDetailRequested());
+                      bloc.add(const MemberDetailRequested(afterChange: true));
                     }
                   },
                   icon: const Icon(Icons.payments_outlined, size: 16),
@@ -497,6 +522,29 @@ class _BillingDayDetail extends StatelessWidget {
                             color: context.palette.textPrimary),
                       ),
                     ),
+                    if (anchorDay != null &&
+                        row.member.deactivatedAt == null) ...[
+                      InkWell(
+                        onTap: () async {
+                          final choice = await showRestartBillingDialog(
+                            context,
+                            member: row,
+                            reactivate: false,
+                          );
+                          if (choice != null) onChanged();
+                        },
+                        child: Tooltip(
+                          message: 'Start billing again from the day this '
+                              'member came back',
+                          child: Text('Restart',
+                              style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  color: context.palette.accent)),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                    ],
                     if (anchorDay != null)
                       InkWell(
                         onTap: () async {

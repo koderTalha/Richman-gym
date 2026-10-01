@@ -96,6 +96,36 @@ void main() {
         expect(decision.superseded, hasLength(3));
       });
 
+      test('a stage due before one already handled is superseded, not sent',
+          () {
+        // The owner chased the member by hand on the 13th — recorded as the
+        // seven-day stage — before the schedule sent the three-day one.
+        final decision = decide(
+          DateTime.utc(2026, 10, 13),
+          handled: {const ReminderKey(ReminderStage.overdue, 7)},
+        );
+
+        expect(decision.send, isNull);
+        expect(decision.superseded.map((s) => s.key.toString()), [
+          'beforeDue+3',
+          'onDue+0',
+          'overdue+3',
+        ]);
+      });
+
+      test('a handled stage does not hold back one that falls later', () {
+        final decision = decide(
+          DateTime.utc(2026, 10, 13),
+          handled: {const ReminderKey(ReminderStage.overdue, 3)},
+        );
+
+        expect(decision.send!.key.toString(), 'overdue+7');
+        expect(decision.superseded.map((s) => s.key.toString()), [
+          'beforeDue+3',
+          'onDue+0',
+        ]);
+      });
+
       test('never sends more than one message for one cycle in one run', () {
         for (var day = 1; day <= 30; day++) {
           final decision = decide(DateTime.utc(2026, 10, day));

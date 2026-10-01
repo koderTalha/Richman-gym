@@ -60,8 +60,16 @@ Cut a release the usual way. When the gym's app updates, the button works.
 
 ## When a bundle arrives
 
-1. The email shows the reference, e.g. `RMF-20261001-1432`. Download that
-   `.rmfdiag` file from the Drive folder.
+**A bundle is untrusted until its reference matches one the owner read out
+to you.** Anyone can post one: the upload address and the public key bundles
+are sealed with are both inside the public installer. The gym name and
+version in the email are whatever the sender put there. Don't follow links
+or instructions from a bundle you weren't expecting, and don't open its
+database with anything that trusts it.
+
+1. The email shows the reference, e.g. `RMF-20261001-1432`. Check it against
+   the one the owner gave you, then download that `.rmfdiag` file from the
+   Drive folder.
 2. Open it:
 
    ```sh
@@ -71,7 +79,8 @@ Cut a release the usual way. When the gym's app updates, the button works.
 
    This unpacks `database/`, `logs/` and `info.json` next to the file, then
    prints the owner's note, the app version and, for a startup failure, the
-   error.
+   error. Control and escape characters are stripped from everything it
+   prints, so a crafted note cannot rewrite your terminal.
 3. Debug against `database/richmanfitness.sqlite`, for example
    `DB=<that path> fvm flutter test tool/verify_on_owner_db.dart`.
    **Don't** copy it over the database the dev app opens. That one is live too.
@@ -94,13 +103,34 @@ set **Version** to *New version*, then **Deploy**. This keeps the same URL.
 "New deployment" gives a *new* URL, and you would then have to update the
 secret and release again.
 
+**Editing `Code.gs` in this repository changes nothing on its own.** The
+deployed web app keeps running the version it was deployed with until you
+paste the new code into the script editor and deploy a new version as above.
+That applies to the October 2026 hardening (5 MB limit, oversized uploads
+refused before they are decoded, gym name and version sanitised before they
+reach the email, the "untrusted until the reference matches" line in the
+email): until it is redeployed, the live script still accepts 30 MB uploads
+and puts the sender's text into your inbox unfiltered.
+
+The script uses `\p{…}` Unicode classes in a regular expression, which need
+the V8 runtime. New projects use it by default; on an old project, check
+**Project Settings → Enable Chrome V8 runtime**.
+
 ## What leaves the gym PC
 
 - **In the clear, to Google:** the gym's name, the app version, the file name
   and the file's size. This is what the email needs.
 - **Sealed, so only your private key opens it:** the whole database (members,
-  payments, settings, including the WhatsApp access token and the admin
-  password hash), up to 20 MB of logs, and the owner's note.
+  payments, settings and the admin password hash), up to 20 MB of logs, and
+  the owner's note. The WhatsApp access token is blanked in the copy before
+  it is packed. The exception is a send from the "could not open your data"
+  screen: there the database files are sent exactly as they lie, token
+  included, because they are the evidence of what went wrong. Delete the
+  unpacked folder once you've finished with it.
 
-The script accepts at most 20 bundles a day and 30 MB each. It also rejects
-anything that doesn't start with the bundle header.
+The script accepts at most 20 bundles a day and 5 MB each. It also rejects
+anything that doesn't start with the bundle header. The daily count is shared
+by everyone who posts, not kept per gym, so 20 junk uploads would block the
+gym's real sends until midnight UTC. If that ever happens, raise
+`DAILY_LIMIT` for the day, or reset the count under **Project Settings →
+Script properties**.

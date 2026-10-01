@@ -37,6 +37,19 @@ class _PaymentsViewState extends State<_PaymentsView> {
     super.dispose();
   }
 
+  /// The total covers every payment the search and method match, worked out
+  /// in SQL — not only the rows on screen — and the count says so when the
+  /// list itself is only the newest of them.
+  static String _summary(PaymentsState state) {
+    final total = '${formatMinorUnits(state.totalMinor)} total';
+    if (state.isCapped) {
+      return 'Newest ${state.rows.length} of ${state.matchCount} shown · '
+          '$total';
+    }
+    final noun = state.matchCount == 1 ? 'payment' : 'payments';
+    return '${state.matchCount} $noun · $total';
+  }
+
   void _search() => context
       .read<PaymentsBloc>()
       .add(PaymentsSearchSubmitted(_searchController.text));
@@ -61,11 +74,7 @@ class _PaymentsViewState extends State<_PaymentsView> {
                         color: context.palette.textPrimary),
                   ),
                   const SizedBox(height: 4),
-                  Text(
-                    '${state.rows.length} shown · '
-                    '${formatMinorUnits(state.totalMinor)} total',
-                    style: mutedStyleOf(context),
-                  ),
+                  Text(_summary(state), style: mutedStyleOf(context)),
                 ],
               ),
               const SizedBox(height: 18),

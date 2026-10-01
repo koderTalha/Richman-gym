@@ -293,6 +293,39 @@ void main() {
         reason: 'a blocked month must not leave a cycle behind');
   });
 
+  testWidgets('a named month warns when the amount is more than it owes',
+      (tester) async {
+    await openDialog(tester);
+    await chooseMonthBack(tester, 4);
+
+    // Two months' fees typed against one month. Automatic would spread the
+    // second across the next month; a named month keeps all of it, and used
+    // to say nothing.
+    await tester.enterText(
+        find.widgetWithText(TextFormField, 'Amount received *'), '3000');
+    await tester.enterText(
+        find.widgetWithText(TextFormField, 'Fee for this month *'), '1500');
+    await tester.pump();
+
+    expect(find.textContaining('Rs. 1,500 more than this month still owes'),
+        findsOneWidget);
+    expect(find.textContaining('switch back to Automatic'), findsOneWidget);
+  });
+
+  testWidgets('a named month says nothing when the amount is what it owes',
+      (tester) async {
+    await openDialog(tester);
+    await chooseMonthBack(tester, 4);
+
+    await tester.enterText(
+        find.widgetWithText(TextFormField, 'Amount received *'), '1500');
+    await tester.enterText(
+        find.widgetWithText(TextFormField, 'Fee for this month *'), '1500');
+    await tester.pump();
+
+    expect(find.textContaining('still owes'), findsNothing);
+  });
+
   testWidgets('clearing the month returns to Automatic', (tester) async {
     await openDialog(tester);
     await chooseMonthBack(tester, 4);

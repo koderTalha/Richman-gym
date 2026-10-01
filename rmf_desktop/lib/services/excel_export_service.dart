@@ -4,7 +4,8 @@ import 'package:drift/drift.dart';
 import 'package:excel/excel.dart' show Excel, TextCellValue, IntCellValue;
 
 import '../data/database.dart';
-import '../domain/billing_period.dart';
+import '../data/member_repository.dart';
+import '../data/payment_cycles.dart';
 import '../domain/member_status.dart';
 import '../domain/money.dart';
 
@@ -34,35 +35,42 @@ class ExcelExportService {
     final currency = settings?.currency ?? defaultCurrency;
 
     final members = await db.select(db.members).get();
+    // The Members screen's own rows, so the export's PAID/DUE and Paid Until
+    // are the app's answer and not a second one worked out here. The export
+    // used to read `payments.membership_period_id`, which names only the
+    // first cycle a payment touched and knows nothing of `settled_at`: every
+    // freshly imported member covered by a free cycle, and every member who
+    // paid ahead, read DUE in the file while the app said PAID.
+    final memberRows = await MemberRepository(db).list(now: at);
     final plans = {
       for (final p in await db.select(db.membershipPlans).get()) p.id: p
     };
     final memberships = await db.select(db.memberships).get();
     final periods = await db.select(db.membershipPeriods).get();
     final payments = await db.select(db.payments).get();
+    final allocations = await db.select(db.paymentAllocations).get();
     final receipts = {
       for (final r in await db.select(db.receipts).get()) r.paymentId: r
     };
     final users = {for (final u in await db.select(db.users).get()) u.id: u};
 
-    _writeMembers(
-      excel,
-      members: members,
-      plans: plans,
-      memberships: memberships,
-      periods: periods,
-      payments: payments,
-      currency: currency,
-      now: at,
-    );
+    _writeMembers(excel, rows: memberRows, currency: currency);
+
+    // Which cycles each payment paid for, from its allocations — the same
+    // rule the payment history and Receipts screens label by. Worked out
+    // from the tables already in memory rather than queried per payment.
+    final periodIdsByPayment = periodIdsPaidBy(payments, allocations);
 
     _writePayments(
       excel,
       members: members,
       payments: payments,
-      periods: periods,
-      memberships: memberships,
-      plans: plans,
+      paidCycles: paidCyclesFrom(
+        periodIdsByPayment: periodIdsByPayment,
+        periods: periods,
+        memberships: memberships,
+        plans: plans.values,
+      ),
       receipts: receipts,
       users: users,
       currency: currency,
@@ -74,7 +82,12 @@ class ExcelExportService {
       plans: plans,
       memberships: memberships,
       periods: periods,
-      payments: payments,
+      collectedByPeriod: _collectedByPeriod(
+        payments: payments,
+        allocations: allocations,
+        periodIdsByPayment: periodIdsByPayment,
+        periods: periods,
+      ),
     );
 
     _writePlans(excel, plans.values.toList(), currency);
@@ -91,13 +104,8 @@ class ExcelExportService {
 
   void _writeMembers(
     Excel excel, {
-    required List<Member> members,
-    required Map<int, MembershipPlan> plans,
-    required List<Membership> memberships,
-    required List<MembershipPeriod> periods,
-    required List<Payment> payments,
+    required List<MemberRow> rows,
     required String currency,
-    required DateTime now,
   }) {
     final sheet = excel['Members'];
     sheet.appendRow([
@@ -112,39 +120,13 @@ class ExcelExportService {
       TextCellValue('Status'),
     ]);
 
-    final paidPeriodIds =
-        payments.map((p) => p.membershipPeriodId).whereType<int>().toSet();
-    final openByMember = _openMembershipByMember(memberships);
-    final periodsByMember = _periodsByMember(memberships, periods);
-
-    for (final member in _sorted(members)) {
-      final membership = openByMember[member.id];
-      final plan = membership == null ? null : plans[membership.planId];
-
-      // Every enrolment's cycles, not just the open one: a member whose plan
-      // changed keeps the months they paid under the previous enrolment, and
-      // reading only the open one reported them as never having paid at all.
-      final memberPeriods = periodsByMember[member.id] ?? const [];
-
-      final status = deriveMemberStatus(
-        deactivatedAt: member.deactivatedAt,
-        periods: memberPeriods
-            .map((p) => StatusPeriod(
-                  periodStart: p.periodStart,
-                  periodEnd: p.periodEnd,
-                  isPaid: paidPeriodIds.contains(p.id),
-                ))
-            .toList(),
-        now: now.toUtc(),
-      );
-
-      final paidEnds = memberPeriods
-          .where((p) => paidPeriodIds.contains(p.id))
-          .map((p) => p.periodEnd);
-
-      final feeMinor = membership == null
-          ? null
-          : (membership.feeOverrideMinor ?? plan?.priceMinor);
+    // Already in enrolment-number order, and already reading every enrolment's
+    // cycles rather than only the open one's — a member whose plan changed
+    // keeps the months they paid under the previous enrolment.
+    for (final row in rows) {
+      final member = row.member;
+      final feeMinor = row.feeMinor;
+      final paidUntil = row.paidUntil;
 
       sheet.appendRow([
         IntCellValue(member.memberCode),
@@ -152,14 +134,12 @@ class ExcelExportService {
         // The original sheet uses "-" for a member with no number on file.
         TextCellValue(member.phone.isEmpty ? '-' : member.phone),
         TextCellValue(member.gender ?? ''),
-        TextCellValue(plan?.name ?? ''),
+        TextCellValue(row.plan?.name ?? ''),
         TextCellValue(
             feeMinor == null ? '' : formatMinorUnits(feeMinor, currency)),
         TextCellValue(_date(member.joiningDate)),
-        TextCellValue(paidEnds.isEmpty
-            ? '-'
-            : _date(paidEnds.reduce((a, b) => a.isAfter(b) ? a : b))),
-        TextCellValue(status.label),
+        TextCellValue(paidUntil == null ? '-' : _date(paidUntil)),
+        TextCellValue(row.status.label),
       ]);
     }
   }
@@ -168,9 +148,7 @@ class ExcelExportService {
     Excel excel, {
     required List<Member> members,
     required List<Payment> payments,
-    required List<MembershipPeriod> periods,
-    required List<Membership> memberships,
-    required Map<int, MembershipPlan> plans,
+    required Map<int, List<PaidCycle>> paidCycles,
     required Map<int, Receipt> receipts,
     required Map<int, User> users,
     required String currency,
@@ -190,27 +168,24 @@ class ExcelExportService {
     ]);
 
     final byMember = {for (final m in members) m.id: m};
-    final periodById = {for (final p in periods) p.id: p};
-    final membershipById = {for (final m in memberships) m.id: m};
 
     final ordered = [...payments]
       ..sort((a, b) => b.paymentDate.compareTo(a.paymentDate));
 
     for (final payment in ordered) {
       final member = byMember[payment.memberId];
-      final period = periodById[payment.membershipPeriodId];
-      final membership =
-          period == null ? null : membershipById[period.membershipId];
-      final duration = plans[membership?.planId]?.durationMonths ?? 1;
+      // Every month the payment paid for, as the Receipts screen names it:
+      // three months taken at once read "January 2026 - March 2026", not
+      // just the first month.
+      final cycles = paidCycles[payment.id];
 
       sheet.appendRow([
         TextCellValue(receipts[payment.id]?.receiptNumber ?? ''),
         IntCellValue(member?.memberCode ?? 0),
         TextCellValue(member?.fullName ?? ''),
         TextCellValue((member?.phone.isEmpty ?? true) ? '-' : member!.phone),
-        TextCellValue(period == null
-            ? ''
-            : formatBillingPeriod(period.periodStart.toUtc(), duration)),
+        TextCellValue(
+            cycles == null ? '' : (formatPaidCycles(cycles) ?? '')),
         TextCellValue(formatMinorUnits(payment.amountMinor, currency)),
         TextCellValue(_methodLabel(payment.method)),
         TextCellValue(payment.referenceNumber ?? ''),
@@ -229,17 +204,11 @@ class ExcelExportService {
     required Map<int, MembershipPlan> plans,
     required List<Membership> memberships,
     required List<MembershipPeriod> periods,
-    required List<Payment> payments,
+    required Map<int, int> collectedByPeriod,
   }) {
     final years = periods.map((p) => p.periodStart.toUtc().year).toSet().toList()
       ..sort();
     if (years.isEmpty) return;
-
-    final paymentByPeriod = <int, Payment>{
-      for (final payment in payments)
-        if (payment.membershipPeriodId != null)
-          payment.membershipPeriodId!: payment,
-    };
 
     final periodsByMember = _periodsByMember(memberships, periods);
     final openByMember = _openMembershipByMember(memberships);
@@ -263,19 +232,27 @@ class ExcelExportService {
         // Every member appears, exactly as in the original ledger where someone
         // with no payments still occupies a row of dashes. Skipping them would
         // quietly drop people from the export.
-        final cells = List<TextCellValue>.generate(
-            12, (_) => TextCellValue('-'));
-        var totalMinor = 0;
+        //
+        // Each month's cell is everything collected for the cycle starting in
+        // it — every part-payment, and each month's share of money paid
+        // ahead — not one payment per cycle. Keeping only the last payment
+        // dropped the first of two part-payments from the file the owner
+        // treats as their backup. Summed rather than overwritten, too, for the
+        // rare month two enrolments both hold a cycle in.
+        final monthMinor = List<int>.filled(12, 0);
 
         for (final period in periodsByMember[member.id] ?? const []) {
           if (period.periodStart.toUtc().year != year) continue;
-          final payment = paymentByPeriod[period.id];
-          if (payment == null) continue;
-
-          final month = period.periodStart.toUtc().month;
-          cells[month - 1] = TextCellValue(_amount(payment.amountMinor));
-          totalMinor += payment.amountMinor;
+          final collected = collectedByPeriod[period.id] ?? 0;
+          if (collected == 0) continue;
+          monthMinor[period.periodStart.toUtc().month - 1] += collected;
         }
+
+        final cells = [
+          for (final minor in monthMinor)
+            TextCellValue(minor == 0 ? '-' : _amount(minor)),
+        ];
+        final totalMinor = monthMinor.fold(0, (sum, m) => sum + m);
 
         final membership = openByMember[member.id];
         final planName =
@@ -311,6 +288,51 @@ class ExcelExportService {
         TextCellValue(plan.isActive ? 'Yes' : 'No'),
       ]);
     }
+  }
+
+  /// The money collected for each cycle: the sum of its allocations.
+  ///
+  /// A payment with no allocation rows at all — one predating them, or a raw
+  /// row — counts in full against its `membershipPeriodId`, as it always did.
+  /// And should a payment's allocations add up to less than the payment, the
+  /// remainder is put on the first cycle it paid for rather than left out:
+  /// the ledger's totals must account for every rupee taken against a cycle.
+  /// Money recorded against no cycle at all has no month to sit under and
+  /// appears on the Payments sheet only.
+  static Map<int, int> _collectedByPeriod({
+    required List<Payment> payments,
+    required List<PaymentAllocation> allocations,
+    required Map<int, Set<int>> periodIdsByPayment,
+    required List<MembershipPeriod> periods,
+  }) {
+    final collected = <int, int>{};
+    final allocatedByPayment = <int, int>{};
+    for (final allocation in allocations) {
+      collected.update(allocation.membershipPeriodId,
+          (sum) => sum + allocation.amountMinor,
+          ifAbsent: () => allocation.amountMinor);
+      allocatedByPayment.update(
+          allocation.paymentId, (sum) => sum + allocation.amountMinor,
+          ifAbsent: () => allocation.amountMinor);
+    }
+
+    final startById = {for (final p in periods) p.id: p.periodStart};
+    for (final payment in payments) {
+      final remainder =
+          payment.amountMinor - (allocatedByPayment[payment.id] ?? 0);
+      if (remainder <= 0) continue;
+
+      // The earliest cycle the payment paid for: its own first cycle.
+      final ids = (periodIdsByPayment[payment.id] ?? const <int>{})
+          .where(startById.containsKey)
+          .toList()
+        ..sort((a, b) => startById[a]!.compareTo(startById[b]!));
+      if (ids.isEmpty) continue;
+
+      collected.update(ids.first, (sum) => sum + remainder,
+          ifAbsent: () => remainder);
+    }
+    return collected;
   }
 
   List<Member> _sorted(List<Member> members) =>

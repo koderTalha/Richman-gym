@@ -1,4 +1,3 @@
-import 'package:drift/drift.dart';
 
 import '../data/cycle_waivers.dart';
 import '../data/database.dart';
@@ -97,9 +96,10 @@ class BillingMonthChecker {
     final cycleStart = (containing?.periodStart ?? selectedStart).toUtc();
 
     final periods = await periodsForMember(db, memberId);
-    final paidPeriodIds = await _paidPeriodIds(
-      memberId: memberId,
-      excludePaymentId: excludePaymentId,
+    final paidPeriodIds = await periodIdsWithPaymentsFor(
+      db,
+      memberId,
+      excludingPaymentId: excludePaymentId,
     );
 
     // A waiver holds no payment because none was ever owed. Counting it as an
@@ -119,9 +119,10 @@ class BillingMonthChecker {
 
     final existing = containing == null
         ? null
-        : await _paymentOnPeriod(
-            periodId: containing.id,
-            excludePaymentId: excludePaymentId,
+        : await paymentForPeriod(
+            db,
+            containing.id,
+            excludingPaymentId: excludePaymentId,
           );
 
     final settings = await _settings.get();
@@ -149,35 +150,6 @@ class BillingMonthChecker {
       durationMonths: plan.durationMonths,
       member: member,
     );
-  }
-
-  Future<Set<int>> _paidPeriodIds({
-    required int memberId,
-    int? excludePaymentId,
-  }) async {
-    var query = db.select(db.payments)
-      ..where((p) => p.memberId.equals(memberId) &
-          p.membershipPeriodId.isNotNull());
-    if (excludePaymentId != null) {
-      query = query..where((p) => p.id.equals(excludePaymentId).not());
-    }
-    return (await query.get())
-        .map((p) => p.membershipPeriodId)
-        .whereType<int>()
-        .toSet();
-  }
-
-  Future<Payment?> _paymentOnPeriod({
-    required int periodId,
-    int? excludePaymentId,
-  }) async {
-    var query = db.select(db.payments)
-      ..where((p) => p.membershipPeriodId.equals(periodId));
-    if (excludePaymentId != null) {
-      query = query..where((p) => p.id.equals(excludePaymentId).not());
-    }
-    final rows = await (query..limit(1)).get();
-    return rows.isEmpty ? null : rows.first;
   }
 }
 

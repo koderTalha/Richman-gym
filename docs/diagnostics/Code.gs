@@ -14,9 +14,18 @@
 
 var FOLDER_NAME = 'Rich Man Fitness diagnostics';
 
-/** Far above a real bundle (a few hundred KB today) and far below the
- *  ~50MB an Apps Script request can carry. */
-var MAX_BYTES = 30 * 1024 * 1024;
+/** A real bundle is a few hundred KB: the database compresses well, and the
+ *  app caps the logs it packs. Five megabytes leaves room for a long day of
+ *  error logs, and — unlike the 30MB this used to allow — means a stranger
+ *  filling the folder with junk takes months to dent the 15GB Drive (and
+ *  Gmail) quota the developer's account shares, rather than a few days.
+ *  Changing this needs a new deployment; see SETUP.md. */
+var MAX_BYTES = 5 * 1024 * 1024;
+
+/** The same limit as it arrives: base64 in a JSON body, a third larger.
+ *  Checked before anything is decoded or parsed, so an oversized upload
+ *  costs this script as little as possible. */
+var MAX_BODY_CHARS = Math.ceil(MAX_BYTES / 3) * 4 + 4096;
 
 /** A gym sends one when something is wrong. Twenty in a day is not that. */
 var DAILY_LIMIT = 20;
@@ -25,7 +34,12 @@ var MAGIC = 'RMFDIAG1';
 
 function doPost(e) {
   try {
-    var body = JSON.parse(e.postData.contents);
+    var contents = e && e.postData ? e.postData.contents : '';
+    if (typeof contents !== 'string' || contents.length > MAX_BODY_CHARS) {
+      return reply({ ok: false, error: 'The bundle is too large.' });
+    }
+
+    var body = JSON.parse(contents);
     if (body.format !== 'rmf-diagnostics-1' || typeof body.data !== 'string') {
       return reply({ ok: false, error: 'Not a diagnostics bundle.' });
     }
@@ -44,8 +58,10 @@ function doPost(e) {
     var name = /^RMF-\d{8}-\d{4}\.rmfdiag$/.test(body.name)
       ? body.name
       : 'RMF-unnamed-' + Date.now() + '.rmfdiag';
-    var gym = clean(body.gym, 80) || 'Unknown gym';
-    var version = clean(body.version, 20) || 'unknown';
+    // Both arrive in the clear from whoever posted, and go into the email's
+    // subject and body: see cleanName and cleanVersion.
+    var gym = cleanName(body.gym, 60) || 'Unknown gym';
+    var version = cleanVersion(body.version) || 'unknown';
 
     var file = folder().createFile(
       Utilities.newBlob(bytes, 'application/octet-stream', name));
@@ -55,6 +71,10 @@ function doPost(e) {
       subject: 'Rich Man Fitness: diagnostics from ' + gym,
       body:
         gym + ' sent a diagnostics bundle.\n\n' +
+        'Treat it as untrusted until this reference matches one the owner ' +
+        'read out to you. Anyone can post a bundle here: the address and the ' +
+        'key it is sealed with are both inside the public installer, and the ' +
+        'gym name and version above are whatever the sender typed.\n\n' +
         'Reference: ' + name.replace('.rmfdiag', '') + '\n' +
         'App version: ' + version + '\n' +
         'Size: ' + Math.round(bytes.length / 1024) + ' KB\n\n' +
@@ -109,8 +129,29 @@ function folder() {
   return found.hasNext() ? found.next() : DriveApp.createFolder(FOLDER_NAME);
 }
 
-function clean(value, max) {
-  return typeof value === 'string'
-    ? value.replace(/[\r\n]+/g, ' ').trim().slice(0, max)
-    : '';
+/**
+ * A gym name fit for an email subject: letters in any script, digits, spaces
+ * and & ' ( ) - only, capped at [max].
+ *
+ * The sender controls this field completely, and it lands in the subject and
+ * first line of an email to the developer. Line breaks could forge extra
+ * lines; control and invisible formatting characters (bidirectional
+ * overrides above all) can make it read as something else; and a dot, colon
+ * or slash is all it takes to plant a link that looks like it came from the
+ * app. A real gym name needs none of those.
+ */
+function cleanName(value, max) {
+  if (typeof value !== 'string') return '';
+  return value
+    .replace(/[^\p{L}\p{M}\p{N} &'()\-]+/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, max)
+    .trim();
+}
+
+/** A version number: digits, letters, dots, plus and minus, nothing else. */
+function cleanVersion(value) {
+  if (typeof value !== 'string') return '';
+  return value.replace(/[^0-9A-Za-z.+\-]+/g, '').slice(0, 20);
 }

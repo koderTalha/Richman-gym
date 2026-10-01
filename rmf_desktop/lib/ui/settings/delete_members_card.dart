@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:logging/logging.dart';
+import 'package:path/path.dart' as p;
 
 import '../../bloc/auth_bloc.dart';
 import '../../data/audit_repository.dart';
 import '../../data/database.dart';
 import '../../domain/money.dart';
+import '../../services/backup_service.dart';
 import '../../services/member_purge_service.dart';
 import '../../services/receipt_storage.dart';
 import '../../theme/app_theme.dart';
@@ -30,7 +32,7 @@ const deleteMembersOpenKey = Key('delete-members-open');
 /// owns nothing the rest of Settings reads, and the one figure it shows comes
 /// straight from the same service that does the deleting.
 class DeleteMembersCard extends StatefulWidget {
-  const DeleteMembersCard({super.key, required this.card});
+  const DeleteMembersCard({super.key, required this.card, this.takeBackup});
 
   /// The shared card chrome from the settings screen.
   final Widget Function({
@@ -38,6 +40,12 @@ class DeleteMembersCard extends StatefulWidget {
     String? subtitle,
     required Widget child,
   }) card;
+
+  /// Takes the backup that has to exist before anything is deleted. Null in
+  /// the app, which writes it beside the automatic daily backups — where the
+  /// Backup card lists it and a restore can pick it up. Injected by tests,
+  /// which have no application-support folder to write into.
+  final Future<BackupResult> Function()? takeBackup;
 
   @override
   State<DeleteMembersCard> createState() => _DeleteMembersCardState();
@@ -72,9 +80,30 @@ class _DeleteMembersCardState extends State<DeleteMembersCard> {
     }
   }
 
+  /// The default for [DeleteMembersCard.takeBackup]: a full backup — the
+  /// database, the receipt files and the workbook — into the automatic
+  /// backups folder. Not `autoBackup`, which skips a day that already has one:
+  /// this has to capture the data as it is at this moment, not as it was at
+  /// this morning's launch.
+  Future<BackupResult> _backupBeside() async {
+    final backups = BackupService(context.read<AppDatabase>());
+    return backups.backupTo(await backups.automaticBackupDirectory());
+  }
+
   Future<void> _delete() async {
-    final counts = _counts;
-    if (counts == null || counts.isEmpty) return;
+    // Counted again now, not taken from when the card loaded: Settings can sit
+    // open for an afternoon of payments, and the dialog is the owner's last
+    // look at what they are about to lose.
+    MemberDataCounts counts;
+    try {
+      counts = await _service.counts();
+    } catch (error, stack) {
+      _log.severe('Counting member data failed', error, stack);
+      return;
+    }
+    if (!mounted) return;
+    setState(() => _counts = counts);
+    if (counts.isEmpty) return;
 
     final confirmed = await showDialog<bool>(
       context: context,
@@ -84,10 +113,34 @@ class _DeleteMembersCardState extends State<DeleteMembersCard> {
 
     final actorId = context.read<AuthBloc>().state.user!.id;
     final service = _service;
+    final takeBackup = widget.takeBackup ?? _backupBeside;
     setState(() {
       _busy = true;
       _message = null;
     });
+
+    // Before the delete, and a hard precondition of it. The dialog told the
+    // owner a backup is the only way back; taking one for them means a slip of
+    // the keyboard on this card is recoverable rather than final. If it cannot
+    // be written, nothing is deleted — a purge with no way back is not one to
+    // perform on the owner's behalf.
+    final String backupName;
+    try {
+      final backup = await takeBackup();
+      backupName = p.basename(backup.folder.path);
+    } catch (error, stack) {
+      _log.severe('Backup before deleting all member data failed', error,
+          stack);
+      if (!mounted) return;
+      setState(() {
+        _busy = false;
+        _message = 'Nothing was deleted — a backup could not be taken first, '
+            'and without one there would be no way back. ($error)';
+        _messageIsError = true;
+      });
+      return;
+    }
+    if (!mounted) return;
 
     MemberPurgeResult result;
     try {
@@ -123,7 +176,8 @@ class _DeleteMembersCardState extends State<DeleteMembersCard> {
               '${counts.receipts == 1 ? 'receipt' : 'receipts'} and '
               '${counts.billingCycles} billing '
               '${counts.billingCycles == 1 ? 'cycle' : 'cycles'}. Plans, '
-              'settings and the activity log were kept.'
+              'settings and the activity log were kept. A backup taken just '
+              'before is in $backupName.'
               '${orphanedFiles.isEmpty ? '' : ' Some receipt files could not '
                   'be removed from disk — see the Logs screen.'}';
         case MemberPurgeRefused(:final message):
@@ -334,8 +388,9 @@ class _ConfirmDialogState extends State<DeleteMembersConfirmDialog> {
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text(
-                  'Receipt files are removed from disk with the records. Take '
-                  'a backup first — it is the only way any of this comes back.',
+                  'Receipt files are removed from disk with the records. A '
+                  'backup is taken automatically before anything is deleted — '
+                  'it is the only way any of this comes back.',
                   style: TextStyle(
                       color: context.palette.expired, fontSize: 12.5),
                 ),

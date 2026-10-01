@@ -42,6 +42,20 @@ class _ReceiptsViewState extends State<_ReceiptsView> {
     super.dispose();
   }
 
+  /// Counted in SQL over everything the search and filter match, so the
+  /// header says when the list is only the newest of them.
+  static String _summary(ReceiptsState state) {
+    final noun = state.matchCount == 1 ? 'receipt' : 'receipts';
+    return state.isCapped
+        ? 'Newest ${state.rows.length} of ${state.matchCount} $noun'
+        : '${state.matchCount} $noun';
+  }
+
+  /// A search or filter is narrowing the list, so an empty one means nothing
+  /// matched — not that no receipt has ever been issued.
+  static bool _narrowed(ReceiptsState state) =>
+      state.search.trim().isNotEmpty || state.filter != ReceiptFilter.all;
+
   @override
   Widget build(BuildContext context) {
     return BlocListener<ReceiptsBloc, ReceiptsState>(
@@ -66,10 +80,7 @@ class _ReceiptsViewState extends State<_ReceiptsView> {
                             fontWeight: FontWeight.bold,
                             color: context.palette.textPrimary)),
                     const SizedBox(height: 4),
-                    Text(
-                        '${state.rows.length} '
-                        '${state.rows.length == 1 ? "receipt" : "receipts"}',
-                        style: mutedStyleOf(context)),
+                    Text(_summary(state), style: mutedStyleOf(context)),
                   ],
                 ),
                 const SizedBox(height: 18),
@@ -132,7 +143,10 @@ class _ReceiptsViewState extends State<_ReceiptsView> {
                     ReceiptsStatus.ready => state.rows.isEmpty
                         ? Center(
                             child: Text(
-                                'No receipts yet. Record a payment to generate one.',
+                                _narrowed(state)
+                                    ? 'No receipts match this view.'
+                                    : 'No receipts yet. Record a payment to '
+                                        'generate one.',
                                 style: mutedStyleOf(context)))
                         : ListView.separated(
                             itemCount: state.rows.length,

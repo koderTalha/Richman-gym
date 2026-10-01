@@ -14,9 +14,12 @@ on:
   # Lets you build a .exe on demand from the Actions tab without pushing.
   workflow_dispatch:
 
-# Only the release step needs to write; everything else reads.
+# Read-only by default. Only the release job, which runs nothing but `gh`
+# against files built here, is given write access — so a compromised action,
+# Flutter download or Chocolatey package in the build cannot use the token to
+# publish a release of its own (audit SEC-003).
 permissions:
-  contents: write
+  contents: read
 
 defaults:
   run:
@@ -27,9 +30,15 @@ jobs:
     name: Analyze and test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      # Third-party actions are pinned to a full commit SHA, not a tag: a tag
+      # can be moved to different code at any time by whoever controls that
+      # repository, and these steps run with this workflow's token. To
+      # update, resolve the new tag with
+      #   gh api repos/<owner>/<repo>/git/ref/tags/<tag>
+      # (dereferencing an annotated tag to its commit) and keep the comment.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - uses: subosito/flutter-action@v2
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
         with:
           # Matches .fvmrc so CI and the developer machine agree.
           flutter-version: 3.38.5
@@ -48,10 +57,13 @@ jobs:
     name: Build Windows .exe
     needs: test
     runs-on: windows-latest
+    # Handed to the release job, which has no checkout to read pubspec from.
+    outputs:
+      version: ${{ steps.version.outputs.value }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - uses: subosito/flutter-action@v2
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
         with:
           flutter-version: 3.38.5
           channel: stable
@@ -111,7 +123,7 @@ jobs:
         shell: pwsh
 
       - name: Upload the app folder
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: RichManFitness-windows-portable
           path: rmf_desktop/build/windows/x64/runner/Release/
@@ -148,8 +160,32 @@ jobs:
         shell: pwsh
         working-directory: .
 
+      # Pinned, so the compiler that builds the installer changes only when
+      # this line does. 6.7.1 is what the runner image already carried for the
+      # v2.2.0 and v2.3.0 releases (choco reported it "already installed"),
+      # and the newest approved Chocolatey package as of October 2026.
+      # --allow-downgrade so a newer copy preinstalled on a future image is
+      # replaced rather than silently used; the check below proves it was.
       - name: Install Inno Setup
-        run: choco install innosetup --no-progress -y
+        run: >-
+          choco install innosetup --version=6.7.1 --allow-downgrade
+          --no-progress -y
+        shell: pwsh
+        working-directory: .
+
+      - name: Check the Inno Setup version
+        run: |
+          $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { throw "ISCC.exe missing: $iscc" }
+          # The numeric version fields, not the display strings, whose
+          # format is up to whoever built the binary.
+          $info = (Get-Item $iscc).VersionInfo
+          $version = "$($info.FileMajorPart).$($info.FileMinorPart).$($info.FileBuildPart)"
+          Write-Host "Inno Setup compiler: $version ($($info.ProductVersion))"
+          if ($version -ne "6.7.1") {
+            throw "Expected Inno Setup 6.7.1, found $version. " +
+                  "Update the pin in this workflow deliberately, or fix it."
+          }
         shell: pwsh
         working-directory: .
 
@@ -163,24 +199,48 @@ jobs:
         working-directory: .
 
       - name: Upload the installer
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: RichManFitness-Setup
           path: dist/*.exe
           if-no-files-found: error
           retention-days: 90
 
-      # --- Release ---------------------------------------------------------
-      # Only on a tag. The checksum is computed from the very installer being
-      # uploaded, in the same job: the app refuses to run a download that does
+  # --- Release -----------------------------------------------------------
+  # Its own job so that it alone holds write access. It checks out nothing
+  # and runs no third-party code beyond downloading the installer the build
+  # job uploaded; the tag-against-pubspec and upload-address checks have
+  # already passed there, or this job never starts.
+  release:
+    name: Publish the release
+    needs: build-windows
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    defaults:
+      run:
+        # No checkout here, so the workflow's rmf_desktop default does not
+        # exist.
+        working-directory: .
+    steps:
+      - name: Download the installer
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: RichManFitness-Setup
+          path: dist
+
+      # The checksum is computed from the very installer being uploaded, in
+      # the job that uploads it: the app refuses to run a download that does
       # not match it, so a hand-typed digest would lock every gym PC out of
       # updating.
       - name: Publish the release
-        if: startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ github.token }}
+          # gh normally reads the repository from a checkout; there is none.
+          GH_REPO: ${{ github.repository }}
         run: |
-          $version = "${{ steps.version.outputs.value }}"
+          $version = "${{ needs.build-windows.outputs.version }}"
           $installer = "dist\RichManFitness-Setup-$version.exe"
           if (-not (Test-Path $installer)) { throw "Installer missing: $installer" }
 
@@ -195,4 +255,3 @@ jobs:
             --title "Rich Man Fitness $version" `
             --generate-notes
         shell: pwsh
-        working-directory: .

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:logging/logging.dart';
@@ -5,6 +7,7 @@ import 'package:logging/logging.dart';
 import '../bloc/auth_bloc.dart';
 import '../bloc/theme_cubit.dart';
 import '../data/database.dart';
+import '../services/reminder_service.dart';
 import '../services/startup_maintenance.dart';
 import '../theme/app_theme.dart';
 import 'dashboard_screen.dart';
@@ -23,6 +26,18 @@ final _log = Logger('shell');
 /// The top bar's Reload button. Named so a test can find it without matching
 /// on its icon: several screens carry a refresh icon of their own.
 const appShellReloadKey = Key('app-shell-reload');
+
+/// How often the automatic reminder run is tried again while the app stays
+/// open.
+///
+/// It used to be tried once per launch, and only then: a launch before sending
+/// hours sent nothing all day, and on the 1st — when most legacy members fall
+/// due at once — everything past the per-run cap waited for the next launch
+/// and was by then superseded. Hourly is often enough that a morning launch
+/// still sends once the gym opens, and rare enough that the per-run cap still
+/// means something. Every run is hours-aware, capped and single-flight; see
+/// `ReminderService.runAutoSend`.
+const reminderRunInterval = Duration(hours: 1);
 
 class NavDestination {
   const NavDestination(this.label, this.icon, this.builder, {this.enabled = true});
@@ -74,6 +89,33 @@ class _AppShellState extends State<AppShell> {
 
   bool _reloading = false;
 
+  Timer? _reminderTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _reminderTimer =
+        Timer.periodic(reminderRunInterval, (_) => _runAutomaticReminders());
+  }
+
+  @override
+  void dispose() {
+    _reminderTimer?.cancel();
+    super.dispose();
+  }
+
+  /// Starts an automatic reminder run in the background.
+  ///
+  /// Not awaited: up to a full per-run cap of WhatsApp calls must not hold the
+  /// Reload button, or anything else, hostage. Read as nullable so a shell
+  /// built without the service — in a test — simply has no automatic run.
+  void _runAutomaticReminders() {
+    if (!mounted) return;
+    final reminders = context.read<ReminderService?>();
+    if (reminders == null) return;
+    unawaited(reminders.runAutoSend());
+  }
+
   Future<void> _reload() async {
     if (_reloading) return;
 
@@ -86,6 +128,9 @@ class _AppShellState extends State<AppShell> {
     try {
       await runStartupMaintenance(db);
       if (mounted) setState(() => _reloadToken++);
+      // What opening the app does, after the billing roll so a cycle that
+      // has only just opened is reminded about too.
+      _runAutomaticReminders();
     } catch (error, stack) {
       // A reload that quietly did nothing is worse than one that says so: the
       // owner would go on reading a screen they believe is up to date.
@@ -328,7 +373,8 @@ class _TopBar extends StatelessWidget {
 /// already carry a Refresh button, and those re-read what is on screen. This
 /// one runs the billing roll first, so a member added at the counter a moment
 /// ago gets the cycle that makes them read DUE — which until now meant quitting
-/// the app and opening it again.
+/// the app and opening it again — and then the automatic reminder run, as
+/// opening the app does.
 class _ReloadButton extends StatelessWidget {
   const _ReloadButton({required this.onPressed, required this.busy});
 

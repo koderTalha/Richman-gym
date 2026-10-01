@@ -22,9 +22,11 @@ class PaymentFormController {
     String? notes,
   })  : paymentDate = paymentDate ?? DateTime.now(),
         amount = TextEditingController(
+          // Paisa kept: rounding to whole rupees here meant saving an edit
+          // for any other reason rewrote Rs. 1,500.50 as Rs. 1,501.
           text: initialAmountMinor == null
               ? ''
-              : fromMinorUnits(initialAmountMinor).toStringAsFixed(0),
+              : formatAmountInput(initialAmountMinor),
         ),
         reference = TextEditingController(text: referenceNumber ?? ''),
         notes = TextEditingController(text: notes ?? '');
@@ -40,7 +42,7 @@ class PaymentFormController {
   String billingMonth;
 
   /// Only meaningful once the form validates.
-  int get amountMinor => toMinorUnits(double.parse(amount.text.trim()));
+  int get amountMinor => parseAmountMinor(amount.text)!;
 
   String? get referenceOrNull =>
       reference.text.trim().isEmpty ? null : reference.text.trim();
@@ -138,13 +140,7 @@ class _PaymentFormFieldsState extends State<PaymentFormFields> {
                     labelText: 'Amount (PKR) *', isDense: true),
                 keyboardType: TextInputType.number,
                 autofocus: widget.autofocus,
-                validator: (v) {
-                  final parsed = double.tryParse((v ?? '').trim());
-                  if (parsed == null || parsed <= 0) {
-                    return 'Enter an amount greater than zero';
-                  }
-                  return null;
-                },
+                validator: (v) => amountInputError(v ?? ''),
               ),
             ),
             const SizedBox(width: 14),

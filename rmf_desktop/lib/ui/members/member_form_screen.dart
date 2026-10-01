@@ -56,6 +56,12 @@ class _MemberFormViewState extends State<_MemberFormView> {
   DateTime _joiningDate = DateTime.now();
   bool _prefilled = false;
 
+  /// What the phone field held when an existing member with no usable number
+  /// was loaded — the ledger's "-" or "NILL", or nothing — and null for
+  /// everyone else. Saving that unchanged, or blank, keeps them phoneless;
+  /// see `MemberFormBloc._submit`. Null for a new member, who needs a number.
+  String? _phonelessAsLoaded;
+
   /// When the fee this save is about to change takes effect. Null means
   /// today, which is what every edit meant before this existed and is still
   /// what the overwhelming majority of edits mean now.
@@ -92,6 +98,7 @@ class _MemberFormViewState extends State<_MemberFormView> {
 
     _name.text = existing.member.fullName;
     _phone.text = existing.member.phoneRaw ?? existing.member.phone;
+    if (existing.member.phone.isEmpty) _phonelessAsLoaded = _phone.text.trim();
     _email.text = existing.member.email ?? '';
     _address.text = existing.member.address ?? '';
     _emergency.text = existing.member.emergencyContact ?? '';
@@ -100,7 +107,11 @@ class _MemberFormViewState extends State<_MemberFormView> {
 
     final override = existing.membership?.feeOverrideMinor;
     if (override != null) {
-      _fee.text = fromMinorUnits(override).toStringAsFixed(0);
+      // Exact, paisa and all. Rounded to whole rupees, as it used to be, a
+      // fee of 1,500.50 came back as 1501 and saving any unrelated change
+      // then counted as a fee change — re-pricing cycles and writing an audit
+      // row for a figure nobody touched.
+      _fee.text = formatAmountInput(override);
     }
   }
 
@@ -121,9 +132,15 @@ class _MemberFormViewState extends State<_MemberFormView> {
       valueListenable: _fee,
       builder: (context, value, _) {
         final typed = value.text.trim();
-        final parsed = typed.isEmpty ? null : double.tryParse(typed);
-        final effectiveFee =
-            (parsed == null || parsed <= 0) ? plan.priceMinor : toMinorUnits(parsed);
+        final parsed = typed.isEmpty ? null : parseAmountMinor(typed);
+        // Anything the validator would refuse is shown as the plan price, as
+        // a blank field is, rather than as whatever a half-typed figure says.
+        final customFee = (parsed == null ||
+                parsed <= 0 ||
+                parsed > maxAmountMinor)
+            ? null
+            : parsed;
+        final effectiveFee = customFee ?? plan.priceMinor;
         final billedNow = state.existing?.feeMinor;
         final isChanging = widget.isEditing &&
             billedNow != null &&
@@ -136,8 +153,7 @@ class _MemberFormViewState extends State<_MemberFormView> {
             children: [
               PricingSummary(
                 planPriceMinor: plan.priceMinor,
-                customFeeMinor:
-                    (parsed == null || parsed <= 0) ? null : toMinorUnits(parsed),
+                customFeeMinor: customFee,
                 // What they are billed today, so the warning can name both
                 // numbers. Null for a new member, who has no bill to move.
                 billedNowMinor: billedNow,
@@ -181,8 +197,9 @@ class _MemberFormViewState extends State<_MemberFormView> {
             gender: _gender,
             address: _blankToNull(_address.text),
             emergencyContact: _blankToNull(_emergency.text),
+            // The validator has already refused anything this cannot read.
             feeOverrideMinor:
-                feeText.isEmpty ? null : toMinorUnits(double.parse(feeText)),
+                feeText.isEmpty ? null : parseAmountMinor(feeText),
             confirmSharedPhone: confirmSharedPhone,
             actorId: context.read<AuthBloc>().state.user?.id,
             effectiveFrom: _effectiveFrom,
@@ -306,7 +323,8 @@ class _MemberFormViewState extends State<_MemberFormView> {
                                 padding: const EdgeInsets.only(bottom: 16),
                                 child: Text(
                                   'The member ID is assigned automatically, '
-                                  'continuing from the highest existing number.',
+                                  'continuing from the highest number used so '
+                                  'far.',
                                   style: mutedStyleOf(context),
                                 ),
                               ),
@@ -323,13 +341,27 @@ class _MemberFormViewState extends State<_MemberFormView> {
                               ),
                               TextFormField(
                                 controller: _phone,
-                                decoration: const InputDecoration(
-                                  labelText: 'Phone *',
+                                decoration: InputDecoration(
+                                  labelText: _phonelessAsLoaded == null
+                                      ? 'Phone *'
+                                      : 'Phone',
                                   hintText: '0300-0000001',
+                                  helperText: _phonelessAsLoaded == null
+                                      ? null
+                                      : 'No valid number on file. Enter one, '
+                                          'or leave this as it is.',
                                 ),
-                                validator: (v) => isValidPhone(v)
-                                    ? null
-                                    : 'Enter a valid phone number',
+                                validator: (v) {
+                                  final typed = v?.trim() ?? '';
+                                  final keepsNoNumber =
+                                      _phonelessAsLoaded != null &&
+                                          (typed.isEmpty ||
+                                              typed == _phonelessAsLoaded);
+                                  if (keepsNoNumber || isValidPhone(v)) {
+                                    return null;
+                                  }
+                                  return 'Enter a valid phone number';
+                                },
                               ),
                             ]),
                             _FieldRow(children: [
@@ -363,9 +395,21 @@ class _MemberFormViewState extends State<_MemberFormView> {
                                 keyboardType: TextInputType.number,
                                 validator: (v) {
                                   if (v == null || v.trim().isEmpty) return null;
-                                  final parsed = double.tryParse(v.trim());
-                                  if (parsed == null || parsed <= 0) {
+                                  // Not double.tryParse, which reads "NaN"
+                                  // and "Infinity" as numbers (the save then
+                                  // failed with no message) and "1,500" as
+                                  // nothing at all.
+                                  final parsed = parseAmountMinor(v);
+                                  if (parsed == null) {
+                                    return 'Enter an amount such as 1500 or '
+                                        '1,500.50';
+                                  }
+                                  if (parsed <= 0) {
                                     return 'Enter a positive amount';
+                                  }
+                                  if (parsed > maxAmountMinor) {
+                                    return 'No more than '
+                                        '${formatMinorUnits(maxAmountMinor)}';
                                   }
                                   return null;
                                 },

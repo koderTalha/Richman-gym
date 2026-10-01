@@ -68,6 +68,10 @@ class LogsSearchSubmitted extends LogsEvent {
 
 /// Fetches the next page rather than growing the first query, so opening the
 /// screen costs the same whether the gym has been running a month or a decade.
+///
+/// The page starts after the last event already on screen, not at an offset
+/// of however many are shown: rows written while the screen is open would
+/// otherwise shift everything down and repeat the bottom of the list.
 class LogsMoreRequested extends LogsEvent {
   const LogsMoreRequested();
 }
@@ -206,7 +210,7 @@ class LogsBloc extends Bloc<LogsEvent, LogsState> {
         failuresOnly: state.tab.failuresOnly,
         search: state.search,
         limit: _pageSize,
-        offset: state.events.length,
+        after: state.events.isEmpty ? null : state.events.last,
       );
 
       emit(state.copyWith(

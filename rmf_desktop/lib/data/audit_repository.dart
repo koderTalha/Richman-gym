@@ -1,6 +1,7 @@
 import 'package:drift/drift.dart';
 import 'package:logging/logging.dart';
 
+import '../domain/name.dart';
 import 'database.dart';
 
 final _log = Logger('audit');
@@ -16,6 +17,11 @@ abstract final class AuditAction {
   static const memberDeleteRefused = 'member.delete_refused';
   static const memberDeactivated = 'member.deactivated';
   static const memberReactivated = 'member.reactivated';
+
+  /// The owner edited a member's profile — name, phone, email, gender,
+  /// address, emergency contact or joining date — with one "Field: before →
+  /// after" line per change. Fee and plan changes are [memberFeeChanged]'s.
+  static const memberUpdated = 'member.updated';
 
   /// The owner emptied the members domain from Settings — every member, and
   /// everything that existed only because of one. Recorded as counts and a
@@ -40,6 +46,12 @@ abstract final class AuditAction {
   /// The owner moved a member onto a different billing day. Worth recording:
   /// it changes when that member is next asked for money.
   static const billingAnchorChanged = 'billing.anchor_changed';
+
+  /// A returning member's billing started again on the day they came back:
+  /// the unpaid months since they last paid removed, the payment already
+  /// taken for their return (if any) moved onto it, and their billing day
+  /// moved to match. See `BillingCycleService.restartBilling`.
+  static const billingRestarted = 'billing.restarted';
 
   /// The owner moved what a member is asked for each month — by giving them
   /// their own fee, by taking it away, or by moving them to another plan.
@@ -82,6 +94,27 @@ abstract final class AuditAction {
   static const updateInstalling = 'update.installing';
   static const updateVerifyFailed = 'update.verify_failed';
   static const updateBackupFailed = 'update.backup_failed';
+
+  /// Somebody used "Forgot password?" and the admin password was replaced.
+  /// The recovery proof is the password the app ships with, which is public,
+  /// so this row is what lets the owner see that it happened, and when — the
+  /// answer agreed instead of taking the recovery path away. Filed under
+  /// [AuditCategory.update] for want of an account category: adding one is a
+  /// change to the stored enum that older builds cannot read back. Never
+  /// carries either password. See `SettingsRepository.resetPassword`.
+  static const accountPasswordReset = 'account.password_reset';
+
+  /// The same form, turned down: a wrong default password, an unknown email
+  /// or an unusable new password. Recorded too, because a run of these is
+  /// somebody trying their luck at the counter.
+  static const accountPasswordResetRefused = 'account.password_reset_refused';
+
+  /// A staged backup replaced the database at launch. Written into the
+  /// restored database itself, on its first boot — the backup's own audit
+  /// trail stops before the restore, so without this row the restore would
+  /// be invisible. Names the backup's date and the `.replaced-*` copy the
+  /// previous data was kept in. See `BackupService.recordAppliedRestore`.
+  static const backupRestored = 'backup.restored';
 
   static const whatsAppResendRequested = 'whatsapp.resend_requested';
   static const whatsAppSent = 'whatsapp.sent';
@@ -166,16 +199,23 @@ class AuditRepository {
 
   /// Newest first, always bounded.
   ///
-  /// The Logs screen pages with [limit] and [offset] rather than reading the
-  /// whole table: this grows for as long as the gym is open, and a list that
-  /// has to be fully loaded before the tab paints is a list that eventually
-  /// stops painting.
+  /// The Logs screen pages with [limit] rather than reading the whole table:
+  /// this grows for as long as the gym is open, and a list that has to be
+  /// fully loaded before the tab paints is a list that eventually stops
+  /// painting.
+  ///
+  /// The next page is asked for with [after] — the last event already shown
+  /// — rather than with [offset]. An offset counts from the newest row, so
+  /// anything written while the screen is open (the automatic reminder run
+  /// writes as it goes) pushed rows already on screen into the next page and
+  /// they appeared twice. A position in the ordering itself does not move.
   Future<List<AuditEvent>> recent({
     AuditCategory? category,
     bool failuresOnly = false,
     String? search,
     int limit = 100,
     int offset = 0,
+    AuditEvent? after,
   }) async {
     final query = db.select(db.auditEvents)
       ..orderBy([
@@ -192,16 +232,34 @@ class AuditRepository {
 
     final term = search?.trim();
     if (term != null && term.isNotEmpty) {
-      final like = '%$term%';
+      query.where((e) => _matches(e, term));
+    }
+
+    if (after != null) {
+      // Strictly older in the same (created, id) order the query sorts by.
+      // Created times are stored to the second, so many rows share one and
+      // the id is what places a row among them.
       query.where((e) =>
-          e.summary.like(like) |
-          e.memberName.like(like) |
-          e.receiptNumber.like(like) |
-          e.actorName.like(like));
+          e.createdAt.isSmallerThanValue(after.createdAt) |
+          (e.createdAt.equals(after.createdAt) &
+              e.id.isSmallerThanValue(after.id)));
     }
 
     query.limit(limit, offset: offset);
     return query.get();
+  }
+
+  /// The Logs search, as a LIKE over the columns a person would type from.
+  ///
+  /// Escaped, as the Members search is: a "%" or "_" typed into the box is
+  /// matched literally rather than as a wildcard, so searching for "50%"
+  /// does not list every event in the log.
+  static Expression<bool> _matches($AuditEventsTable e, String term) {
+    final like = '%${escapeLikePattern(term)}%';
+    return e.summary.like(like, escapeChar: r'\') |
+        e.memberName.like(like, escapeChar: r'\') |
+        e.receiptNumber.like(like, escapeChar: r'\') |
+        e.actorName.like(like, escapeChar: r'\');
   }
 
   /// How many events match, so the Logs screen can say whether more remain
@@ -223,11 +281,7 @@ class AuditRepository {
     }
     final term = search?.trim();
     if (term != null && term.isNotEmpty) {
-      final like = '%$term%';
-      query.where(db.auditEvents.summary.like(like) |
-          db.auditEvents.memberName.like(like) |
-          db.auditEvents.receiptNumber.like(like) |
-          db.auditEvents.actorName.like(like));
+      query.where(_matches(db.auditEvents, term));
     }
 
     return (await query.getSingle()).read(count) ?? 0;

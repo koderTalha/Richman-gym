@@ -31,6 +31,17 @@ final _log = Logger('update');
 const _releasesEndpoint =
     'https://api.github.com/repos/koderTalha/Richman-gym/releases/latest';
 
+/// The repository releases are published from, as path segments of a
+/// github.com download link and of an api.github.com address. Kept beside
+/// [_releasesEndpoint], which names the same repository; see `_safeUri`.
+const _releaseDownloadPath = [
+  'koderTalha',
+  'Richman-gym',
+  'releases',
+  'download',
+];
+const _repositoryApiPath = ['repos', 'koderTalha', 'Richman-gym'];
+
 /// The only hosts an installer may be fetched from. GitHub redirects asset
 /// downloads to its object store, so both are needed — and nothing else is.
 const _allowedHosts = {
@@ -867,12 +878,53 @@ class UpdateService {
   /// HTTPS, and a host on the allow-list. This URL becomes an executable that
   /// runs on the gym's computer, so a release edited to point elsewhere must
   /// not be followed.
+  ///
+  /// The host alone is not enough on github.com, where every account's
+  /// release assets live side by side: `github.com/<anyone>/…` passed, so a
+  /// payload naming somebody else's installer would have been fetched (audit
+  /// SEC-003). There the path must be one of this repository's release
+  /// downloads — `/koderTalha/Richman-gym/releases/download/<tag>/<file>`,
+  /// which is the only shape `browser_download_url` takes. Owner and
+  /// repository are compared ignoring case, as GitHub itself does.
+  ///
+  /// The object-store hosts are allowed as they were: their paths are opaque
+  /// and signed, and GitHub reaches them only by redirecting a download that
+  /// already passed this check. Those redirects are followed by the HTTP
+  /// client, not re-checked here, and need no change.
   static Uri? _safeUri(Object? raw) {
     if (raw is! String) return null;
     final uri = Uri.tryParse(raw);
     if (uri == null) return null;
     if (uri.scheme != 'https') return null;
     if (!_allowedHosts.contains(uri.host)) return null;
+    // No credentials and no unusual port: neither has any place in a GitHub
+    // download link, and both are classic ways to dress one up.
+    if (uri.userInfo.isNotEmpty || uri.hasPort && uri.port != 443) return null;
+
+    // Dot segments are already resolved by Uri.parse; an encoded separator
+    // inside a segment is not, and is refused rather than interpreted.
+    final segments = uri.pathSegments;
+    if (segments.any(
+        (s) => s.isEmpty || s.contains('/') || s.contains(r'\'))) {
+      return null;
+    }
+
+    bool under(List<String> prefix, {int? exactLength}) {
+      if (exactLength != null && segments.length != exactLength) return false;
+      if (segments.length <= prefix.length) return false;
+      for (var i = 0; i < prefix.length; i++) {
+        if (segments[i].toLowerCase() != prefix[i].toLowerCase()) return false;
+      }
+      return true;
+    }
+
+    switch (uri.host) {
+      case 'github.com':
+        // owner / repo / releases / download / <tag> / <file>
+        if (!under(_releaseDownloadPath, exactLength: 6)) return null;
+      case 'api.github.com':
+        if (!under(_repositoryApiPath)) return null;
+    }
     return uri;
   }
 }

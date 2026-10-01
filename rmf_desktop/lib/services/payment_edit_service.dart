@@ -6,6 +6,7 @@ import '../data/cycle_pricing_log.dart';
 import '../data/cycle_waivers.dart';
 import '../data/database.dart';
 import '../data/membership_queries.dart';
+import '../data/payment_cycles.dart';
 import '../data/settings_repository.dart';
 import '../domain/billing_month_check.dart';
 import '../domain/billing_period.dart';
@@ -291,15 +292,30 @@ class PaymentEditService {
       return PaymentEditRefused(EditRefusalReason.monthBlocked, message);
     }
 
+    // The month on the form names the cycle the payment is on unless the owner
+    // changed it. Resolving the month afresh found the *earliest* cycle
+    // starting in it, and after a change of billing day a calendar month can
+    // hold two — a short transition and the real one, both labelled
+    // "September 2026" — so adding a note to the real one's payment silently
+    // moved the money onto the transition.
+    final current = payment.membershipPeriodId == null
+        ? null
+        : await (db.select(db.membershipPeriods)
+              ..where((p) => p.id.equals(payment.membershipPeriodId!)))
+            .getSingleOrNull();
+    final staysOnCycle = current != null &&
+        _billingMonthOf(current.periodStart) == input.billingMonth;
+
     // Moving onto a cycle that already holds someone's money is refused rather
     // than confirmed. Recording a second payment for a month is a legitimate
     // top-up; *moving* a payment on top of another one is not something the
     // owner can have meant.
-    final target = check.period;
+    final target = staysOnCycle ? current : check.period;
     final movingCycle = target?.id != payment.membershipPeriodId;
     if (target != null && movingCycle) {
-      final occupant = await paymentForPeriod(db, target.id);
-      if (occupant != null && occupant.id != payment.id) {
+      final occupant = await paymentForPeriod(db, target.id,
+          excludingPaymentId: payment.id);
+      if (occupant != null) {
         final label =
             formatBillingPeriod(target.periodStart.toUtc(), check.durationMonths);
         return PaymentEditRefused(
@@ -397,6 +413,7 @@ class PaymentEditService {
     // --- One short transaction, then the files ---------------------------
     final oldPeriodId = payment.membershipPeriodId;
     int? newPeriodId;
+    var moneyMoved = true;
 
     await db.transaction(() async {
       // Resolved again in here: between the check above and now, another
@@ -406,11 +423,15 @@ class PaymentEditService {
       // would credit a cycle worth nothing. Same rule the checker above applied
       // — see `data/cycle_waivers.dart`.
       final bounds = periodBounds(input.billingMonth, check.durationMonths);
-      var period = await cycleToBillFor(
-        db,
-        memberId: member.id,
-        bounds: bounds,
-      );
+      var period = staysOnCycle
+          ? await (db.select(db.membershipPeriods)
+                ..where((p) => p.id.equals(current.id)))
+              .getSingleOrNull()
+          : await cycleToBillFor(
+              db,
+              memberId: member.id,
+              bounds: bounds,
+            );
 
       if (period == null) {
         final open = await openMembershipFor(db, member.id);
@@ -461,24 +482,36 @@ class PaymentEditService {
       }
       newPeriodId = period.id;
 
-      // The old allocation is replaced rather than adjusted in place: an edit
-      // can change the amount, the cycle, or both, and a fresh row for
-      // whatever the payment now is is simpler than reasoning about which of
-      // the two changed. `existingAllocations` was read before this
+      // Money untouched — same amount, same cycle, allocation already there —
+      // means the allocation and the cycle's settled stamp are left exactly as
+      // they are. Rewriting them anyway re-derived settlement from the balance
+      // rule, and a month the v10 migration closed with a discounted payment
+      // (2,500 against 3,000, allocated 2,500) re-opened as owing 500 the
+      // moment the owner corrected a typo in its notes.
+      moneyMoved = input.amountMinor != payment.amountMinor ||
+          period.id != oldPeriodId ||
+          existingAllocations.isEmpty;
+
+      // Otherwise the old allocation is replaced rather than adjusted in
+      // place: an edit can change the amount, the cycle, or both, and a fresh
+      // row for whatever the payment now is is simpler than reasoning about
+      // which of the two changed. `existingAllocations` was read before this
       // transaction opened, but it is used only to size a delete that is a
       // no-op if there is nothing to delete.
-      if (existingAllocations.isNotEmpty) {
-        await (db.delete(db.paymentAllocations)
-              ..where((a) => a.paymentId.equals(payment.id)))
-            .go();
+      if (moneyMoved) {
+        if (existingAllocations.isNotEmpty) {
+          await (db.delete(db.paymentAllocations)
+                ..where((a) => a.paymentId.equals(payment.id)))
+              .go();
+        }
+        await db.into(db.paymentAllocations).insert(
+              PaymentAllocationsCompanion.insert(
+                paymentId: payment.id,
+                membershipPeriodId: period.id,
+                amountMinor: input.amountMinor,
+              ),
+            );
       }
-      await db.into(db.paymentAllocations).insert(
-            PaymentAllocationsCompanion.insert(
-              paymentId: payment.id,
-              membershipPeriodId: period.id,
-              amountMinor: input.amountMinor,
-            ),
-          );
 
       await (db.update(db.payments)..where((p) => p.id.equals(payment.id)))
           .write(PaymentsCompanion(
@@ -495,9 +528,11 @@ class PaymentEditService {
 
     // Outside the transaction — these are follow-up reads and writes of their
     // own, not part of what has to commit atomically with the correction.
-    await _cycles.refreshSettlement(newPeriodId!);
-    if (oldPeriodId != null && oldPeriodId != newPeriodId) {
-      await _cycles.refreshSettlement(oldPeriodId);
+    if (moneyMoved) {
+      await _cycles.refreshSettlement(newPeriodId!);
+      if (oldPeriodId != null && oldPeriodId != newPeriodId) {
+        await _cycles.refreshSettlement(oldPeriodId);
+      }
     }
 
     // Past this line the correction is committed. Nothing below may report it
@@ -652,6 +687,7 @@ class PaymentEditService {
   Future<DeletePaymentResult> delete({
     required int paymentId,
     required int actorId,
+    DateTime? now,
   }) async {
     final payment = await _paymentOrNull(paymentId);
     if (payment == null) {
@@ -664,7 +700,9 @@ class PaymentEditService {
           ..where((m) => m.id.equals(payment.memberId)))
         .getSingle();
     final receipt = await _receiptForPayment(payment.id);
-    final periodLabel = await _labelForPeriodId(payment.membershipPeriodId);
+    // Every month the payment paid for, not only the first: deleting a
+    // three-month payment re-opens all three, and the confirmation says so.
+    final periodLabel = await paymentPeriodLabel(db, payment) ?? '—';
     final settings = await _settings.get();
 
     // Read before the delete: a payment settling several cycles at once — see
@@ -674,6 +712,7 @@ class PaymentEditService {
     final affectedPeriodIds = (await allocationsForPayment(db, payment.id))
         .map((a) => a.membershipPeriodId)
         .toSet();
+    var removedFuture = <int>{};
 
     // Foreign keys are on, so the order is forced: attempts reference the
     // receipt, the receipt references the payment. The allocations cascade
@@ -687,9 +726,15 @@ class PaymentEditService {
             .go();
       }
       await (db.delete(db.payments)..where((p) => p.id.equals(payment.id))).go();
+
+      removedFuture = await _removeCyclesOnlyThisPaymentOpened(
+        memberId: member.id,
+        touched: affectedPeriodIds,
+        now: now,
+      );
     });
 
-    for (final periodId in affectedPeriodIds) {
+    for (final periodId in affectedPeriodIds.difference(removedFuture)) {
       await _cycles.refreshSettlement(periodId);
     }
 
@@ -713,7 +758,10 @@ class PaymentEditService {
         'Recorded on ${formatDayMonthYear(payment.paymentDate.toLocal())}',
         'Method: ${paymentMethodLabel(payment.method)}',
         if (receipt != null) 'Receipt: ${receipt.receiptNumber}',
-        'The billing cycle reads as due again.',
+        affectedPeriodIds.length > 1
+            ? 'Those ${affectedPeriodIds.length} billing cycles read as due '
+                'again.'
+            : 'The billing cycle reads as due again.',
       ],
     );
 
@@ -757,6 +805,43 @@ class PaymentEditService {
   }
 
   // --- Helpers -------------------------------------------------------------
+
+  /// Deletes the cycles a deleted payment was the only reason for.
+  ///
+  /// Paying several months ahead opens a cycle for each month the money
+  /// reaches, on the rule that a cycle no payment touches is never created.
+  /// Deleting that payment used to leave every one of them behind, empty and
+  /// unsettled: a mistyped twelve-month payment, deleted, left eleven months
+  /// of debt the member never incurred, which then attracted re-pricing and
+  /// reminders.
+  ///
+  /// Only cycles that have not started yet go, and only from the member's end
+  /// of the timeline backwards, so no gap opens between the cycles that stay.
+  /// A month already under way would have been opened by the startup roll in
+  /// any case, so it stays and reads as due, as the confirmation said it
+  /// would. Anything still holding money — another payment's — stops the walk.
+  Future<Set<int>> _removeCyclesOnlyThisPaymentOpened({
+    required int memberId,
+    required Set<int> touched,
+    DateTime? now,
+  }) async {
+    final at = (now ?? DateTime.now()).toUtc();
+    final today = DateTime.utc(at.year, at.month, at.day);
+
+    final cycles = await periodsForMember(db, memberId);
+    final removed = <int>{};
+    for (final cycle in cycles.reversed) {
+      if (!touched.contains(cycle.id)) break;
+      if (!cycle.periodStart.toUtc().isAfter(today)) break;
+      if (await paymentForPeriod(db, cycle.id) != null) break;
+
+      await (db.delete(db.membershipPeriods)
+            ..where((p) => p.id.equals(cycle.id)))
+          .go();
+      removed.add(cycle.id);
+    }
+    return removed;
+  }
 
   Future<ReceiptUpdate> _writeReceiptFiles({
     required Receipt? receipt,
@@ -987,4 +1072,12 @@ class PaymentEditService {
 
   static String? _blankToNull(String? value) =>
       (value == null || value.trim().isEmpty) ? null : value.trim();
+}
+
+/// The `YYYY-MM` the edit form names a cycle by: the calendar month of its
+/// UTC start, the same thing the dialog writes into the field.
+String _billingMonthOf(DateTime periodStart) {
+  final at = periodStart.toUtc();
+  return '${at.year.toString().padLeft(4, '0')}-'
+      '${at.month.toString().padLeft(2, '0')}';
 }

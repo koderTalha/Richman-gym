@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -6,12 +7,24 @@ import 'package:http_parser/http_parser.dart';
 import 'package:logging/logging.dart';
 
 import '../../data/database.dart';
+import '../update/update_service.dart'
+    show UpdateFailureKind, classifyNetworkError;
 import 'whatsapp_client.dart';
 
 final _log = Logger('whatsapp');
 
 const _graphVersion = 'v21.0';
 final _receiptMediaType = MediaType('image', 'png');
+
+/// How long one call to Meta may take before it is abandoned.
+///
+/// `package:http` waits forever by default, and a half-open connection — the
+/// counter machine's Wi-Fi dropping mid-request — then never answers at all.
+/// Recording a payment awaits its receipt send, so without this the payment
+/// dialog went on spinning after the payment itself had long been saved.
+/// Generous, because a receipt image is uploaded over whatever connection the
+/// gym has; per call, so the upload and the send each get the full time.
+const metaRequestTimeout = Duration(seconds: 30);
 
 /// Result of checking Meta credentials without sending a message.
 class MetaVerification {
@@ -63,11 +76,15 @@ class MetaWhatsAppClient implements WhatsAppClient {
     required this.phoneNumberId,
     required this.accessToken,
     http.Client? httpClient,
+    this.timeout = metaRequestTimeout,
   }) : _http = httpClient ?? http.Client();
 
   final String phoneNumberId;
   final String accessToken;
   final http.Client _http;
+
+  /// See [metaRequestTimeout]. Shorter only in tests.
+  final Duration timeout;
 
   @override
   WhatsAppProviderKind get kind => WhatsAppProviderKind.meta;
@@ -82,7 +99,7 @@ class MetaWhatsAppClient implements WhatsAppClient {
       return await _sendImage(input, mediaId);
     } catch (e, s) {
       _log.severe('WhatsApp send failed', e, s);
-      return WhatsAppSendFailure('$e');
+      return WhatsAppSendFailure(_failureText(e));
     }
   }
 
@@ -108,7 +125,7 @@ class MetaWhatsAppClient implements WhatsAppClient {
       });
     } catch (e, s) {
       _log.severe('WhatsApp text send failed', e, s);
-      return WhatsAppSendFailure('$e');
+      return WhatsAppSendFailure(_failureText(e));
     }
   }
 
@@ -166,7 +183,7 @@ class MetaWhatsAppClient implements WhatsAppClient {
       });
     } catch (e, s) {
       _log.severe('WhatsApp template send failed', e, s);
-      return WhatsAppSendFailure('$e');
+      return WhatsAppSendFailure(_failureText(e));
     }
   }
 
@@ -175,11 +192,13 @@ class MetaWhatsAppClient implements WhatsAppClient {
   /// correct before relying on them for real receipts.
   Future<MetaVerification> verifyCredentials() async {
     try {
-      final response = await _http.get(
-        Uri.parse('https://graph.facebook.com/$_graphVersion/$phoneNumberId'
-            '?fields=verified_name,display_phone_number,quality_rating'),
-        headers: {'Authorization': 'Bearer $accessToken'},
-      );
+      final response = await _http
+          .get(
+            Uri.parse('https://graph.facebook.com/$_graphVersion/$phoneNumberId'
+                '?fields=verified_name,display_phone_number,quality_rating'),
+            headers: {'Authorization': 'Bearer $accessToken'},
+          )
+          .timeout(timeout);
 
       final body = jsonDecode(response.body) as Map<String, dynamic>;
 
@@ -195,7 +214,7 @@ class MetaWhatsAppClient implements WhatsAppClient {
       );
     } catch (e, s) {
       _log.severe('WhatsApp credential check failed', e, s);
-      return MetaVerification.failure('$e');
+      return MetaVerification.failure(_failureText(e));
     }
   }
 
@@ -214,8 +233,11 @@ class MetaWhatsAppClient implements WhatsAppClient {
         contentType: _receiptMediaType,
       ));
 
-    final response =
-        await http.Response.fromStream(await _http.send(request));
+    // Both halves are bounded: a server can accept the request and then
+    // stall halfway through the reply just as easily as not answer at all.
+    final response = await http.Response.fromStream(
+            await _http.send(request).timeout(timeout))
+        .timeout(timeout);
     final body = jsonDecode(response.body) as Map<String, dynamic>;
 
     final id = body['id'] as String?;
@@ -244,14 +266,16 @@ class MetaWhatsAppClient implements WhatsAppClient {
   /// "a 200 without a message id is still a failure" rule are the same whether
   /// what is being sent is a receipt image or a line of text.
   Future<WhatsAppSendResult> _postMessage(Map<String, Object?> payload) async {
-    final response = await _http.post(
-      _uri('messages'),
-      headers: {
-        'Authorization': 'Bearer $accessToken',
-        'Content-Type': 'application/json',
-      },
-      body: jsonEncode(payload),
-    );
+    final response = await _http
+        .post(
+          _uri('messages'),
+          headers: {
+            'Authorization': 'Bearer $accessToken',
+            'Content-Type': 'application/json',
+          },
+          body: jsonEncode(payload),
+        )
+        .timeout(timeout);
 
     final body = jsonDecode(response.body) as Map<String, dynamic>;
     final messages = body['messages'] as List<dynamic>?;
@@ -265,6 +289,31 @@ class MetaWhatsAppClient implements WhatsAppClient {
     }
     return WhatsAppSendSuccess(messageId);
   }
+
+  /// What the owner reads for a call that threw before Meta answered.
+  ///
+  /// Read through the same classification the update check and "Send to
+  /// developer" use, so a timeout or a dead connection is named as one rather
+  /// than surfacing as a Dart exception's `toString`. Anything it cannot name
+  /// — Meta's own error text, thrown by [_uploadMedia] — is kept as it was.
+  static String _failureText(Object error) =>
+      switch (classifyNetworkError(error)) {
+        UpdateFailureKind.connectionTimeout =>
+          'WhatsApp did not answer in time. The connection may be slow or '
+              'down — try again in a minute.',
+        UpdateFailureKind.dnsFailure || UpdateFailureKind.offline =>
+          'Could not reach WhatsApp. Check this computer is connected to the '
+              'internet.',
+        UpdateFailureKind.connectionRefused =>
+          'The connection to WhatsApp was refused, probably by a firewall.',
+        UpdateFailureKind.tlsFailure =>
+          'A secure connection to WhatsApp could not be made. Antivirus '
+              'software, or a wrong date and time on this computer, is the '
+              'usual cause.',
+        UpdateFailureKind.proxyFailure =>
+          'Could not reach WhatsApp through this network\'s proxy.',
+        _ => '$error',
+      };
 
   /// Meta expects the number without the leading "+".
   static String _recipient(String e164) =>

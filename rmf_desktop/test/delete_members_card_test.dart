@@ -9,6 +9,7 @@ import 'package:rich_man_fitness/data/audit_repository.dart';
 import 'package:rich_man_fitness/data/database.dart';
 import 'package:rich_man_fitness/data/member_repository.dart';
 import 'package:rich_man_fitness/data/seed.dart';
+import 'package:rich_man_fitness/services/backup_service.dart';
 import 'package:rich_man_fitness/services/member_purge_service.dart';
 import 'package:rich_man_fitness/services/receipt_storage.dart';
 import 'package:rich_man_fitness/theme/app_theme.dart';
@@ -64,7 +65,8 @@ void main() {
       expect(find.text('20'), findsWidgets, reason: 'the member count');
       expect(find.textContaining('Rs. 17,000'), findsOneWidget);
       expect(find.textContaining('cannot be undone'), findsOneWidget);
-      expect(find.textContaining('Take a backup first'), findsOneWidget);
+      expect(find.textContaining('backup is taken automatically'),
+          findsOneWidget);
     });
 
     testWidgets('starts disabled', (tester) async {
@@ -116,7 +118,16 @@ void main() {
     late AppDatabase db;
     late int adminId;
 
+    /// How many members there were each time a backup was asked for — so a
+    /// test can tell a backup taken before the delete from one taken after.
+    late List<int> membersAtBackup;
+
+    /// Set to make the backup fail, as a full disk or a locked folder would.
+    Object? backupFails;
+
     setUp(() async {
+      membersAtBackup = [];
+      backupFails = null;
       workspace = await Directory.systemTemp.createTemp('rmf-purge-card');
       db = AppDatabase.forTesting(NativeDatabase.memory());
       await seedDatabase(db);
@@ -160,6 +171,18 @@ void main() {
                 child: DeleteMembersCard(
                   card: ({required title, subtitle, required child}) =>
                       Column(children: [Text(title), child]),
+                  takeBackup: () async {
+                    membersAtBackup
+                        .add((await db.select(db.members).get()).length);
+                    if (backupFails != null) throw backupFails!;
+                    return BackupResult(
+                      folder: Directory(
+                          '${workspace.path}/RichManFitness-Backup-test'),
+                      databaseBytes: 0,
+                      receiptsCopied: 0,
+                      workbookBytes: 0,
+                    );
+                  },
                 ),
               ),
             ),
@@ -257,6 +280,70 @@ void main() {
             .widget<ButtonStyleButton>(find.byKey(deleteMembersOpenKey))
             .onPressed,
         isNull,
+      );
+    });
+
+    Future<void> confirmPurge(WidgetTester tester) async {
+      await tester.tap(find.byKey(deleteMembersOpenKey));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), deleteMembersConfirmPhrase);
+      await tester.pump();
+      await tester.tap(find.byKey(deleteMembersConfirmKey));
+      await tester.pumpAndSettle();
+    }
+
+    // BUG-029 in the 1 Oct 2026 audit: the dialog said "take a backup first"
+    // and then deleted whether or not anybody had.
+    testWidgets('a backup is taken before anything is deleted', (tester) async {
+      await addMember();
+      await pumpCard(tester);
+
+      await confirmPurge(tester);
+
+      expect(membersAtBackup, [1],
+          reason: 'one backup, taken while the member still existed');
+      expect(await db.select(db.members).get(), isEmpty);
+      expect(find.textContaining('RichManFitness-Backup-test'), findsOneWidget,
+          reason: 'the owner is told where the way back is');
+    });
+
+    testWidgets('no backup, no delete', (tester) async {
+      await addMember();
+      await pumpCard(tester);
+      backupFails = const FileSystemException('disk full');
+
+      await confirmPurge(tester);
+
+      expect(await db.select(db.members).get(), hasLength(1));
+      expect(find.textContaining('Nothing was deleted'), findsOneWidget);
+      expect(
+          (await db.select(db.auditEvents).get())
+              .where((e) => e.action == AuditAction.memberDataPurged),
+          isEmpty);
+    });
+
+    testWidgets('opening the dialog counts again, not from when the card '
+        'loaded', (tester) async {
+      await addMember();
+      await pumpCard(tester);
+
+      // Added on another screen while Settings sat open.
+      await MemberRepository(db).create(
+        fullName: 'Bilal Ahmed',
+        phone: '+923000000002',
+        planId: (await db.select(db.membershipPlans).get()).first.id,
+        joiningDate: DateTime.utc(2026, 1, 1),
+      );
+
+      await tester.tap(find.byKey(deleteMembersOpenKey));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.descendant(
+            of: find.byType(DeleteMembersConfirmDialog),
+            matching: find.text('2')),
+        findsOneWidget,
+        reason: 'two members are about to go, not the one counted on load',
       );
     });
 

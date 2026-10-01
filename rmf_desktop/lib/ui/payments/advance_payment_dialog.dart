@@ -13,7 +13,7 @@ import '../../domain/dates.dart';
 import '../../domain/money.dart';
 import '../../domain/payment_errors.dart';
 import '../../domain/payment_method.dart';
-import '../../domain/payment_settlement.dart' show allocate;
+import '../../domain/payment_settlement.dart' show SettleableCycle, allocate;
 import '../../domain/payment_timing.dart';
 import '../../domain/phone.dart';
 import '../../services/billing_cycle_service.dart';
@@ -138,7 +138,7 @@ class _AdvancePaymentDialogState extends State<_AdvancePaymentDialog> {
     _amount = TextEditingController(
       text: widget.member.feeMinor == null
           ? ''
-          : fromMinorUnits(widget.member.feeMinor!).toStringAsFixed(0),
+          : formatAmountInput(widget.member.feeMinor!),
     );
     _sendWhatsApp = _phoneUsable;
     _loadBilling();
@@ -250,7 +250,7 @@ class _AdvancePaymentDialogState extends State<_AdvancePaymentDialog> {
         if (check.period == null && !past && _monthFee.text.trim().isEmpty) {
           final fee = widget.member.feeMinor;
           if (fee != null) {
-            _monthFee.text = fromMinorUnits(fee).toStringAsFixed(0);
+            _monthFee.text = formatAmountInput(fee);
           }
         }
       });
@@ -269,10 +269,9 @@ class _AdvancePaymentDialogState extends State<_AdvancePaymentDialog> {
     final billing = _billing;
     if (billing == null) return null;
 
-    final parsed = double.tryParse(_amount.text.trim());
-    final amountMinor = (parsed == null || parsed <= 0)
-        ? billing.feeMinor
-        : toMinorUnits(parsed);
+    final parsed = parseAmountMinor(_amount.text);
+    final amountMinor =
+        (parsed == null || parsed <= 0) ? billing.feeMinor : parsed;
     if (amountMinor <= 0) return null;
 
     final offered =
@@ -339,7 +338,7 @@ class _AdvancePaymentDialogState extends State<_AdvancePaymentDialog> {
       widget.service.recordAdvancePayment(
         AdvancePaymentInput(
           memberId: widget.member.id,
-          amountMinor: toMinorUnits(double.parse(_amount.text.trim())),
+          amountMinor: parseAmountMinor(_amount.text)!,
           method: _method,
           paymentDate: _paymentDate,
           sendWhatsApp: _sendWhatsApp,
@@ -394,7 +393,7 @@ class _AdvancePaymentDialogState extends State<_AdvancePaymentDialog> {
 
       final result = await widget.service.call(RecordPaymentInput(
         memberId: widget.member.id,
-        amountMinor: toMinorUnits(double.parse(_amount.text.trim())),
+        amountMinor: parseAmountMinor(_amount.text)!,
         method: _method,
         paymentDate: _paymentDate,
         billingMonth: month,
@@ -421,9 +420,9 @@ class _AdvancePaymentDialogState extends State<_AdvancePaymentDialog> {
   /// the month already has one.
   int? _opensNewCycleFee() {
     if (!_opensNewCycle) return null;
-    final parsed = double.tryParse(_monthFee.text.trim());
+    final parsed = parseAmountMinor(_monthFee.text);
     if (parsed == null || parsed <= 0) return null;
-    return toMinorUnits(parsed);
+    return parsed;
   }
 
   /// Asks before booking several cycles at once.
@@ -494,7 +493,7 @@ class _AdvancePaymentDialogState extends State<_AdvancePaymentDialog> {
       _monthFee.clear();
       _amount.text = widget.member.feeMinor == null
           ? ''
-          : fromMinorUnits(widget.member.feeMinor!).toStringAsFixed(0);
+          : formatAmountInput(widget.member.feeMinor!);
     });
     _loadBilling();
   }
@@ -593,13 +592,7 @@ class _AdvancePaymentDialogState extends State<_AdvancePaymentDialog> {
             decoration: const InputDecoration(
                 labelText: 'Amount received *', isDense: true),
             keyboardType: TextInputType.number,
-            validator: (v) {
-              final parsed = double.tryParse((v ?? '').trim());
-              if (parsed == null || parsed <= 0) {
-                return 'Enter an amount greater than zero';
-              }
-              return null;
-            },
+            validator: (v) => amountInputError(v ?? ''),
             onChanged: (_) => setState(() {}),
           ),
           const SizedBox(height: 14),
@@ -684,11 +677,10 @@ class _AdvancePaymentDialogState extends State<_AdvancePaymentDialog> {
                     keyboardType: TextInputType.number,
                     validator: (v) {
                       if (!_opensNewCycle) return null;
-                      final parsed = double.tryParse((v ?? '').trim());
-                      if (parsed == null || parsed <= 0) {
+                      if ((v ?? '').trim().isEmpty) {
                         return 'What did this month cost?';
                       }
-                      return null;
+                      return amountInputError(v!);
                     },
                   ),
                 ),
@@ -701,6 +693,9 @@ class _AdvancePaymentDialogState extends State<_AdvancePaymentDialog> {
               billingMonth: _billingMonth!,
               check: _monthCheck,
               checking: _checkingMonth,
+              billing: billing,
+              amountText: _amount.text,
+              newCycleFeeMinor: _opensNewCycleFee(),
             ),
           ] else if (billing != null) ...[
             const SizedBox(height: 14),
@@ -970,11 +965,38 @@ class _NamedMonthSummary extends StatelessWidget {
     required this.billingMonth,
     required this.check,
     required this.checking,
+    required this.billing,
+    required this.amountText,
+    required this.newCycleFeeMinor,
   });
 
   final String billingMonth;
   final BillingMonthCheck? check;
   final bool checking;
+  final MemberBilling? billing;
+  final String amountText;
+
+  /// The fee typed for a month that has no cycle yet, when it has been.
+  final int? newCycleFeeMinor;
+
+  /// What the named month still owes, or null when that is not known yet.
+  int? _owedMinor(BillingMonthCheck resolved) {
+    final period = resolved.period;
+    if (period == null) return newCycleFeeMinor ?? billing?.feeMinor;
+    for (final cycle in billing?.cycles ?? const <SettleableCycle>[]) {
+      if (cycle.periodId == period.id) return cycle.outstandingMinor;
+    }
+    return null;
+  }
+
+  /// How far the amount typed exceeds what the month owes, or null when it
+  /// does not.
+  int? _overpaidBy(BillingMonthCheck resolved) {
+    final amount = parseAmountMinor(amountText);
+    final owed = _owedMinor(resolved);
+    if (amount == null || owed == null || amount <= owed) return null;
+    return amount - owed;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1016,6 +1038,20 @@ class _NamedMonthSummary extends StatelessWidget {
               style: mutedStyleOf(context),
             ),
           ],
+          // A named month takes the whole amount, however much it is: the
+          // spread across later months only happens in Automatic. Typing two
+          // months' fees here used to leave next month reading as due with
+          // nothing on the form to say why.
+          if (resolved != null && !checking)
+            if (_overpaidBy(resolved) case final excess?) ...[
+              const SizedBox(height: 6),
+              Text(
+                'This is ${formatMinorUnits(excess)} more than this month '
+                'still owes, and all of it stays on this month. To pay '
+                'months ahead, switch back to Automatic.',
+                style: TextStyle(fontSize: 12, color: context.palette.due),
+              ),
+            ],
           for (final finding in [...blocking, ...warnings]) ...[
             const SizedBox(height: 6),
             Text(
@@ -1050,10 +1086,11 @@ class _AllocationPreview extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final parsed = double.tryParse(amountText.trim());
-    if (parsed == null || parsed <= 0) return const SizedBox.shrink();
+    final amountMinor = parseAmountMinor(amountText);
+    if (amountMinor == null || amountMinor <= 0) {
+      return const SizedBox.shrink();
+    }
 
-    final amountMinor = toMinorUnits(parsed);
     final offered =
         cycles.settleableFor(billing: billing, amountMinor: amountMinor);
     if (offered.isEmpty) return const SizedBox.shrink();

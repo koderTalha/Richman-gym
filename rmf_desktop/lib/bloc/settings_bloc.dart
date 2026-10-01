@@ -81,6 +81,16 @@ class WhatsAppSettingsSaved extends SettingsEvent {
         welcomeTemplate,
         welcomeTemplateLanguage,
       ];
+
+  // Equatable builds toString() from props, which would print the Meta access
+  // token wherever this event is printed — a bloc failure log, a debugger, a
+  // crash report. The token keeps working off-site, so it is shown only as
+  // present or absent. props is left alone so equality still sees it. Same
+  // pattern as AuthSignInRequested.
+  @override
+  String toString() => 'WhatsAppSettingsSaved(provider: ${provider.name}, '
+      'phoneNumberId: $phoneNumberId, accessToken: ${_redacted(accessToken)}, '
+      'businessAccountId: $businessAccountId)';
 }
 
 class ReminderSettingsSaved extends SettingsEvent {
@@ -135,6 +145,11 @@ class WhatsAppCredentialsTested extends SettingsEvent {
 
   @override
   List<Object?> get props => [phoneNumberId, accessToken];
+
+  /// See [WhatsAppSettingsSaved.toString].
+  @override
+  String toString() => 'WhatsAppCredentialsTested(phoneNumberId: '
+      '$phoneNumberId, accessToken: ${_redacted(accessToken)})';
 }
 
 class PasswordChangeRequested extends SettingsEvent {
@@ -152,7 +167,34 @@ class PasswordChangeRequested extends SettingsEvent {
 
   @override
   List<Object?> get props => [userId, currentPassword, newPassword];
+
+  /// All three passwords hidden — see [WhatsAppSettingsSaved.toString].
+  @override
+  String toString() => 'PasswordChangeRequested(userId: $userId, '
+      'currentPassword: •••, newPassword: •••, confirmPassword: •••)';
 }
+
+/// How a secret appears in an event's toString(): whether there is one, never
+/// what it is.
+String _redacted(String? secret) =>
+    secret == null || secret.isEmpty ? '(none)' : '•••';
+
+/// The receipt prefix as it will be stored, or null if it cannot be one.
+///
+/// The prefix becomes part of a file name — `RMF-2026-000184.png` in the
+/// receipts folder — so it is held to what is safe in a file name on every
+/// system: letters and digits, at most ten. A `\`, `/` or `..` would write
+/// receipts outside the folder, where backups never look; a `:` or `?` makes
+/// Windows refuse the file, and because the receipt is written before the
+/// payment commits, every payment would then fail to record (audit SEC-005).
+String? normalizeReceiptPrefix(String typed) {
+  final prefix = typed.trim().toUpperCase();
+  return RegExp(r'^[A-Z0-9]{1,10}$').hasMatch(prefix) ? prefix : null;
+}
+
+/// What the owner is told when [normalizeReceiptPrefix] refuses.
+const receiptPrefixRejected = 'The receipt prefix must be 1 to 10 letters or '
+    'digits, with no spaces or symbols — for example RMF. Nothing was saved.';
 
 class PlanSaved extends SettingsEvent {
   const PlanSaved({
@@ -286,11 +328,20 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
     GymInfoSaved event,
     Emitter<SettingsState> emit,
   ) async {
+    final prefix = normalizeReceiptPrefix(event.receiptPrefix);
+    if (prefix == null) {
+      // Cleared first, so the same refusal twice in a row is still a change
+      // the screen's listener sees, and says again.
+      emit(state.copyWith());
+      emit(state.copyWith(message: receiptPrefixRejected));
+      return;
+    }
+
     await _repository.update(GymSettingsCompanion(
       gymName: Value(event.gymName),
       phone: Value(event.phone),
       address: Value(event.address),
-      receiptPrefix: Value(event.receiptPrefix.toUpperCase()),
+      receiptPrefix: Value(prefix),
       receiptFooterMessage: Value(event.receiptFooter),
     ));
     await _load(emit, message: 'Gym details saved.');

@@ -71,10 +71,16 @@ Future<Widget> _boot() async {
   // it is where an unreadable file surfaces.
   await seedDatabase(db);
 
+  // A restore applied above gets its audit row now, written into the very
+  // database it restored — whose own trail stops when the backup was taken,
+  // so without this the restore would leave no trace. Never throws.
+  await BackupService.recordAppliedRestore(db);
+
   // The billing roll and the reconciliation report. Shared with the Reload
   // button in the top bar, so pressing it does exactly what opening the app
-  // does — see `services/startup_maintenance.dart`.
-  await runStartupMaintenance(db);
+  // does — see `services/startup_maintenance.dart`. Guarded: a failure in it
+  // is logged and the app opens anyway.
+  await runStartupMaintenanceGuarded(db);
 
   // Read before the first frame so the app opens in the owner's chosen theme
   // rather than flashing dark and correcting itself.
@@ -111,6 +117,35 @@ Future<Widget> _boot() async {
     restoredUser: restored,
     version: version,
   );
+}
+
+/// Runs the startup billing work without letting it stop the app opening.
+///
+/// Before this, any exception out of the roll reached main()'s catch and put
+/// the owner on the startup-failure screen at every launch — one bad member
+/// row anywhere was enough (audit BUG-009). That screen is for a database
+/// that cannot be opened, and by this point it has been: seeding succeeded.
+/// A roll that falls over leaves some cycles unopened, which the Reload button
+/// can retry, and is far better than no way into the app at all to take the
+/// day's payments. The failure is logged severe, so it is on the Logs
+/// screen's Technical tab and in any "Send to developer" bundle.
+///
+/// Returns whether the maintenance finished. [maintenance] is injectable for
+/// tests only.
+@visibleForTesting
+Future<bool> runStartupMaintenanceGuarded(
+  AppDatabase db, {
+  Future<void> Function(AppDatabase db) maintenance = runStartupMaintenance,
+}) async {
+  try {
+    await maintenance(db);
+    return true;
+  } catch (error, stack) {
+    _log.severe('Startup maintenance failed; opening the app without it. '
+        'Some billing cycles may not have been opened or re-priced until it '
+        'runs cleanly (the Reload button retries it).', error, stack);
+    return false;
+  }
 }
 
 Future<void> _autoBackup(AppDatabase db) async {
@@ -181,6 +216,8 @@ class RichManFitnessApp extends StatelessWidget {
 
     // Off by default — see GymSettings.reminderAutoSend. A closed gym reopens
     // to at most one capped, hours-aware batch, never a silent backlog blast.
+    // AppShell tries again on Reload and hourly; the run never throws and
+    // never overlaps itself, so unawaited is safe.
     unawaited(reminders.runAutoSend());
 
     return MultiRepositoryProvider(

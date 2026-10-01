@@ -279,6 +279,91 @@ BillingCycle _transitionFrom({
   );
 }
 
+/// How a recorded cycle relates to a plan [durationMonths] long.
+enum CycleShape {
+  /// Exactly the plan's length on some anchor the start sits on, clamping
+  /// included: 31 Jan → 28 Feb is one whole month.
+  whole,
+
+  /// A one-off cycle landing the member on a new anchor day — the plan's
+  /// length give or take about a fortnight. See [nearestAnchorTo].
+  transition,
+
+  /// Some other length altogether: a month-long cycle opened under a monthly
+  /// plan, read against the quarterly plan the member has since moved to.
+  otherLength,
+}
+
+/// Further from the natural end than this, a cycle cannot be a transition:
+/// [nearestAnchorTo] never moves an end by more than half of a 31-day month.
+const int _maxTransitionShiftDays = 16;
+
+/// Reads the shape of the cycle `[start, end)` against a plan of
+/// [durationMonths].
+///
+/// From the dates alone, because nothing stored says which kind a cycle is —
+/// and because the answer must be the same whether the cycle is being opened
+/// or re-priced months later, or the two would disagree about its price.
+CycleShape cycleShapeFor({
+  required DateTime start,
+  required DateTime end,
+  required int durationMonths,
+}) {
+  final from = _dayStart(start);
+  final to = _dayStart(end);
+
+  // The anchors [from] can be sitting on. Usually its own day; a month's last
+  // day can also be a clamped 29th, 30th or 31st.
+  final anchors = {
+    from.day,
+    if (from.day == _daysInMonth(from.year, from.month))
+      for (var day = from.day + 1; day <= maxAnchorDay; day++) day,
+  };
+  for (final anchor in anchors) {
+    if (addMonthsClamped(from, durationMonths, anchorDay: anchor) == to) {
+      return CycleShape.whole;
+    }
+  }
+
+  final natural = addMonthsClamped(from, durationMonths, anchorDay: from.day);
+  final shift = to.difference(natural).inDays.abs();
+  return to.isAfter(from) && shift <= _maxTransitionShiftDays
+      ? CycleShape.transition
+      : CycleShape.otherLength;
+}
+
+/// What the cycle `[start, end)` costs on a plan of [durationMonths] whose
+/// whole cycle costs [feeMinor].
+///
+/// A whole cycle costs the fee. A transition costs the fee in proportion to
+/// its days against the whole cycle it stands in for, rounded to the rupee —
+/// the owner's decision of 1 October 2026, after transitions anywhere from 15
+/// to 46 days long had each been charged one full month. Null for a cycle of
+/// some other length: there is no honest price for a one-month cycle on a
+/// quarterly plan, and inventing one is how a month came to be billed 8,000.
+int? feeForCycle({
+  required int feeMinor,
+  required DateTime start,
+  required DateTime end,
+  required int durationMonths,
+}) {
+  switch (cycleShapeFor(
+      start: start, end: end, durationMonths: durationMonths)) {
+    case CycleShape.whole:
+      return feeMinor;
+    case CycleShape.otherLength:
+      return null;
+    case CycleShape.transition:
+      final from = _dayStart(start);
+      final days = _dayStart(end).difference(from).inDays;
+      final naturalDays =
+          addMonthsClamped(from, durationMonths, anchorDay: from.day)
+              .difference(from)
+              .inDays;
+      return (feeMinor * days / naturalDays / 100).round() * 100;
+  }
+}
+
 /// Whether [at] already sits on [anchorDay].
 ///
 /// A boundary clamped by a short month counts: a member anchored to the 31st

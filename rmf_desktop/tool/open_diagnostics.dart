@@ -16,6 +16,13 @@ import 'package:rich_man_fitness/services/diagnostics/diagnostics_crypto.dart';
 /// The database it unpacks is the gym's real data. Point the tools in this
 /// folder at it (`DB=… fvm flutter test tool/verify_on_owner_db.dart`); do not
 /// copy it over the database the dev app opens, which is live too.
+///
+/// A bundle is untrusted until its reference matches one the owner read out.
+/// The public key it is sealed with ships inside the public installer, so
+/// anybody can make one, and the upload address is in that installer too.
+/// Every field printed below is therefore passed through [printable] first:
+/// a note carrying terminal escape sequences could otherwise rewrite what
+/// this screen shows, or the terminal's title, or worse (audit SEC-004).
 Future<void> main(List<String> args) async {
   final keyIndex = args.indexOf('--key');
   final keyPath = keyIndex >= 0 && keyIndex + 1 < args.length
@@ -58,7 +65,8 @@ Future<void> main(List<String> args) async {
     // A bundle this app built never climbs out of its folder; refuse one that
     // tries rather than trust a name from a file off the internet.
     if (entry.name.contains('..') || entry.name.startsWith('/')) {
-      return _fail('Refusing a bundle entry named "${entry.name}".');
+      return _fail(
+          'Refusing a bundle entry named "${printable(entry.name)}".');
     }
     final file = File('${out.path}/${entry.name}');
     await file.parent.create(recursive: true);
@@ -70,21 +78,61 @@ Future<void> main(List<String> args) async {
       ? jsonDecode(await infoFile.readAsString()) as Map<String, dynamic>
       : const <String, dynamic>{};
 
-  final note = (info['note'] as String?)?.trim() ?? '';
+  String line(String key, {String fallback = ''}) =>
+      printable(info[key], fallback: fallback, maxLength: 200);
+  String block(String key) => printable(info[key],
+      fallback: '(none)', multiline: true, maxLength: 4000);
+
   stdout
-    ..writeln('Opened ${info['reference'] ?? name} into ${out.path}')
-    ..writeln('  Sent:     ${info['sentAt']}')
-    ..writeln('  Gym:      ${info['gymName'] ?? 'unknown'}')
-    ..writeln('  Version:  ${info['appVersion']}  (${info['os']})')
-    ..writeln('  From:     ${info['source']}')
-    ..writeln('  Note:     ${note.isEmpty ? '(none)' : note}');
+    ..writeln('Opened ${printable(info['reference'], fallback: name)} '
+        'into ${out.path}')
+    ..writeln('  Sent:     ${line('sentAt')}')
+    ..writeln('  Gym:      ${line('gymName', fallback: 'unknown')}')
+    ..writeln('  Version:  ${line('appVersion')}  (${line('os')})')
+    ..writeln('  From:     ${line('source')}')
+    ..writeln('  Note:     ${block('note')}');
   if (info['startupError'] != null) {
-    stdout.writeln('  Startup error: ${info['startupError']}');
+    stdout.writeln('  Startup error: ${block('startupError')}');
   }
   final leftOut = info['logsLeftOut'] as List? ?? const [];
   if (leftOut.isNotEmpty) {
-    stdout.writeln('  Logs left out for size: ${leftOut.join(', ')}');
+    stdout.writeln('  Logs left out for size: '
+        '${printable(leftOut.join(', '), maxLength: 400)}');
   }
+  stdout.writeln('  Treat this as untrusted until its reference matches the '
+      'one the owner read out.');
+}
+
+/// [value] made safe to print to a terminal.
+///
+/// Removes every control character — ESC above all, which starts the
+/// sequences that move the cursor, recolour or clear the screen, set the
+/// window title or, in some terminals, write to the clipboard — along with
+/// the C1 controls, DEL, and the invisible Unicode formatting characters
+/// (bidirectional overrides, zero-width spaces) that make text read
+/// differently from what it is. A line break survives only in [multiline]
+/// text, and every continuation line is indented, so a note cannot print a
+/// line that looks like one of the headings above it. Capped at [maxLength].
+String printable(
+  Object? value, {
+  String fallback = '',
+  bool multiline = false,
+  int maxLength = 200,
+}) {
+  if (value == null) return fallback;
+  var text = '$value'
+      .replaceAll(RegExp(r'\r\n?|[\u2028\u2029\u0085]'), '\n')
+      .replaceAll('\t', ' ')
+      .replaceAll(
+          RegExp(r'[\x00-\x09\x0B-\x1F\x7F-\x9F'
+              r'\u200B-\u200F\u202A-\u202E\u2060-\u2069\uFEFF]'),
+          '');
+  text = multiline
+      ? text.trim().split('\n').join('\n            ')
+      : text.replaceAll('\n', ' ').trim();
+
+  if (text.isEmpty) return fallback;
+  return text.length > maxLength ? '${text.substring(0, maxLength)}…' : text;
 }
 
 void _fail(String message) {
