@@ -173,19 +173,44 @@ jobs:
         shell: pwsh
         working-directory: .
 
+      # ISCC.exe carries no version resource (its file version reads 0.0.0.0),
+      # so the compiler cannot be asked. Two records of what was installed can
+      # be: the package Chocolatey keeps, and the uninstall entry Inno Setup
+      # writes for itself. Either agreeing with the pin is enough, and both
+      # are printed for whoever has to work out a mismatch.
       - name: Check the Inno Setup version
         run: |
+          $expected = "6.7.1"
           $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
           if (-not (Test-Path $iscc)) { throw "ISCC.exe missing: $iscc" }
-          # The numeric version fields, not the display strings, whose
-          # format is up to whoever built the binary.
-          $info = (Get-Item $iscc).VersionInfo
-          $version = "$($info.FileMajorPart).$($info.FileMinorPart).$($info.FileBuildPart)"
-          Write-Host "Inno Setup compiler: $version ($($info.ProductVersion))"
-          if ($version -ne "6.7.1") {
-            throw "Expected Inno Setup 6.7.1, found $version. " +
+
+          $choco = if ($env:ChocolateyInstall) { $env:ChocolateyInstall } else { "C:\ProgramData\chocolatey" }
+          $nuspec = Join-Path $choco "lib\innosetup\innosetup.nuspec"
+          $fromChoco = $null
+          if (Test-Path $nuspec) {
+            $fromChoco = ([xml](Get-Content $nuspec -Raw)).package.metadata.version
+          }
+
+          $fromRegistry = $null
+          foreach ($key in @(
+              "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\Inno Setup 6_is1",
+              "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Inno Setup 6_is1")) {
+            if (Test-Path $key) {
+              $fromRegistry = (Get-ItemProperty $key).DisplayVersion
+              break
+            }
+          }
+
+          Write-Host "Chocolatey package version: $fromChoco"
+          Write-Host "Inno Setup uninstall entry: $fromRegistry"
+
+          function Is-Pinned($v) { return $v -eq $expected -or "$v" -like "$expected.*" }
+          if (-not (Is-Pinned $fromChoco) -and -not (Is-Pinned $fromRegistry)) {
+            throw "Expected Inno Setup $expected. " +
+                  "Chocolatey says '$fromChoco', the uninstall entry says '$fromRegistry'. " +
                   "Update the pin in this workflow deliberately, or fix it."
           }
+          Write-Host "Inno Setup $expected is the compiler that will build the installer."
         shell: pwsh
         working-directory: .
 
