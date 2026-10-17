@@ -54,7 +54,7 @@ class _WhatsAppView extends StatelessWidget {
       listener: (context, state) => ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text(state.message!))),
       child: Padding(
-        padding: const EdgeInsets.all(24),
+        padding: const EdgeInsets.fromLTRB(32, 28, 32, 48),
         child: BlocBuilder<WhatsAppBloc, WhatsAppState>(
           builder: (context, state) {
             return Column(
@@ -62,8 +62,9 @@ class _WhatsAppView extends StatelessWidget {
               children: [
                 Text('WhatsApp',
                     style: TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.bold,
+                        fontSize: 26,
+                        fontWeight: FontWeight.w500,
+                        letterSpacing: -0.5,
                         color: context.palette.textPrimary)),
                 const SizedBox(height: 16),
                 if (state.config != null) _ProviderCard(config: state.config!),

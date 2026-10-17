@@ -1,6 +1,8 @@
 import 'dart:math';
+import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:printing/printing.dart';
 
@@ -10,6 +12,7 @@ import '../../data/member_repository.dart';
 import '../../domain/billing_month_check.dart';
 import '../../domain/billing_period.dart';
 import '../../domain/dates.dart';
+import '../../domain/member_status.dart';
 import '../../domain/money.dart';
 import '../../domain/payment_errors.dart';
 import '../../domain/payment_method.dart';
@@ -21,6 +24,7 @@ import '../../services/billing_month_checker.dart';
 import '../../services/receipt_storage.dart';
 import '../../services/record_payment_service.dart';
 import '../../theme/app_theme.dart';
+import '../widgets/page_scaffold.dart' show AccentButton;
 import '../widgets/status_badge.dart';
 import 'billing_warnings_dialog.dart';
 import 'payment_history_table.dart' show formatShortDate;
@@ -59,16 +63,49 @@ Future<bool?> showAdvancePaymentDialog(
   final checker = context.read<BillingMonthChecker>();
   final userId = context.read<AuthBloc>().state.user!.id;
 
-  return showDialog<bool>(
+  return showGeneralDialog<bool>(
     context: context,
+    // Not dismissible by a stray click outside. The caller refreshes only when
+    // this resolves to true, and a barrier tap resolves to null — so after a
+    // payment was recorded, closing it that way would leave the member list
+    // showing them as still owing. Escape and the close button both go
+    // through _close, which answers correctly either way.
     barrierDismissible: false,
-    builder: (_) => _AdvancePaymentDialog(
+    barrierColor: context.palette.scrim,
+    transitionDuration: const Duration(milliseconds: 280),
+    pageBuilder: (_, _, _) => _AdvancePaymentDialog(
       member: member,
       service: service,
       cycles: cycles,
       checker: checker,
       recordedById: userId,
     ),
+    // The handoff's entrance: the backdrop blurs, the panel fades in while
+    // rising 12px and settling from 98% scale.
+    transitionBuilder: (context, animation, _, child) {
+      final curved =
+          CurvedAnimation(parent: animation, curve: Curves.easeOutCubic);
+      return BackdropFilter(
+        filter: ImageFilter.blur(
+          sigmaX: 3 * animation.value,
+          sigmaY: 3 * animation.value,
+        ),
+        child: FadeTransition(
+          opacity: curved,
+          child: AnimatedBuilder(
+            animation: curved,
+            builder: (context, child) => Transform.translate(
+              offset: Offset(0, 12 * (1 - curved.value)),
+              child: Transform.scale(
+                scale: 0.98 + 0.02 * curved.value,
+                child: child,
+              ),
+            ),
+            child: child,
+          ),
+        ),
+      );
+    },
   );
 }
 
@@ -524,230 +561,262 @@ class _AdvancePaymentDialogState extends State<_AdvancePaymentDialog> {
     );
   }
 
+  /// Closes the dialog, telling the caller whether anything was recorded so
+  /// it knows to refresh. Refused while a payment is being saved: closing then
+  /// would leave the owner unsure whether the money went in.
+  void _close() {
+    if (_busy) return;
+    Navigator.of(context).pop(_result != null);
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Dialog(
-      backgroundColor: context.palette.surfaceRaised,
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 480, maxHeight: 620),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _header(context),
-            Flexible(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(20),
-                child: _result != null ? _successBody(context) : _formBody(),
+    final palette = context.palette;
+
+    return CallbackShortcuts(
+      bindings: {
+        const SingleActivator(LogicalKeyboardKey.escape): _close,
+      },
+      child: Dialog(
+        backgroundColor: palette.surfaceRaised,
+        elevation: 24,
+        shadowColor: Colors.black.withValues(alpha: 0.5),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+          side: BorderSide(color: palette.borderStrong),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: ConstrainedBox(
+          // 460 per the handoff; taller than the mock because this form also
+          // previews where the money lands and can name a back-dated month.
+          constraints: const BoxConstraints(maxWidth: 460, maxHeight: 680),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (_result == null) _header(context),
+              Flexible(
+                child: SingleChildScrollView(
+                  padding: _result == null
+                      ? const EdgeInsets.fromLTRB(20, 0, 20, 20)
+                      : const EdgeInsets.fromLTRB(24, 32, 24, 22),
+                  child: _result != null
+                      // The amount field held focus and has just gone, which
+                      // would leave nothing in the dialog to hear Escape.
+                      ? Focus(autofocus: true, child: _successBody(context))
+                      : _formBody(),
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _header(BuildContext context) => Container(
-        padding: const EdgeInsets.fromLTRB(20, 16, 12, 16),
-        decoration: BoxDecoration(
-          border: Border(bottom: BorderSide(color: context.palette.border)),
-        ),
-        child: Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Record Payment',
-                      style: TextStyle(
-                          fontSize: 17,
-                          fontWeight: FontWeight.bold,
-                          color: context.palette.textPrimary)),
-                  const SizedBox(height: 2),
-                  Text(widget.member.member.fullName, style: mutedStyleOf(context)),
-                ],
-              ),
+  Widget _header(BuildContext context) {
+    final palette = context.palette;
+    final member = widget.member.member;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 18, 14, 14),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Record payment',
+                    style: TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w500,
+                        color: palette.textPrimary)),
+                const SizedBox(height: 2),
+                Text('${member.fullName} · #${member.memberCode}',
+                    style: TextStyle(fontSize: 12, color: palette.textMuted)),
+              ],
             ),
-            IconButton(
-              icon: const Icon(Icons.close, size: 20),
-              onPressed: () => Navigator.of(context).pop(_result != null),
+          ),
+          SizedBox(
+            width: 30,
+            height: 30,
+            child: IconButton(
+              padding: EdgeInsets.zero,
+              iconSize: 16,
+              tooltip: 'Close',
+              color: palette.textMuted,
+              icon: const Icon(Icons.close),
+              onPressed: _busy ? null : _close,
             ),
-          ],
-        ),
-      );
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _confirmLabel() {
+    final minor = parseAmountMinor(_amount.text);
+    if (minor == null || minor <= 0) return 'Confirm payment';
+    return 'Confirm ${formatMinorUnits(minor)}';
+  }
 
   Widget _formBody() {
-    final billing = _billing;
+    final palette = context.palette;
 
     return Form(
       key: _formKey,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          if (billing != null) _WhatThisSettles(billing: billing),
-          const SizedBox(height: 16),
-          TextFormField(
-            controller: _amount,
-            enabled: !_busy,
-            autofocus: true,
-            decoration: const InputDecoration(
-                labelText: 'Amount received *', isDense: true),
-            keyboardType: TextInputType.number,
-            validator: (v) => amountInputError(v ?? ''),
-            onChanged: (_) => setState(() {}),
-          ),
-          const SizedBox(height: 14),
-          Row(
-            children: [
-              Expanded(
-                child: InkWell(
-                  onTap: _busy ? null : _pickDate,
-                  child: InputDecorator(
-                    decoration: const InputDecoration(
-                        labelText: 'Payment date', isDense: true),
-                    child: Text(formatShortDate(_paymentDate)),
-                  ),
-                ),
+          _Labelled(
+            label: 'Amount received',
+            child: TextFormField(
+              key: const Key('payment-amount'),
+              controller: _amount,
+              enabled: !_busy,
+              autofocus: true,
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w500,
+                fontFeatures: const [FontFeature.tabularFigures()],
+                color: palette.textPrimary,
               ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: DropdownButtonFormField<PaymentMethod>(
-                  initialValue: _method,
-                  // Without this the selected method lays itself out at its
-                  // natural width and the longer names run past the field.
-                  isExpanded: true,
-                  decoration: const InputDecoration(
-                      labelText: 'Payment method', isDense: true),
-                  items: PaymentMethod.values
-                      .map((m) => DropdownMenuItem(
-                            value: m,
-                            child: Text(
-                              paymentMethodLabel(m),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ))
-                      .toList(),
-                  onChanged: _busy
-                      ? null
-                      : (v) => setState(() => _method = v ?? _method),
-                ),
+              decoration: InputDecoration(
+                prefixText: 'Rs.  ',
+                prefixStyle: TextStyle(fontSize: 14, color: palette.textMuted),
+                isDense: true,
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
               ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          Row(
-            children: [
-              Expanded(
-                child: InkWell(
-                  onTap: _busy ? null : _pickBillingMonth,
-                  child: InputDecorator(
-                    decoration: InputDecoration(
-                      labelText: 'Billing period',
-                      isDense: true,
-                      helperText: _isBackEntry
-                          ? 'Settles this month only'
-                          : 'Oldest unpaid cycle first',
-                      suffixIcon: _isBackEntry
-                          ? IconButton(
-                              icon: const Icon(Icons.close, size: 16),
-                              tooltip: 'Back to automatic',
-                              onPressed: _busy ? null : _clearBillingMonth,
-                            )
-                          : null,
-                    ),
-                    child: Text(
-                      _isBackEntry
-                          ? labelForNamedMonth(_billingMonth!, _monthCheck)
-                          : 'Automatic',
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ),
-              ),
-              if (_opensNewCycle) ...[
-                const SizedBox(width: 14),
-                Expanded(
-                  child: TextFormField(
-                    controller: _monthFee,
-                    enabled: !_busy,
-                    decoration: const InputDecoration(
-                      labelText: 'Fee for this month *',
-                      isDense: true,
-                      helperText: 'No cycle exists yet',
-                    ),
-                    keyboardType: TextInputType.number,
-                    validator: (v) {
-                      if (!_opensNewCycle) return null;
-                      if ((v ?? '').trim().isEmpty) {
-                        return 'What did this month cost?';
-                      }
-                      return amountInputError(v!);
-                    },
-                  ),
-                ),
-              ],
-            ],
-          ),
-          if (_isBackEntry) ...[
-            const SizedBox(height: 14),
-            _NamedMonthSummary(
-              billingMonth: _billingMonth!,
-              check: _monthCheck,
-              checking: _checkingMonth,
-              billing: billing,
-              amountText: _amount.text,
-              newCycleFeeMinor: _opensNewCycleFee(),
+              keyboardType: TextInputType.number,
+              validator: (v) => amountInputError(v ?? ''),
+              onChanged: (_) => setState(() {}),
             ),
-          ] else if (billing != null) ...[
+          ),
+          const SizedBox(height: 14),
+          _MethodPicker(
+            selected: _method,
+            onSelect: _busy ? null : (m) => setState(() => _method = m),
+          ),
+          const SizedBox(height: 14),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: _Labelled(
+                  label: 'Payment date',
+                  child: _PickerField(
+                    text: formatShortDate(_paymentDate),
+                    icon: Icons.calendar_today_outlined,
+                    onTap: _busy ? null : _pickDate,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _Labelled(
+                  label: 'Billing period',
+                  child: _PickerField(
+                    // The handoff's wording for Automatic: the money goes to
+                    // the oldest cycle still owing, then forward.
+                    text: _isBackEntry
+                        ? labelForNamedMonth(_billingMonth!, _monthCheck)
+                        : 'Oldest unpaid first',
+                    icon: _isBackEntry ? Icons.close : Icons.expand_more,
+                    iconTooltip: _isBackEntry ? 'Back to oldest unpaid' : null,
+                    onIconTap: _isBackEntry && !_busy
+                        ? _clearBillingMonth
+                        : null,
+                    onTap: _busy ? null : _pickBillingMonth,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          if (_opensNewCycle) ...[
             const SizedBox(height: 14),
-            _AllocationPreview(
-              cycles: widget.cycles,
-              billing: billing,
-              amountText: _amount.text,
+            _Labelled(
+              label: 'Fee for this month',
+              child: TextFormField(
+                key: const Key('payment-month-fee'),
+                controller: _monthFee,
+                enabled: !_busy,
+                decoration: const InputDecoration(
+                  isDense: true,
+                  prefixText: 'Rs.  ',
+                  helperText:
+                      'No cycle exists for this month yet, so say what it cost',
+                ),
+                keyboardType: TextInputType.number,
+                onChanged: (_) => setState(() {}),
+                validator: (v) {
+                  if (!_opensNewCycle) return null;
+                  if ((v ?? '').trim().isEmpty) {
+                    return 'What did this month cost?';
+                  }
+                  return amountInputError(v!);
+                },
+              ),
             ),
           ],
           const SizedBox(height: 14),
-          Container(
-            decoration: BoxDecoration(
-              color: context.palette.surfaceBase,
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: context.palette.border),
-            ),
-            child: CheckboxListTile(
-              value: _sendWhatsApp,
-              onChanged: _phoneUsable && !_busy
-                  ? (v) => setState(() => _sendWhatsApp = v ?? false)
-                  : null,
-              controlAffinity: ListTileControlAffinity.leading,
-              activeColor: context.palette.accent,
-              dense: true,
-              title: Text('Send receipt on WhatsApp',
-                  style: TextStyle(
-                      fontSize: 13, color: context.palette.textPrimary)),
-              subtitle: Text(
-                _phoneUsable
-                    ? 'Sends the receipt image to '
-                        '${widget.member.member.phone}'
-                    : 'Disabled — this member has no valid WhatsApp number',
-                style: mutedStyleOf(context),
-              ),
-            ),
+          _SettlementPreview(
+            member: widget.member,
+            billing: _billing,
+            cycles: widget.cycles,
+            amountText: _amount.text,
+            billingMonth: _billingMonth,
+            check: _monthCheck,
+            checking: _checkingMonth,
+            newCycleFeeMinor: _opensNewCycleFee(),
+          ),
+          const SizedBox(height: 14),
+          _WhatsAppToggle(
+            value: _sendWhatsApp,
+            phone: widget.member.member.phone,
+            onChanged: _phoneUsable && !_busy
+                ? (v) => setState(() => _sendWhatsApp = v)
+                : null,
           ),
           if (_error != null) ...[
             const SizedBox(height: 14),
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: context.palette.expiredBg,
+                color: palette.expiredBg,
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Text(_error!,
-                  style: TextStyle(color: context.palette.expired, fontSize: 13)),
+                  style: TextStyle(color: palette.expired, fontSize: 13)),
             ),
           ],
-          const SizedBox(height: 20),
-          FilledButton(
-            onPressed: _busy ? null : _submit,
-            child: Text(_busy ? 'Recording…' : 'Confirm Payment'),
+          const SizedBox(height: 16),
+          SizedBox(
+            height: 44,
+            child: FilledButton(
+              key: const Key('confirm-payment'),
+              onPressed: _busy ? null : _submit,
+              style: FilledButton.styleFrom(
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(9)),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (_busy) ...[
+                    const SizedBox(
+                      width: 14,
+                      height: 14,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                    const SizedBox(width: 8),
+                  ],
+                  // The amount in the label, so what the owner presses is a
+                  // statement of what is about to be recorded.
+                  Text(_busy ? 'Recording…' : _confirmLabel()),
+                ],
+              ),
+            ),
           ),
         ],
       ),
@@ -755,99 +824,114 @@ class _AdvancePaymentDialogState extends State<_AdvancePaymentDialog> {
   }
 
   Widget _successBody(BuildContext context) {
+    final palette = context.palette;
     final result = _result!;
     final whatsApp = result.whatsApp;
+    final amountMinor = parseAmountMinor(_amount.text);
+    final member = widget.member.member;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Container(
-          padding: const EdgeInsets.all(18),
-          decoration: BoxDecoration(
-            color: context.palette.paidBg.withValues(alpha: .4),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: context.palette.paid.withValues(alpha: .3)),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Payment recorded',
-                  style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: context.palette.textPrimary)),
-              const SizedBox(height: 4),
-              Row(
-                children: [
-                  Text('Receipt: ${result.receiptNumber}',
-                      style: mutedStyleOf(context)),
-                  if (result.timing.isNoteworthy) ...[
-                    const SizedBox(width: 8),
-                    PaymentTimingBadge(timing: result.timing),
-                  ],
-                ],
-              ),
-              const SizedBox(height: 14),
-              const _Step(ok: true, label: 'Payment saved'),
-              const _Step(ok: true, label: 'Receipt generated'),
-              switch (whatsApp) {
-                WhatsAppNotRequested() =>
-                  const _Step(ok: null, label: 'WhatsApp not requested'),
-                WhatsAppSent() => const _Step(ok: true, label: 'WhatsApp sent'),
-                WhatsAppFailed(:final error) =>
-                  _Step(ok: false, label: 'WhatsApp failed — $error'),
-              },
-              if (whatsApp is WhatsAppFailed) ...[
-                const SizedBox(height: 12),
-                Text(
-                  'The payment and receipt are saved. You can retry the '
-                  'WhatsApp send now or from the Receipts screen.',
-                  style: mutedStyleOf(context),
-                ),
-                const SizedBox(height: 10),
-                OutlinedButton.icon(
-                  onPressed: _retrying ? null : _retryWhatsApp,
-                  icon: const Icon(Icons.refresh, size: 16),
-                  label: Text(_retrying ? 'Retrying…' : 'Retry WhatsApp'),
-                ),
-              ],
-            ],
+        const Center(child: _DrawnCheck()),
+        const SizedBox(height: 14),
+        Text('Payment recorded',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w500,
+                color: palette.textPrimary)),
+        const SizedBox(height: 6),
+        Text(
+          [
+            if (amountMinor != null)
+              '${formatMinorUnits(amountMinor)} from ${member.fullName}'
+            else
+              member.fullName,
+            result.receiptNumber,
+          ].join(' · '),
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: 13,
+            color: palette.textSecondary,
+            fontFeatures: const [FontFeature.tabularFigures()],
           ),
         ),
-        const SizedBox(height: 18),
+        if (result.timing.isNoteworthy) ...[
+          const SizedBox(height: 8),
+          Center(child: PaymentTimingBadge(timing: result.timing)),
+        ],
+        const SizedBox(height: 6),
+        Text(
+          switch (whatsApp) {
+            WhatsAppNotRequested() => 'No WhatsApp message sent',
+            WhatsAppSent() =>
+              'Receipt sent on WhatsApp to ${formatPhoneForDisplay(member.phone)}',
+            WhatsAppFailed(:final error) => 'WhatsApp failed — $error',
+          },
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: 12,
+            color: whatsApp is WhatsAppFailed ? palette.due : palette.textMuted,
+          ),
+        ),
+        if (whatsApp is WhatsAppFailed) ...[
+          const SizedBox(height: 10),
+          Text(
+            'The payment and receipt are saved. You can retry the '
+            'WhatsApp send now or from the Receipts screen.',
+            textAlign: TextAlign.center,
+            style: mutedStyleOf(context),
+          ),
+          const SizedBox(height: 10),
+          Center(
+            child: OutlinedButton.icon(
+              onPressed: _retrying ? null : _retryWhatsApp,
+              icon: const Icon(Icons.refresh, size: 16),
+              label: Text(_retrying ? 'Retrying…' : 'Retry WhatsApp'),
+            ),
+          ),
+        ],
+        const SizedBox(height: 20),
         Row(
           children: [
             Expanded(
-              child: OutlinedButton.icon(
+              child: TextButton.icon(
                 onPressed: () => _openReceipt(result.receiptNumber),
                 icon: const Icon(Icons.visibility_outlined, size: 16),
-                label: const Text('View Receipt'),
+                label: const Text('View receipt'),
+                style: TextButton.styleFrom(
+                    foregroundColor: palette.textSecondary),
               ),
             ),
-            const SizedBox(width: 10),
+            const SizedBox(width: 8),
             Expanded(
-              child: OutlinedButton.icon(
+              child: TextButton.icon(
                 onPressed: () => _printReceipt(result.receiptNumber),
                 icon: const Icon(Icons.print_outlined, size: 16),
-                label: const Text('Print / Save PDF'),
+                label: const Text('Print receipt'),
+                style: TextButton.styleFrom(
+                    foregroundColor: palette.textSecondary),
               ),
             ),
           ],
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: 8),
         Row(
           children: [
             Expanded(
               child: TextButton(
-                onPressed: () => Navigator.of(context).pop(true),
-                child: const Text('Done'),
+                onPressed: _recordAnother,
+                style: TextButton.styleFrom(
+                    foregroundColor: palette.textSecondary),
+                child: const Text('Record another'),
               ),
             ),
-            const SizedBox(width: 10),
+            const SizedBox(width: 8),
             Expanded(
-              child: FilledButton(
-                onPressed: _recordAnother,
-                child: const Text('Record Another'),
+              child: AccentButton(
+                label: 'Done',
+                onPressed: () => Navigator.of(context).pop(true),
               ),
             ),
           ],
@@ -857,83 +941,98 @@ class _AdvancePaymentDialogState extends State<_AdvancePaymentDialog> {
   }
 }
 
-class _Step extends StatelessWidget {
-  const _Step({required this.ok, required this.label});
+/// A green circle with a tick that draws itself in, per the handoff.
+class _DrawnCheck extends StatefulWidget {
+  const _DrawnCheck();
 
-  /// null means "not attempted".
-  final bool? ok;
-  final String label;
+  @override
+  State<_DrawnCheck> createState() => _DrawnCheckState();
+}
+
+class _DrawnCheckState extends State<_DrawnCheck>
+    with SingleTickerProviderStateMixin {
+  // 600ms: a 100ms pause then the handoff's 500ms draw, held as one
+  // animation rather than a timer plus an animation — a pending timer is
+  // exactly what a widget test cannot see the end of.
+  late final _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 600),
+  );
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Drawn complete at once under reduced motion — and, as everywhere else in
+    // the app, an animation that runs once and stops.
+    if (MediaQuery.of(context).disableAnimations) {
+      _controller.value = 1;
+    } else if (_controller.value == 0 && !_controller.isAnimating) {
+      _controller.forward();
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    final (mark, color) = switch (ok) {
-      null => ('—', context.palette.textMuted),
-      true => ('✓', context.palette.paid),
-      false => ('✕', context.palette.expired),
-    };
-
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 4),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(mark, style: TextStyle(color: color, fontSize: 13)),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(label, style: TextStyle(color: color, fontSize: 13)),
-          ),
-        ],
+    return CustomPaint(
+      size: const Size.square(64),
+      painter: _CheckPainter(
+        progress: CurvedAnimation(
+          parent: _controller,
+          curve: const Interval(1 / 6, 1, curve: Curves.easeOut),
+        ),
+        colour: context.palette.paid,
       ),
     );
   }
 }
 
-/// Where the money is about to go, read before a single digit is typed.
-class _WhatThisSettles extends StatelessWidget {
-  const _WhatThisSettles({required this.billing});
+class _CheckPainter extends CustomPainter {
+  _CheckPainter({required this.progress, required this.colour})
+      : super(repaint: progress);
 
-  final MemberBilling billing;
+  final Animation<double> progress;
+  final Color colour;
 
   @override
-  Widget build(BuildContext context) {
-    final unsettled = billing.nextUnsettled;
-    final overdue = billing.isOverdueAt(DateTime.now().toUtc());
-
-    final label = unsettled == null
-        ? 'Next due: ${formatDayMonthYear(billing.nextDueDate)}'
-        : (overdue
-            ? 'Overdue since ${formatDayMonthYear(unsettled.start)}'
-            : 'Due ${formatDayMonthYear(unsettled.start)}');
-
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: context.palette.surfaceBase,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: context.palette.border),
-      ),
-      child: Row(
-        children: [
-          Icon(
-            overdue ? Icons.warning_amber_outlined : Icons.info_outline,
-            size: 16,
-            color: overdue ? context.palette.expired : context.palette.textMuted,
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(label,
-                style: TextStyle(fontSize: 13, color: context.palette.textPrimary)),
-          ),
-          if (billing.outstandingMinor > 0)
-            Text(formatMinorUnits(billing.outstandingMinor),
-                style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: context.palette.textPrimary)),
-        ],
-      ),
+  void paint(Canvas canvas, Size size) {
+    final scale = size.width / 64;
+    canvas.drawCircle(
+      size.center(Offset.zero),
+      29 * scale,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2
+        ..color = colour.withValues(alpha: 0.25),
     );
+
+    // The handoff's path: M20 33 l8 8 l16 -18, drawn up to [progress].
+    final tick = Path()
+      ..moveTo(20 * scale, 33 * scale)
+      ..relativeLineTo(8 * scale, 8 * scale)
+      ..relativeLineTo(16 * scale, -18 * scale);
+    final paint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 3
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round
+      ..color = colour;
+
+    final drawn = Path();
+    for (final metric in tick.computeMetrics()) {
+      drawn.addPath(
+          metric.extractPath(0, metric.length * progress.value), Offset.zero);
+    }
+    canvas.drawPath(drawn, paint);
   }
+
+  @override
+  bool shouldRepaint(_CheckPainter old) => old.colour != colour;
 }
 
 /// The span a named month actually settles.
@@ -954,30 +1053,221 @@ String labelForNamedMonth(String billingMonth, BillingMonthCheck? check) =>
       check?.durationMonths ?? 1,
     );
 
-/// What naming a month is about to do, in place of the allocation preview.
+/// What this payment will do, in one box under the form — the handoff's
+/// settlement preview: which cycle it covers, and how far it moves the
+/// member's paid-until date.
 ///
-/// The automatic path can spread one payment over several cycles, so it shows
-/// a list. A named month settles exactly one, and the only thing worth saying
-/// about it is whether that cycle exists yet — because if it does not, this
-/// payment is what brings it into being.
-class _NamedMonthSummary extends StatelessWidget {
-  const _NamedMonthSummary({
+/// Everything the dialog used to say in three separate boxes lands here, as
+/// lines under those two rows: an amount too large to place, a named month
+/// being overpaid, a month the billing rules refuse, a month that has no cycle
+/// yet. None of it was dropped in the redesign; it was only gathered.
+class _SettlementPreview extends StatelessWidget {
+  const _SettlementPreview({
+    required this.member,
+    required this.billing,
+    required this.cycles,
+    required this.amountText,
     required this.billingMonth,
     required this.check,
     required this.checking,
-    required this.billing,
-    required this.amountText,
     required this.newCycleFeeMinor,
   });
 
-  final String billingMonth;
-  final BillingMonthCheck? check;
-  final bool checking;
+  final MemberRow member;
   final MemberBilling? billing;
+  final BillingCycleService cycles;
   final String amountText;
 
-  /// The fee typed for a month that has no cycle yet, when it has been.
+  /// Null when the money goes to the oldest unpaid cycle first.
+  final String? billingMonth;
+  final BillingMonthCheck? check;
+  final bool checking;
+
+  /// The fee typed for a named month that has no cycle yet, once typed.
   final int? newCycleFeeMinor;
+
+  int get _durationMonths => member.plan?.durationMonths ?? 1;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.palette;
+    final named = billingMonth;
+    final rows = <Widget>[];
+    final notes = <Widget>[];
+
+    Widget note(String text, Color colour, {IconData? icon}) => Padding(
+          padding: const EdgeInsets.only(top: 6),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (icon != null) ...[
+                Padding(
+                  padding: const EdgeInsets.only(top: 1),
+                  child: Icon(icon, size: 13, color: colour),
+                ),
+                const SizedBox(width: 6),
+              ],
+              Expanded(
+                child: Text(text, style: TextStyle(fontSize: 12, color: colour)),
+              ),
+            ],
+          ),
+        );
+
+    if (named != null) {
+      _namedMonth(named, rows, notes, note, palette);
+    } else {
+      _automatic(rows, notes, note, palette);
+    }
+
+    // Recording a payment does not undo a deactivation in this app — only
+    // Reactivate (or Restart billing) on the profile does. The handoff's
+    // prototype promised the opposite; saying so here would be untrue.
+    if (member.status == MemberStatus.inactive) {
+      notes.add(note(
+        'This member is inactive. Recording a payment does not reactivate '
+        'them — use Reactivate on their profile.',
+        palette.due,
+        icon: Icons.person_off_outlined,
+      ));
+    }
+
+    if (rows.isEmpty && notes.isEmpty) return const SizedBox.shrink();
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      decoration: BoxDecoration(
+        color: palette.surfaceBase,
+        borderRadius: BorderRadius.circular(9),
+        border: Border.all(color: palette.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (var i = 0; i < rows.length; i++) ...[
+            if (i > 0) const SizedBox(height: 6),
+            rows[i],
+          ],
+          ...notes,
+        ],
+      ),
+    );
+  }
+
+  /// The two-column line the handoff draws: a muted label, the value right.
+  static Widget _row(BuildContext context, String label, Widget value) =>
+      Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label,
+              style: TextStyle(fontSize: 13, color: context.palette.textMuted)),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Align(alignment: Alignment.centerRight, child: value),
+          ),
+        ],
+      );
+
+  /// "~~25 Oct 2026~~ → 25 Nov 2026".
+  Widget _paidUntil(BuildContext context, DateTime? before, DateTime after) {
+    final palette = context.palette;
+    return Text.rich(
+      TextSpan(children: [
+        if (before != null) ...[
+          TextSpan(
+            text: formatDayMonthYear(before),
+            style: TextStyle(
+              color: palette.textMuted,
+              decoration: TextDecoration.lineThrough,
+            ),
+          ),
+          const TextSpan(text: ' → '),
+        ],
+        TextSpan(
+          text: formatDayMonthYear(after),
+          style: TextStyle(
+              fontWeight: FontWeight.w600, color: palette.textPrimary),
+        ),
+      ]),
+      textAlign: TextAlign.right,
+      style: TextStyle(
+        fontSize: 13,
+        color: palette.textSecondary,
+        fontFeatures: const [FontFeature.tabularFigures()],
+      ),
+    );
+  }
+
+  Text _value(BuildContext context, String text) => Text(
+        text,
+        textAlign: TextAlign.right,
+        style: TextStyle(fontSize: 13, color: context.palette.textPrimary),
+      );
+
+  void _automatic(
+    List<Widget> rows,
+    List<Widget> notes,
+    Widget Function(String, Color, {IconData? icon}) note,
+    AppPalette palette,
+  ) {
+    final billing = this.billing;
+    final amountMinor = parseAmountMinor(amountText);
+    if (billing == null || amountMinor == null || amountMinor <= 0) return;
+
+    final offered =
+        cycles.settleableFor(billing: billing, amountMinor: amountMinor);
+    if (offered.isEmpty) return;
+    final plan = allocate(amountMinor: amountMinor, cycles: offered);
+    if (plan.isEmpty) return;
+
+    final first = plan.allocations.first.cycle;
+    final count = plan.allocations.length;
+    rows.add(Builder(
+      builder: (context) => _row(
+        context,
+        'Covers',
+        _value(
+          context,
+          '${formatBillingPeriod(first.start, _durationMonths * count)}'
+          ' · from ${formatDayMonthYear(first.start)}',
+        ),
+      ),
+    ));
+
+    // Paid-until moves to the end of the last cycle this money settles in
+    // full — the same rule the member list reads it by. A part payment moves
+    // nothing, and that is said rather than shown as a date.
+    DateTime? newUntil;
+    for (final allocation in plan.allocations) {
+      if (allocation.settles) newUntil = allocation.cycle.end;
+    }
+    final before = member.paidUntil;
+    if (newUntil != null && (before == null || newUntil.isAfter(before))) {
+      final until = newUntil;
+      rows.add(Builder(
+        builder: (context) =>
+            _row(context, 'Paid until', _paidUntil(context, before, until)),
+      ));
+    }
+
+    final last = plan.allocations.last;
+    if (!last.settles) {
+      notes.add(note(
+        'Part payment: ${formatMinorUnits(last.cycle.outstandingMinor - last.amountMinor)} '
+        'will still be owing on the cycle from '
+        '${formatDayMonthYear(last.cycle.start)}.',
+        palette.textMuted,
+      ));
+    }
+    if (plan.unallocatedMinor > 0) {
+      notes.add(note(
+        '${formatMinorUnits(plan.unallocatedMinor)} left over — reduce the '
+        'amount or it will be refused.',
+        palette.expired,
+        icon: Icons.error_outline,
+      ));
+    }
+  }
 
   /// What the named month still owes, or null when that is not known yet.
   int? _owedMinor(BillingMonthCheck resolved) {
@@ -989,140 +1279,146 @@ class _NamedMonthSummary extends StatelessWidget {
     return null;
   }
 
-  /// How far the amount typed exceeds what the month owes, or null when it
-  /// does not.
-  int? _overpaidBy(BillingMonthCheck resolved) {
+  void _namedMonth(
+    String named,
+    List<Widget> rows,
+    List<Widget> notes,
+    Widget Function(String, Color, {IconData? icon}) note,
+    AppPalette palette,
+  ) {
+    final resolved = check;
+    final label = labelForNamedMonth(named, resolved);
+    final start = resolved?.period?.periodStart ?? parseBillingMonth(named);
+
+    rows.add(Builder(
+      builder: (context) => _row(
+        context,
+        'Covers',
+        _value(
+          context,
+          checking
+              ? '$label — checking…'
+              : '$label · from ${formatDayMonthYear(start)}',
+        ),
+      ),
+    ));
+
+    if (resolved == null || checking) return;
+
+    if (resolved.period == null) {
+      notes.add(note(
+        'No billing cycle exists for this period yet — recording this payment '
+        'creates it.',
+        palette.textMuted,
+      ));
+    }
+
+    // A named month takes the whole amount, however much it is: the spread
+    // across later months only happens with "Oldest unpaid first". Typing two
+    // months' fees here used to leave next month reading as due with nothing
+    // on the form to say why.
     final amount = parseAmountMinor(amountText);
     final owed = _owedMinor(resolved);
-    if (amount == null || owed == null || amount <= owed) return null;
-    return amount - owed;
+    if (amount != null && owed != null && amount > owed) {
+      notes.add(note(
+        'This is ${formatMinorUnits(amount - owed)} more than this month still '
+        'owes, and all of it stays on this month. To pay months ahead, switch '
+        'back to Oldest unpaid first.',
+        palette.due,
+      ));
+    }
+
+    for (final finding in [
+      ...resolved.review.blocking,
+      ...resolved.review.confirmations,
+    ]) {
+      final blocks = finding.severity == FindingSeverity.block;
+      notes.add(note(
+        finding.message,
+        blocks ? palette.expired : palette.due,
+        icon: blocks ? Icons.block : Icons.warning_amber_outlined,
+      ));
+    }
   }
+}
+
+/// A form field's label set above it, per the handoff, rather than floating
+/// inside the box.
+class _Labelled extends StatelessWidget {
+  const _Labelled({required this.label, required this.child});
+
+  final String label;
+  final Widget child;
 
   @override
   Widget build(BuildContext context) {
-    final resolved = check;
-    final label = labelForNamedMonth(billingMonth, resolved);
-
-    final blocking =
-        resolved == null ? const [] : resolved.review.blocking;
-    final warnings =
-        resolved == null ? const [] : resolved.review.confirmations;
-
-    return Container(
-      padding: const EdgeInsets.all(12),
-      width: double.infinity,
-      decoration: BoxDecoration(
-        color: context.palette.surfaceBase,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(
-          color: blocking.isEmpty
-              ? context.palette.border
-              : context.palette.expired,
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('This settles', style: labelStyleOf(context)),
-          const SizedBox(height: 6),
-          Text(
-            checking ? '$label — checking…' : label,
-            style: TextStyle(
-                fontSize: 13, color: context.palette.textPrimary),
-          ),
-          if (resolved != null && resolved.period == null) ...[
-            const SizedBox(height: 2),
-            Text(
-              'No billing cycle exists for this period yet — recording this '
-              'payment creates it.',
-              style: mutedStyleOf(context),
-            ),
-          ],
-          // A named month takes the whole amount, however much it is: the
-          // spread across later months only happens in Automatic. Typing two
-          // months' fees here used to leave next month reading as due with
-          // nothing on the form to say why.
-          if (resolved != null && !checking)
-            if (_overpaidBy(resolved) case final excess?) ...[
-              const SizedBox(height: 6),
-              Text(
-                'This is ${formatMinorUnits(excess)} more than this month '
-                'still owes, and all of it stays on this month. To pay '
-                'months ahead, switch back to Automatic.',
-                style: TextStyle(fontSize: 12, color: context.palette.due),
-              ),
-            ],
-          for (final finding in [...blocking, ...warnings]) ...[
-            const SizedBox(height: 6),
-            Text(
-              finding.message,
-              style: TextStyle(
-                fontSize: 12,
-                color: finding.severity == FindingSeverity.block
-                    ? context.palette.expired
-                    : context.palette.due,
-              ),
-            ),
-          ],
-        ],
-      ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(label,
+            style:
+                TextStyle(fontSize: 12, color: context.palette.textSecondary)),
+        const SizedBox(height: 6),
+        child,
+      ],
     );
   }
 }
 
-/// A live preview of which cycles this amount would settle, updated as the
-/// owner types — so a mis-typed amount is caught before it is submitted, not
-/// after.
-class _AllocationPreview extends StatelessWidget {
-  const _AllocationPreview({
-    required this.cycles,
-    required this.billing,
-    required this.amountText,
+/// A read-only field that opens a picker: the payment date and the billing
+/// period. Looks like the text fields beside it, with its icon on the right.
+class _PickerField extends StatelessWidget {
+  const _PickerField({
+    required this.text,
+    required this.icon,
+    required this.onTap,
+    this.onIconTap,
+    this.iconTooltip,
   });
 
-  final BillingCycleService cycles;
-  final MemberBilling billing;
-  final String amountText;
+  final String text;
+  final IconData icon;
+  final VoidCallback? onTap;
+
+  /// When set, the icon is its own button — the billing period's "back to
+  /// oldest unpaid" cross.
+  final VoidCallback? onIconTap;
+  final String? iconTooltip;
 
   @override
   Widget build(BuildContext context) {
-    final amountMinor = parseAmountMinor(amountText);
-    if (amountMinor == null || amountMinor <= 0) {
-      return const SizedBox.shrink();
-    }
+    final palette = context.palette;
+    final iconWidget = Icon(icon, size: 16, color: palette.textMuted);
 
-    final offered =
-        cycles.settleableFor(billing: billing, amountMinor: amountMinor);
-    if (offered.isEmpty) return const SizedBox.shrink();
-
-    final plan = allocate(amountMinor: amountMinor, cycles: offered);
-    if (plan.isEmpty) return const SizedBox.shrink();
-
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: context.palette.surfaceBase,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('This settles', style: labelStyleOf(context)),
-          const SizedBox(height: 6),
-          for (final allocation in plan.allocations)
-            Text(
-              '${formatDayMonthYear(allocation.cycle.start)} — '
-              '${formatMinorUnits(allocation.amountMinor)}'
-              '${allocation.settles ? '' : ' (partial)'}',
-              style: mutedStyleOf(context),
-            ),
-          if (plan.unallocatedMinor > 0)
-            Text(
-              '${formatMinorUnits(plan.unallocatedMinor)} left over — reduce '
-              'the amount or it will be refused.',
-              style: TextStyle(color: context.palette.expired, fontSize: 12),
-            ),
-        ],
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: InputDecorator(
+        isEmpty: false,
+        decoration: InputDecoration(
+          isDense: true,
+          enabled: onTap != null,
+          contentPadding:
+              const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+          suffixIconConstraints:
+              const BoxConstraints(minWidth: 34, minHeight: 20),
+          suffixIcon: onIconTap == null
+              ? iconWidget
+              : IconButton(
+                  onPressed: onIconTap,
+                  tooltip: iconTooltip,
+                  icon: iconWidget,
+                  padding: EdgeInsets.zero,
+                  visualDensity: VisualDensity.compact,
+                ),
+        ),
+        child: Text(
+          text,
+          overflow: TextOverflow.ellipsis,
+          maxLines: 1,
+          style: TextStyle(fontSize: 13, color: palette.textPrimary),
+        ),
       ),
     );
   }
@@ -1132,4 +1428,139 @@ String _newKey() {
   final random = Random();
   return 'advance-${DateTime.now().microsecondsSinceEpoch}-'
       '${random.nextInt(1 << 32).toRadixString(16)}';
+}
+
+/// The payment methods as buttons, three to a row, instead of a dropdown.
+///
+/// The handoff's segmented method picker. A dropdown hides the choice behind
+/// a click on the one field every payment touches; here the owner sees all of
+/// them and taps the one in their hand. Selected is an accent ring on a tint,
+/// never a solid fill.
+class _MethodPicker extends StatelessWidget {
+  const _MethodPicker({required this.selected, required this.onSelect});
+
+  final PaymentMethod selected;
+
+  /// Null while the form is busy.
+  final ValueChanged<PaymentMethod>? onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.palette;
+    const perRow = 3;
+    const methods = PaymentMethod.values;
+
+    Widget button(PaymentMethod method) {
+      final on = method == selected;
+      return Semantics(
+        selected: on,
+        button: true,
+        child: OutlinedButton(
+          onPressed: onSelect == null ? null : () => onSelect!(method),
+          style: OutlinedButton.styleFrom(
+            minimumSize: const Size.fromHeight(36),
+            padding: const EdgeInsets.symmetric(horizontal: 6),
+            foregroundColor: on ? palette.textPrimary : palette.textSecondary,
+            backgroundColor: on ? palette.accent.withValues(alpha: 0.14) : null,
+            side: BorderSide(color: on ? palette.accent : palette.borderStrong),
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8)),
+            textStyle: TextStyle(
+              fontSize: 13,
+              fontWeight: on ? FontWeight.w500 : FontWeight.w400,
+            ),
+          ),
+          child: Text(paymentMethodLabel(method),
+              overflow: TextOverflow.ellipsis),
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Method',
+            style: TextStyle(fontSize: 12, color: palette.textSecondary)),
+        const SizedBox(height: 6),
+        for (var start = 0; start < methods.length; start += perRow) ...[
+          if (start > 0) const SizedBox(height: 6),
+          Row(
+            children: [
+              for (var i = start; i < start + perRow; i++) ...[
+                if (i > start) const SizedBox(width: 6),
+                Expanded(
+                  child: i < methods.length
+                      ? button(methods[i])
+                      : const SizedBox.shrink(),
+                ),
+              ],
+            ],
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+/// "Send receipt on WhatsApp" as a switch with the number it will go to.
+class _WhatsAppToggle extends StatelessWidget {
+  const _WhatsAppToggle({
+    required this.value,
+    required this.phone,
+    required this.onChanged,
+  });
+
+  final bool value;
+  final String phone;
+
+  /// Null when the member has no usable number, or while saving.
+  final ValueChanged<bool>? onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.palette;
+    final usable = isValidPhone(phone);
+
+    return InkWell(
+      onTap: onChanged == null ? null : () => onChanged!(!value),
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 2),
+        child: Row(
+          children: [
+            Transform.scale(
+              // Material's switch is larger than the handoff's 36×20; scaled
+              // rather than rebuilt so it keeps its keyboard and screen-reader
+              // behaviour.
+              scale: 0.8,
+              child: Switch(
+                value: value && usable,
+                onChanged: onChanged,
+                activeTrackColor: palette.accent,
+                inactiveTrackColor: palette.borderStrong,
+              ),
+            ),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Send receipt on WhatsApp',
+                      style: TextStyle(
+                          fontSize: 13, color: palette.textPrimary)),
+                  Text(
+                    usable
+                        ? 'To ${formatPhoneForDisplay(phone)}'
+                        : 'Unavailable — this member has no valid WhatsApp '
+                            'number',
+                    style: TextStyle(fontSize: 11, color: palette.textMuted),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }

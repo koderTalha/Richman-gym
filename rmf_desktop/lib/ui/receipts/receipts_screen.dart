@@ -65,7 +65,7 @@ class _ReceiptsViewState extends State<_ReceiptsView> {
             .showSnackBar(SnackBar(content: Text(state.message!)));
       },
       child: Padding(
-        padding: const EdgeInsets.all(24),
+        padding: const EdgeInsets.fromLTRB(32, 28, 32, 48),
         child: BlocBuilder<ReceiptsBloc, ReceiptsState>(
           builder: (context, state) {
             return Column(
@@ -76,8 +76,9 @@ class _ReceiptsViewState extends State<_ReceiptsView> {
                   children: [
                     Text('Receipts',
                         style: TextStyle(
-                            fontSize: 22,
-                            fontWeight: FontWeight.bold,
+                            fontSize: 26,
+                            fontWeight: FontWeight.w500,
+                            letterSpacing: -0.5,
                             color: context.palette.textPrimary)),
                     const SizedBox(height: 4),
                     Text(_summary(state), style: mutedStyleOf(context)),

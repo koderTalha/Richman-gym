@@ -7,6 +7,7 @@ import '../data/cycle_waivers.dart';
 import '../data/database.dart';
 import '../data/membership_queries.dart';
 import '../data/payment_cycles.dart';
+import '../data/settings_repository.dart';
 import '../domain/billing_month_check.dart';
 import '../domain/billing_period.dart';
 import '../domain/dates.dart';
@@ -19,6 +20,7 @@ import '../domain/phone.dart';
 import '../domain/receipt_number.dart';
 import '../domain/reminder_schedule.dart';
 import 'billing_cycle_service.dart';
+import 'logo_storage.dart';
 import 'billing_month_checker.dart';
 import 'receipt_renderer.dart';
 import 'receipt_storage.dart';
@@ -426,6 +428,11 @@ class RecordPaymentService {
       footerMessage: settings.receiptFooterMessage,
       gymPhone: settings.phone,
       gymAddress: settings.address,
+      // The gym's own branding, read from the same settings row as everything
+      // else on the receipt. One generator, one configuration — the image
+      // WhatsApp sends is this exact file.
+      branding: SettingsRepository.brandingFrom(settings),
+      logoBytes: await LogoStorage.read(settings.logoPath),
     ));
 
     final pngPath = await storage.save('$receiptNumber.png', rendered.png);
@@ -708,6 +715,11 @@ class RecordPaymentService {
       footerMessage: settings.receiptFooterMessage,
       gymPhone: settings.phone,
       gymAddress: settings.address,
+      // The gym's own branding, read from the same settings row as everything
+      // else on the receipt. One generator, one configuration — the image
+      // WhatsApp sends is this exact file.
+      branding: SettingsRepository.brandingFrom(settings),
+      logoBytes: await LogoStorage.read(settings.logoPath),
     ));
 
     final pngPath = await storage.save('$receiptNumber.png', rendered.png);

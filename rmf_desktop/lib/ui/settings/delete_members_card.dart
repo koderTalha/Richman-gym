@@ -243,10 +243,7 @@ class _DeleteMembersCardState extends State<DeleteMembersCard> {
             alignment: Alignment.centerLeft,
             child: FilledButton.icon(
               key: deleteMembersOpenKey,
-              style: FilledButton.styleFrom(
-                backgroundColor: palette.expired,
-                disabledBackgroundColor: palette.inactiveBg,
-              ),
+              style: dangerButtonStyleOf(context),
               onPressed: _busy || nothingToDelete ? null : _delete,
               icon: _busy
                   ? const SizedBox(
@@ -410,14 +407,13 @@ class _ConfirmDialogState extends State<DeleteMembersConfirmDialog> {
       ),
       actions: [
         TextButton(
+          style: keepButtonStyleOf(context),
           onPressed: () => Navigator.of(context).pop(false),
           child: const Text('Keep everything'),
         ),
         FilledButton(
           key: deleteMembersConfirmKey,
-          style: FilledButton.styleFrom(
-            backgroundColor: context.palette.expired,
-          ),
+          style: dangerButtonStyleOf(context),
           onPressed:
               _phraseMatches ? () => Navigator.of(context).pop(true) : null,
           child: const Text('Delete everything'),

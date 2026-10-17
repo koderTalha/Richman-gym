@@ -67,9 +67,15 @@ class _HistoricalReviewViewState extends State<_HistoricalReviewView> {
       listener: (context, state) {
         final refusal =
             state.status == HistoricalReviewStatus.failed ? null : state.error;
+        final palette = context.palette;
+        // A refusal in the danger pair rather than white on solid red, which
+        // fell below readable contrast; see dangerButtonStyleOf.
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(refusal ?? state.message!),
-          backgroundColor: refusal == null ? null : context.palette.expired,
+          content: Text(
+            refusal ?? state.message!,
+            style: refusal == null ? null : TextStyle(color: palette.expired),
+          ),
+          backgroundColor: refusal == null ? null : palette.expiredBg,
         ));
       },
       builder: (context, state) {

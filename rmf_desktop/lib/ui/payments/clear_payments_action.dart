@@ -178,13 +178,12 @@ class _ConfirmDialogState extends State<ClearPaymentsConfirmDialog> {
       ),
       actions: [
         TextButton(
+          style: keepButtonStyleOf(context),
           onPressed: () => Navigator.of(context).pop(false),
           child: const Text('Keep them'),
         ),
         FilledButton(
-          style: FilledButton.styleFrom(
-            backgroundColor: context.palette.expired,
-          ),
+          style: dangerButtonStyleOf(context),
           onPressed:
               _nameMatches ? () => Navigator.of(context).pop(true) : null,
           child: Text('Delete ${widget.count} payments'),

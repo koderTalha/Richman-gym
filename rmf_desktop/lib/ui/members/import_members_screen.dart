@@ -46,8 +46,8 @@ class _ImportView extends StatelessWidget {
           return SingleChildScrollView(
             padding: const EdgeInsets.all(24),
             child: Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 1000),
+              child: SizedBox(
+                width: double.infinity,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
@@ -249,9 +249,11 @@ class _StepCard extends StatelessWidget {
                 radius: 12,
                 backgroundColor: context.palette.accent,
                 child: Text('$step',
-                    style: const TextStyle(
+                    style: TextStyle(
                         fontSize: 12,
-                        color: Colors.white,
+                        // Sits on the brand colour, which is not always dark
+                        // enough for white — see AppPalette.onAccent.
+                        color: context.palette.onAccent,
                         fontWeight: FontWeight.bold)),
               ),
               const SizedBox(width: 10),

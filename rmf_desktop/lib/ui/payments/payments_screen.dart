@@ -57,7 +57,7 @@ class _PaymentsViewState extends State<_PaymentsView> {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.fromLTRB(32, 28, 32, 48),
       child: BlocBuilder<PaymentsBloc, PaymentsState>(
         builder: (context, state) {
           return Column(
@@ -69,8 +69,9 @@ class _PaymentsViewState extends State<_PaymentsView> {
                   Text(
                     'Payments',
                     style: TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.bold,
+                        fontSize: 26,
+                        fontWeight: FontWeight.w500,
+                        letterSpacing: -0.5,
                         color: context.palette.textPrimary),
                   ),
                   const SizedBox(height: 4),
@@ -98,6 +99,9 @@ class _PaymentsViewState extends State<_PaymentsView> {
                     child: DropdownButtonFormField<PaymentMethod?>(
                       initialValue: state.method,
                       isDense: true,
+                      // Without this the field sizes itself to its widest
+                      // method and overflowed its 200px box at every width.
+                      isExpanded: true,
                       decoration: const InputDecoration(isDense: true),
                       items: [
                         const DropdownMenuItem(

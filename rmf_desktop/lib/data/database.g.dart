@@ -923,6 +923,119 @@ class $GymSettingsTable extends GymSettings
     requiredDuringInsert: false,
     defaultValue: const Constant('dark'),
   );
+  static const VerificationMeta _themePresetMeta = const VerificationMeta(
+    'themePreset',
+  );
+  @override
+  late final GeneratedColumn<String> themePreset = GeneratedColumn<String>(
+    'theme_preset',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('richmanRed'),
+  );
+  static const VerificationMeta _customPrimaryMeta = const VerificationMeta(
+    'customPrimary',
+  );
+  @override
+  late final GeneratedColumn<String> customPrimary = GeneratedColumn<String>(
+    'custom_primary',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _customAccentMeta = const VerificationMeta(
+    'customAccent',
+  );
+  @override
+  late final GeneratedColumn<String> customAccent = GeneratedColumn<String>(
+    'custom_accent',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _customBackgroundMeta = const VerificationMeta(
+    'customBackground',
+  );
+  @override
+  late final GeneratedColumn<String> customBackground = GeneratedColumn<String>(
+    'custom_background',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _customSidebarMeta = const VerificationMeta(
+    'customSidebar',
+  );
+  @override
+  late final GeneratedColumn<String> customSidebar = GeneratedColumn<String>(
+    'custom_sidebar',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _customSurfaceMeta = const VerificationMeta(
+    'customSurface',
+  );
+  @override
+  late final GeneratedColumn<String> customSurface = GeneratedColumn<String>(
+    'custom_surface',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _customTextPrimaryMeta = const VerificationMeta(
+    'customTextPrimary',
+  );
+  @override
+  late final GeneratedColumn<String> customTextPrimary =
+      GeneratedColumn<String>(
+        'custom_text_primary',
+        aliasedName,
+        true,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+      );
+  static const VerificationMeta _receiptTemplateMeta = const VerificationMeta(
+    'receiptTemplate',
+  );
+  @override
+  late final GeneratedColumn<String> receiptTemplate = GeneratedColumn<String>(
+    'receipt_template',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('classic'),
+  );
+  static const VerificationMeta _loginPhotoPathMeta = const VerificationMeta(
+    'loginPhotoPath',
+  );
+  @override
+  late final GeneratedColumn<String> loginPhotoPath = GeneratedColumn<String>(
+    'login_photo_path',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _dashboardPhotoPathMeta =
+      const VerificationMeta('dashboardPhotoPath');
+  @override
+  late final GeneratedColumn<String> dashboardPhotoPath =
+      GeneratedColumn<String>(
+        'dashboard_photo_path',
+        aliasedName,
+        true,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+      );
   static const VerificationMeta _lastUpdateCheckAtMeta = const VerificationMeta(
     'lastUpdateCheckAt',
   );
@@ -1094,6 +1207,16 @@ class $GymSettingsTable extends GymSettings
     whatsappWelcomeTemplateLanguage,
     whatsappMockFails,
     themeMode,
+    themePreset,
+    customPrimary,
+    customAccent,
+    customBackground,
+    customSidebar,
+    customSurface,
+    customTextPrimary,
+    receiptTemplate,
+    loginPhotoPath,
+    dashboardPhotoPath,
     lastUpdateCheckAt,
     dismissedUpdateVersion,
     reminderAutoSend,
@@ -1279,6 +1402,96 @@ class $GymSettingsTable extends GymSettings
       context.handle(
         _themeModeMeta,
         themeMode.isAcceptableOrUnknown(data['theme_mode']!, _themeModeMeta),
+      );
+    }
+    if (data.containsKey('theme_preset')) {
+      context.handle(
+        _themePresetMeta,
+        themePreset.isAcceptableOrUnknown(
+          data['theme_preset']!,
+          _themePresetMeta,
+        ),
+      );
+    }
+    if (data.containsKey('custom_primary')) {
+      context.handle(
+        _customPrimaryMeta,
+        customPrimary.isAcceptableOrUnknown(
+          data['custom_primary']!,
+          _customPrimaryMeta,
+        ),
+      );
+    }
+    if (data.containsKey('custom_accent')) {
+      context.handle(
+        _customAccentMeta,
+        customAccent.isAcceptableOrUnknown(
+          data['custom_accent']!,
+          _customAccentMeta,
+        ),
+      );
+    }
+    if (data.containsKey('custom_background')) {
+      context.handle(
+        _customBackgroundMeta,
+        customBackground.isAcceptableOrUnknown(
+          data['custom_background']!,
+          _customBackgroundMeta,
+        ),
+      );
+    }
+    if (data.containsKey('custom_sidebar')) {
+      context.handle(
+        _customSidebarMeta,
+        customSidebar.isAcceptableOrUnknown(
+          data['custom_sidebar']!,
+          _customSidebarMeta,
+        ),
+      );
+    }
+    if (data.containsKey('custom_surface')) {
+      context.handle(
+        _customSurfaceMeta,
+        customSurface.isAcceptableOrUnknown(
+          data['custom_surface']!,
+          _customSurfaceMeta,
+        ),
+      );
+    }
+    if (data.containsKey('custom_text_primary')) {
+      context.handle(
+        _customTextPrimaryMeta,
+        customTextPrimary.isAcceptableOrUnknown(
+          data['custom_text_primary']!,
+          _customTextPrimaryMeta,
+        ),
+      );
+    }
+    if (data.containsKey('receipt_template')) {
+      context.handle(
+        _receiptTemplateMeta,
+        receiptTemplate.isAcceptableOrUnknown(
+          data['receipt_template']!,
+          _receiptTemplateMeta,
+        ),
+      );
+    }
+    if (data.containsKey('login_photo_path')) {
+      context.handle(
+        _loginPhotoPathMeta,
+        loginPhotoPath.isAcceptableOrUnknown(
+          data['login_photo_path']!,
+          _loginPhotoPathMeta,
+        ),
+      );
+    }
+    if (data.containsKey('dashboard_photo_path')) {
+      context.handle(
+        _dashboardPhotoPathMeta,
+        dashboardPhotoPath.isAcceptableOrUnknown(
+          data['dashboard_photo_path']!,
+          _dashboardPhotoPathMeta,
+        ),
       );
     }
     if (data.containsKey('last_update_check_at')) {
@@ -1488,6 +1701,46 @@ class $GymSettingsTable extends GymSettings
         DriftSqlType.string,
         data['${effectivePrefix}theme_mode'],
       )!,
+      themePreset: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}theme_preset'],
+      )!,
+      customPrimary: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}custom_primary'],
+      ),
+      customAccent: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}custom_accent'],
+      ),
+      customBackground: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}custom_background'],
+      ),
+      customSidebar: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}custom_sidebar'],
+      ),
+      customSurface: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}custom_surface'],
+      ),
+      customTextPrimary: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}custom_text_primary'],
+      ),
+      receiptTemplate: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}receipt_template'],
+      )!,
+      loginPhotoPath: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}login_photo_path'],
+      ),
+      dashboardPhotoPath: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}dashboard_photo_path'],
+      ),
       lastUpdateCheckAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}last_update_check_at'],
@@ -1609,6 +1862,39 @@ class GymSetting extends DataClass implements Insertable<GymSetting> {
   /// later needs no migration. Dark is the default the gym has been using.
   final String themeMode;
 
+  /// Which built-in brand preset is active, by id, or `custom` when the owner
+  /// has mixed their own. Text rather than an enum column so a release that
+  /// adds a preset cannot orphan a row written by a newer build the owner
+  /// rolled back from — an unknown id falls back to the default preset.
+  final String themePreset;
+
+  /// The owner's own colours, as `#RRGGBB`, used only while [themePreset] is
+  /// `custom`. Null means "never set one", which is why these are nullable
+  /// rather than defaulted: a half-filled custom theme must fall back to the
+  /// preset's value for that role, not to black.
+  final String? customPrimary;
+  final String? customAccent;
+  final String? customBackground;
+  final String? customSidebar;
+  final String? customSurface;
+  final String? customTextPrimary;
+
+  /// Which receipt layout new receipts are rendered with: `classic`, `modern`
+  /// or `minimal`. Only ever read when rendering a *new* receipt — the PNG and
+  /// PDF already on disk are never re-rendered, so changing this cannot alter
+  /// a receipt the gym has already sent a member.
+  final String receiptTemplate;
+
+  /// Absolute paths to the gym's own photographs for the sign-in art panel and
+  /// the dashboard hero band, or null for the drawn brand artwork.
+  ///
+  /// Paths rather than blobs, like [logoPath] above and for the same reason:
+  /// the images are copied into the app's branding directory on upload, and a
+  /// multi-megabyte photograph in the settings row would be read back on every
+  /// query of a table the app touches constantly.
+  final String? loginPhotoPath;
+  final String? dashboardPhotoPath;
+
   /// When the app last asked GitHub whether a newer release exists. Null means
   /// never, which is what an install upgraded from an earlier version reads as.
   final DateTime? lastUpdateCheckAt;
@@ -1684,6 +1970,16 @@ class GymSetting extends DataClass implements Insertable<GymSetting> {
     required this.whatsappWelcomeTemplateLanguage,
     required this.whatsappMockFails,
     required this.themeMode,
+    required this.themePreset,
+    this.customPrimary,
+    this.customAccent,
+    this.customBackground,
+    this.customSidebar,
+    this.customSurface,
+    this.customTextPrimary,
+    required this.receiptTemplate,
+    this.loginPhotoPath,
+    this.dashboardPhotoPath,
     this.lastUpdateCheckAt,
     this.dismissedUpdateVersion,
     required this.reminderAutoSend,
@@ -1760,6 +2056,32 @@ class GymSetting extends DataClass implements Insertable<GymSetting> {
     );
     map['whatsapp_mock_fails'] = Variable<bool>(whatsappMockFails);
     map['theme_mode'] = Variable<String>(themeMode);
+    map['theme_preset'] = Variable<String>(themePreset);
+    if (!nullToAbsent || customPrimary != null) {
+      map['custom_primary'] = Variable<String>(customPrimary);
+    }
+    if (!nullToAbsent || customAccent != null) {
+      map['custom_accent'] = Variable<String>(customAccent);
+    }
+    if (!nullToAbsent || customBackground != null) {
+      map['custom_background'] = Variable<String>(customBackground);
+    }
+    if (!nullToAbsent || customSidebar != null) {
+      map['custom_sidebar'] = Variable<String>(customSidebar);
+    }
+    if (!nullToAbsent || customSurface != null) {
+      map['custom_surface'] = Variable<String>(customSurface);
+    }
+    if (!nullToAbsent || customTextPrimary != null) {
+      map['custom_text_primary'] = Variable<String>(customTextPrimary);
+    }
+    map['receipt_template'] = Variable<String>(receiptTemplate);
+    if (!nullToAbsent || loginPhotoPath != null) {
+      map['login_photo_path'] = Variable<String>(loginPhotoPath);
+    }
+    if (!nullToAbsent || dashboardPhotoPath != null) {
+      map['dashboard_photo_path'] = Variable<String>(dashboardPhotoPath);
+    }
     if (!nullToAbsent || lastUpdateCheckAt != null) {
       map['last_update_check_at'] = Variable<DateTime>(lastUpdateCheckAt);
     }
@@ -1836,6 +2158,32 @@ class GymSetting extends DataClass implements Insertable<GymSetting> {
       whatsappWelcomeTemplateLanguage: Value(whatsappWelcomeTemplateLanguage),
       whatsappMockFails: Value(whatsappMockFails),
       themeMode: Value(themeMode),
+      themePreset: Value(themePreset),
+      customPrimary: customPrimary == null && nullToAbsent
+          ? const Value.absent()
+          : Value(customPrimary),
+      customAccent: customAccent == null && nullToAbsent
+          ? const Value.absent()
+          : Value(customAccent),
+      customBackground: customBackground == null && nullToAbsent
+          ? const Value.absent()
+          : Value(customBackground),
+      customSidebar: customSidebar == null && nullToAbsent
+          ? const Value.absent()
+          : Value(customSidebar),
+      customSurface: customSurface == null && nullToAbsent
+          ? const Value.absent()
+          : Value(customSurface),
+      customTextPrimary: customTextPrimary == null && nullToAbsent
+          ? const Value.absent()
+          : Value(customTextPrimary),
+      receiptTemplate: Value(receiptTemplate),
+      loginPhotoPath: loginPhotoPath == null && nullToAbsent
+          ? const Value.absent()
+          : Value(loginPhotoPath),
+      dashboardPhotoPath: dashboardPhotoPath == null && nullToAbsent
+          ? const Value.absent()
+          : Value(dashboardPhotoPath),
       lastUpdateCheckAt: lastUpdateCheckAt == null && nullToAbsent
           ? const Value.absent()
           : Value(lastUpdateCheckAt),
@@ -1907,6 +2255,20 @@ class GymSetting extends DataClass implements Insertable<GymSetting> {
       ),
       whatsappMockFails: serializer.fromJson<bool>(json['whatsappMockFails']),
       themeMode: serializer.fromJson<String>(json['themeMode']),
+      themePreset: serializer.fromJson<String>(json['themePreset']),
+      customPrimary: serializer.fromJson<String?>(json['customPrimary']),
+      customAccent: serializer.fromJson<String?>(json['customAccent']),
+      customBackground: serializer.fromJson<String?>(json['customBackground']),
+      customSidebar: serializer.fromJson<String?>(json['customSidebar']),
+      customSurface: serializer.fromJson<String?>(json['customSurface']),
+      customTextPrimary: serializer.fromJson<String?>(
+        json['customTextPrimary'],
+      ),
+      receiptTemplate: serializer.fromJson<String>(json['receiptTemplate']),
+      loginPhotoPath: serializer.fromJson<String?>(json['loginPhotoPath']),
+      dashboardPhotoPath: serializer.fromJson<String?>(
+        json['dashboardPhotoPath'],
+      ),
       lastUpdateCheckAt: serializer.fromJson<DateTime?>(
         json['lastUpdateCheckAt'],
       ),
@@ -1979,6 +2341,16 @@ class GymSetting extends DataClass implements Insertable<GymSetting> {
       ),
       'whatsappMockFails': serializer.toJson<bool>(whatsappMockFails),
       'themeMode': serializer.toJson<String>(themeMode),
+      'themePreset': serializer.toJson<String>(themePreset),
+      'customPrimary': serializer.toJson<String?>(customPrimary),
+      'customAccent': serializer.toJson<String?>(customAccent),
+      'customBackground': serializer.toJson<String?>(customBackground),
+      'customSidebar': serializer.toJson<String?>(customSidebar),
+      'customSurface': serializer.toJson<String?>(customSurface),
+      'customTextPrimary': serializer.toJson<String?>(customTextPrimary),
+      'receiptTemplate': serializer.toJson<String>(receiptTemplate),
+      'loginPhotoPath': serializer.toJson<String?>(loginPhotoPath),
+      'dashboardPhotoPath': serializer.toJson<String?>(dashboardPhotoPath),
       'lastUpdateCheckAt': serializer.toJson<DateTime?>(lastUpdateCheckAt),
       'dismissedUpdateVersion': serializer.toJson<String?>(
         dismissedUpdateVersion,
@@ -2023,6 +2395,16 @@ class GymSetting extends DataClass implements Insertable<GymSetting> {
     String? whatsappWelcomeTemplateLanguage,
     bool? whatsappMockFails,
     String? themeMode,
+    String? themePreset,
+    Value<String?> customPrimary = const Value.absent(),
+    Value<String?> customAccent = const Value.absent(),
+    Value<String?> customBackground = const Value.absent(),
+    Value<String?> customSidebar = const Value.absent(),
+    Value<String?> customSurface = const Value.absent(),
+    Value<String?> customTextPrimary = const Value.absent(),
+    String? receiptTemplate,
+    Value<String?> loginPhotoPath = const Value.absent(),
+    Value<String?> dashboardPhotoPath = const Value.absent(),
     Value<DateTime?> lastUpdateCheckAt = const Value.absent(),
     Value<String?> dismissedUpdateVersion = const Value.absent(),
     bool? reminderAutoSend,
@@ -2073,6 +2455,30 @@ class GymSetting extends DataClass implements Insertable<GymSetting> {
         whatsappWelcomeTemplateLanguage ?? this.whatsappWelcomeTemplateLanguage,
     whatsappMockFails: whatsappMockFails ?? this.whatsappMockFails,
     themeMode: themeMode ?? this.themeMode,
+    themePreset: themePreset ?? this.themePreset,
+    customPrimary: customPrimary.present
+        ? customPrimary.value
+        : this.customPrimary,
+    customAccent: customAccent.present ? customAccent.value : this.customAccent,
+    customBackground: customBackground.present
+        ? customBackground.value
+        : this.customBackground,
+    customSidebar: customSidebar.present
+        ? customSidebar.value
+        : this.customSidebar,
+    customSurface: customSurface.present
+        ? customSurface.value
+        : this.customSurface,
+    customTextPrimary: customTextPrimary.present
+        ? customTextPrimary.value
+        : this.customTextPrimary,
+    receiptTemplate: receiptTemplate ?? this.receiptTemplate,
+    loginPhotoPath: loginPhotoPath.present
+        ? loginPhotoPath.value
+        : this.loginPhotoPath,
+    dashboardPhotoPath: dashboardPhotoPath.present
+        ? dashboardPhotoPath.value
+        : this.dashboardPhotoPath,
     lastUpdateCheckAt: lastUpdateCheckAt.present
         ? lastUpdateCheckAt.value
         : this.lastUpdateCheckAt,
@@ -2150,6 +2556,36 @@ class GymSetting extends DataClass implements Insertable<GymSetting> {
           ? data.whatsappMockFails.value
           : this.whatsappMockFails,
       themeMode: data.themeMode.present ? data.themeMode.value : this.themeMode,
+      themePreset: data.themePreset.present
+          ? data.themePreset.value
+          : this.themePreset,
+      customPrimary: data.customPrimary.present
+          ? data.customPrimary.value
+          : this.customPrimary,
+      customAccent: data.customAccent.present
+          ? data.customAccent.value
+          : this.customAccent,
+      customBackground: data.customBackground.present
+          ? data.customBackground.value
+          : this.customBackground,
+      customSidebar: data.customSidebar.present
+          ? data.customSidebar.value
+          : this.customSidebar,
+      customSurface: data.customSurface.present
+          ? data.customSurface.value
+          : this.customSurface,
+      customTextPrimary: data.customTextPrimary.present
+          ? data.customTextPrimary.value
+          : this.customTextPrimary,
+      receiptTemplate: data.receiptTemplate.present
+          ? data.receiptTemplate.value
+          : this.receiptTemplate,
+      loginPhotoPath: data.loginPhotoPath.present
+          ? data.loginPhotoPath.value
+          : this.loginPhotoPath,
+      dashboardPhotoPath: data.dashboardPhotoPath.present
+          ? data.dashboardPhotoPath.value
+          : this.dashboardPhotoPath,
       lastUpdateCheckAt: data.lastUpdateCheckAt.present
           ? data.lastUpdateCheckAt.value
           : this.lastUpdateCheckAt,
@@ -2219,6 +2655,16 @@ class GymSetting extends DataClass implements Insertable<GymSetting> {
           )
           ..write('whatsappMockFails: $whatsappMockFails, ')
           ..write('themeMode: $themeMode, ')
+          ..write('themePreset: $themePreset, ')
+          ..write('customPrimary: $customPrimary, ')
+          ..write('customAccent: $customAccent, ')
+          ..write('customBackground: $customBackground, ')
+          ..write('customSidebar: $customSidebar, ')
+          ..write('customSurface: $customSurface, ')
+          ..write('customTextPrimary: $customTextPrimary, ')
+          ..write('receiptTemplate: $receiptTemplate, ')
+          ..write('loginPhotoPath: $loginPhotoPath, ')
+          ..write('dashboardPhotoPath: $dashboardPhotoPath, ')
           ..write('lastUpdateCheckAt: $lastUpdateCheckAt, ')
           ..write('dismissedUpdateVersion: $dismissedUpdateVersion, ')
           ..write('reminderAutoSend: $reminderAutoSend, ')
@@ -2261,6 +2707,16 @@ class GymSetting extends DataClass implements Insertable<GymSetting> {
     whatsappWelcomeTemplateLanguage,
     whatsappMockFails,
     themeMode,
+    themePreset,
+    customPrimary,
+    customAccent,
+    customBackground,
+    customSidebar,
+    customSurface,
+    customTextPrimary,
+    receiptTemplate,
+    loginPhotoPath,
+    dashboardPhotoPath,
     lastUpdateCheckAt,
     dismissedUpdateVersion,
     reminderAutoSend,
@@ -2302,6 +2758,16 @@ class GymSetting extends DataClass implements Insertable<GymSetting> {
               this.whatsappWelcomeTemplateLanguage &&
           other.whatsappMockFails == this.whatsappMockFails &&
           other.themeMode == this.themeMode &&
+          other.themePreset == this.themePreset &&
+          other.customPrimary == this.customPrimary &&
+          other.customAccent == this.customAccent &&
+          other.customBackground == this.customBackground &&
+          other.customSidebar == this.customSidebar &&
+          other.customSurface == this.customSurface &&
+          other.customTextPrimary == this.customTextPrimary &&
+          other.receiptTemplate == this.receiptTemplate &&
+          other.loginPhotoPath == this.loginPhotoPath &&
+          other.dashboardPhotoPath == this.dashboardPhotoPath &&
           other.lastUpdateCheckAt == this.lastUpdateCheckAt &&
           other.dismissedUpdateVersion == this.dismissedUpdateVersion &&
           other.reminderAutoSend == this.reminderAutoSend &&
@@ -2340,6 +2806,16 @@ class GymSettingsCompanion extends UpdateCompanion<GymSetting> {
   final Value<String> whatsappWelcomeTemplateLanguage;
   final Value<bool> whatsappMockFails;
   final Value<String> themeMode;
+  final Value<String> themePreset;
+  final Value<String?> customPrimary;
+  final Value<String?> customAccent;
+  final Value<String?> customBackground;
+  final Value<String?> customSidebar;
+  final Value<String?> customSurface;
+  final Value<String?> customTextPrimary;
+  final Value<String> receiptTemplate;
+  final Value<String?> loginPhotoPath;
+  final Value<String?> dashboardPhotoPath;
   final Value<DateTime?> lastUpdateCheckAt;
   final Value<String?> dismissedUpdateVersion;
   final Value<bool> reminderAutoSend;
@@ -2375,6 +2851,16 @@ class GymSettingsCompanion extends UpdateCompanion<GymSetting> {
     this.whatsappWelcomeTemplateLanguage = const Value.absent(),
     this.whatsappMockFails = const Value.absent(),
     this.themeMode = const Value.absent(),
+    this.themePreset = const Value.absent(),
+    this.customPrimary = const Value.absent(),
+    this.customAccent = const Value.absent(),
+    this.customBackground = const Value.absent(),
+    this.customSidebar = const Value.absent(),
+    this.customSurface = const Value.absent(),
+    this.customTextPrimary = const Value.absent(),
+    this.receiptTemplate = const Value.absent(),
+    this.loginPhotoPath = const Value.absent(),
+    this.dashboardPhotoPath = const Value.absent(),
     this.lastUpdateCheckAt = const Value.absent(),
     this.dismissedUpdateVersion = const Value.absent(),
     this.reminderAutoSend = const Value.absent(),
@@ -2411,6 +2897,16 @@ class GymSettingsCompanion extends UpdateCompanion<GymSetting> {
     this.whatsappWelcomeTemplateLanguage = const Value.absent(),
     this.whatsappMockFails = const Value.absent(),
     this.themeMode = const Value.absent(),
+    this.themePreset = const Value.absent(),
+    this.customPrimary = const Value.absent(),
+    this.customAccent = const Value.absent(),
+    this.customBackground = const Value.absent(),
+    this.customSidebar = const Value.absent(),
+    this.customSurface = const Value.absent(),
+    this.customTextPrimary = const Value.absent(),
+    this.receiptTemplate = const Value.absent(),
+    this.loginPhotoPath = const Value.absent(),
+    this.dashboardPhotoPath = const Value.absent(),
     this.lastUpdateCheckAt = const Value.absent(),
     this.dismissedUpdateVersion = const Value.absent(),
     this.reminderAutoSend = const Value.absent(),
@@ -2447,6 +2943,16 @@ class GymSettingsCompanion extends UpdateCompanion<GymSetting> {
     Expression<String>? whatsappWelcomeTemplateLanguage,
     Expression<bool>? whatsappMockFails,
     Expression<String>? themeMode,
+    Expression<String>? themePreset,
+    Expression<String>? customPrimary,
+    Expression<String>? customAccent,
+    Expression<String>? customBackground,
+    Expression<String>? customSidebar,
+    Expression<String>? customSurface,
+    Expression<String>? customTextPrimary,
+    Expression<String>? receiptTemplate,
+    Expression<String>? loginPhotoPath,
+    Expression<String>? dashboardPhotoPath,
     Expression<DateTime>? lastUpdateCheckAt,
     Expression<String>? dismissedUpdateVersion,
     Expression<bool>? reminderAutoSend,
@@ -2492,6 +2998,17 @@ class GymSettingsCompanion extends UpdateCompanion<GymSetting> {
         'whatsapp_welcome_template_language': whatsappWelcomeTemplateLanguage,
       if (whatsappMockFails != null) 'whatsapp_mock_fails': whatsappMockFails,
       if (themeMode != null) 'theme_mode': themeMode,
+      if (themePreset != null) 'theme_preset': themePreset,
+      if (customPrimary != null) 'custom_primary': customPrimary,
+      if (customAccent != null) 'custom_accent': customAccent,
+      if (customBackground != null) 'custom_background': customBackground,
+      if (customSidebar != null) 'custom_sidebar': customSidebar,
+      if (customSurface != null) 'custom_surface': customSurface,
+      if (customTextPrimary != null) 'custom_text_primary': customTextPrimary,
+      if (receiptTemplate != null) 'receipt_template': receiptTemplate,
+      if (loginPhotoPath != null) 'login_photo_path': loginPhotoPath,
+      if (dashboardPhotoPath != null)
+        'dashboard_photo_path': dashboardPhotoPath,
       if (lastUpdateCheckAt != null) 'last_update_check_at': lastUpdateCheckAt,
       if (dismissedUpdateVersion != null)
         'dismissed_update_version': dismissedUpdateVersion,
@@ -2537,6 +3054,16 @@ class GymSettingsCompanion extends UpdateCompanion<GymSetting> {
     Value<String>? whatsappWelcomeTemplateLanguage,
     Value<bool>? whatsappMockFails,
     Value<String>? themeMode,
+    Value<String>? themePreset,
+    Value<String?>? customPrimary,
+    Value<String?>? customAccent,
+    Value<String?>? customBackground,
+    Value<String?>? customSidebar,
+    Value<String?>? customSurface,
+    Value<String?>? customTextPrimary,
+    Value<String>? receiptTemplate,
+    Value<String?>? loginPhotoPath,
+    Value<String?>? dashboardPhotoPath,
     Value<DateTime?>? lastUpdateCheckAt,
     Value<String?>? dismissedUpdateVersion,
     Value<bool>? reminderAutoSend,
@@ -2582,6 +3109,16 @@ class GymSettingsCompanion extends UpdateCompanion<GymSetting> {
           this.whatsappWelcomeTemplateLanguage,
       whatsappMockFails: whatsappMockFails ?? this.whatsappMockFails,
       themeMode: themeMode ?? this.themeMode,
+      themePreset: themePreset ?? this.themePreset,
+      customPrimary: customPrimary ?? this.customPrimary,
+      customAccent: customAccent ?? this.customAccent,
+      customBackground: customBackground ?? this.customBackground,
+      customSidebar: customSidebar ?? this.customSidebar,
+      customSurface: customSurface ?? this.customSurface,
+      customTextPrimary: customTextPrimary ?? this.customTextPrimary,
+      receiptTemplate: receiptTemplate ?? this.receiptTemplate,
+      loginPhotoPath: loginPhotoPath ?? this.loginPhotoPath,
+      dashboardPhotoPath: dashboardPhotoPath ?? this.dashboardPhotoPath,
       lastUpdateCheckAt: lastUpdateCheckAt ?? this.lastUpdateCheckAt,
       dismissedUpdateVersion:
           dismissedUpdateVersion ?? this.dismissedUpdateVersion,
@@ -2693,6 +3230,36 @@ class GymSettingsCompanion extends UpdateCompanion<GymSetting> {
     if (themeMode.present) {
       map['theme_mode'] = Variable<String>(themeMode.value);
     }
+    if (themePreset.present) {
+      map['theme_preset'] = Variable<String>(themePreset.value);
+    }
+    if (customPrimary.present) {
+      map['custom_primary'] = Variable<String>(customPrimary.value);
+    }
+    if (customAccent.present) {
+      map['custom_accent'] = Variable<String>(customAccent.value);
+    }
+    if (customBackground.present) {
+      map['custom_background'] = Variable<String>(customBackground.value);
+    }
+    if (customSidebar.present) {
+      map['custom_sidebar'] = Variable<String>(customSidebar.value);
+    }
+    if (customSurface.present) {
+      map['custom_surface'] = Variable<String>(customSurface.value);
+    }
+    if (customTextPrimary.present) {
+      map['custom_text_primary'] = Variable<String>(customTextPrimary.value);
+    }
+    if (receiptTemplate.present) {
+      map['receipt_template'] = Variable<String>(receiptTemplate.value);
+    }
+    if (loginPhotoPath.present) {
+      map['login_photo_path'] = Variable<String>(loginPhotoPath.value);
+    }
+    if (dashboardPhotoPath.present) {
+      map['dashboard_photo_path'] = Variable<String>(dashboardPhotoPath.value);
+    }
     if (lastUpdateCheckAt.present) {
       map['last_update_check_at'] = Variable<DateTime>(lastUpdateCheckAt.value);
     }
@@ -2771,6 +3338,16 @@ class GymSettingsCompanion extends UpdateCompanion<GymSetting> {
           )
           ..write('whatsappMockFails: $whatsappMockFails, ')
           ..write('themeMode: $themeMode, ')
+          ..write('themePreset: $themePreset, ')
+          ..write('customPrimary: $customPrimary, ')
+          ..write('customAccent: $customAccent, ')
+          ..write('customBackground: $customBackground, ')
+          ..write('customSidebar: $customSidebar, ')
+          ..write('customSurface: $customSurface, ')
+          ..write('customTextPrimary: $customTextPrimary, ')
+          ..write('receiptTemplate: $receiptTemplate, ')
+          ..write('loginPhotoPath: $loginPhotoPath, ')
+          ..write('dashboardPhotoPath: $dashboardPhotoPath, ')
           ..write('lastUpdateCheckAt: $lastUpdateCheckAt, ')
           ..write('dismissedUpdateVersion: $dismissedUpdateVersion, ')
           ..write('reminderAutoSend: $reminderAutoSend, ')
@@ -12039,6 +12616,16 @@ typedef $$GymSettingsTableCreateCompanionBuilder =
       Value<String> whatsappWelcomeTemplateLanguage,
       Value<bool> whatsappMockFails,
       Value<String> themeMode,
+      Value<String> themePreset,
+      Value<String?> customPrimary,
+      Value<String?> customAccent,
+      Value<String?> customBackground,
+      Value<String?> customSidebar,
+      Value<String?> customSurface,
+      Value<String?> customTextPrimary,
+      Value<String> receiptTemplate,
+      Value<String?> loginPhotoPath,
+      Value<String?> dashboardPhotoPath,
       Value<DateTime?> lastUpdateCheckAt,
       Value<String?> dismissedUpdateVersion,
       Value<bool> reminderAutoSend,
@@ -12076,6 +12663,16 @@ typedef $$GymSettingsTableUpdateCompanionBuilder =
       Value<String> whatsappWelcomeTemplateLanguage,
       Value<bool> whatsappMockFails,
       Value<String> themeMode,
+      Value<String> themePreset,
+      Value<String?> customPrimary,
+      Value<String?> customAccent,
+      Value<String?> customBackground,
+      Value<String?> customSidebar,
+      Value<String?> customSurface,
+      Value<String?> customTextPrimary,
+      Value<String> receiptTemplate,
+      Value<String?> loginPhotoPath,
+      Value<String?> dashboardPhotoPath,
       Value<DateTime?> lastUpdateCheckAt,
       Value<String?> dismissedUpdateVersion,
       Value<bool> reminderAutoSend,
@@ -12213,6 +12810,56 @@ class $$GymSettingsTableFilterComposer
 
   ColumnFilters<String> get themeMode => $composableBuilder(
     column: $table.themeMode,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get themePreset => $composableBuilder(
+    column: $table.themePreset,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get customPrimary => $composableBuilder(
+    column: $table.customPrimary,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get customAccent => $composableBuilder(
+    column: $table.customAccent,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get customBackground => $composableBuilder(
+    column: $table.customBackground,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get customSidebar => $composableBuilder(
+    column: $table.customSidebar,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get customSurface => $composableBuilder(
+    column: $table.customSurface,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get customTextPrimary => $composableBuilder(
+    column: $table.customTextPrimary,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get receiptTemplate => $composableBuilder(
+    column: $table.receiptTemplate,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get loginPhotoPath => $composableBuilder(
+    column: $table.loginPhotoPath,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get dashboardPhotoPath => $composableBuilder(
+    column: $table.dashboardPhotoPath,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -12399,6 +13046,56 @@ class $$GymSettingsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get themePreset => $composableBuilder(
+    column: $table.themePreset,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get customPrimary => $composableBuilder(
+    column: $table.customPrimary,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get customAccent => $composableBuilder(
+    column: $table.customAccent,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get customBackground => $composableBuilder(
+    column: $table.customBackground,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get customSidebar => $composableBuilder(
+    column: $table.customSidebar,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get customSurface => $composableBuilder(
+    column: $table.customSurface,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get customTextPrimary => $composableBuilder(
+    column: $table.customTextPrimary,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get receiptTemplate => $composableBuilder(
+    column: $table.receiptTemplate,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get loginPhotoPath => $composableBuilder(
+    column: $table.loginPhotoPath,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get dashboardPhotoPath => $composableBuilder(
+    column: $table.dashboardPhotoPath,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<DateTime> get lastUpdateCheckAt => $composableBuilder(
     column: $table.lastUpdateCheckAt,
     builder: (column) => ColumnOrderings(column),
@@ -12567,6 +13264,56 @@ class $$GymSettingsTableAnnotationComposer
   GeneratedColumn<String> get themeMode =>
       $composableBuilder(column: $table.themeMode, builder: (column) => column);
 
+  GeneratedColumn<String> get themePreset => $composableBuilder(
+    column: $table.themePreset,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get customPrimary => $composableBuilder(
+    column: $table.customPrimary,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get customAccent => $composableBuilder(
+    column: $table.customAccent,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get customBackground => $composableBuilder(
+    column: $table.customBackground,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get customSidebar => $composableBuilder(
+    column: $table.customSidebar,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get customSurface => $composableBuilder(
+    column: $table.customSurface,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get customTextPrimary => $composableBuilder(
+    column: $table.customTextPrimary,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get receiptTemplate => $composableBuilder(
+    column: $table.receiptTemplate,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get loginPhotoPath => $composableBuilder(
+    column: $table.loginPhotoPath,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get dashboardPhotoPath => $composableBuilder(
+    column: $table.dashboardPhotoPath,
+    builder: (column) => column,
+  );
+
   GeneratedColumn<DateTime> get lastUpdateCheckAt => $composableBuilder(
     column: $table.lastUpdateCheckAt,
     builder: (column) => column,
@@ -12685,6 +13432,16 @@ class $$GymSettingsTableTableManager
                     const Value.absent(),
                 Value<bool> whatsappMockFails = const Value.absent(),
                 Value<String> themeMode = const Value.absent(),
+                Value<String> themePreset = const Value.absent(),
+                Value<String?> customPrimary = const Value.absent(),
+                Value<String?> customAccent = const Value.absent(),
+                Value<String?> customBackground = const Value.absent(),
+                Value<String?> customSidebar = const Value.absent(),
+                Value<String?> customSurface = const Value.absent(),
+                Value<String?> customTextPrimary = const Value.absent(),
+                Value<String> receiptTemplate = const Value.absent(),
+                Value<String?> loginPhotoPath = const Value.absent(),
+                Value<String?> dashboardPhotoPath = const Value.absent(),
                 Value<DateTime?> lastUpdateCheckAt = const Value.absent(),
                 Value<String?> dismissedUpdateVersion = const Value.absent(),
                 Value<bool> reminderAutoSend = const Value.absent(),
@@ -12723,6 +13480,16 @@ class $$GymSettingsTableTableManager
                     whatsappWelcomeTemplateLanguage,
                 whatsappMockFails: whatsappMockFails,
                 themeMode: themeMode,
+                themePreset: themePreset,
+                customPrimary: customPrimary,
+                customAccent: customAccent,
+                customBackground: customBackground,
+                customSidebar: customSidebar,
+                customSurface: customSurface,
+                customTextPrimary: customTextPrimary,
+                receiptTemplate: receiptTemplate,
+                loginPhotoPath: loginPhotoPath,
+                dashboardPhotoPath: dashboardPhotoPath,
                 lastUpdateCheckAt: lastUpdateCheckAt,
                 dismissedUpdateVersion: dismissedUpdateVersion,
                 reminderAutoSend: reminderAutoSend,
@@ -12764,6 +13531,16 @@ class $$GymSettingsTableTableManager
                     const Value.absent(),
                 Value<bool> whatsappMockFails = const Value.absent(),
                 Value<String> themeMode = const Value.absent(),
+                Value<String> themePreset = const Value.absent(),
+                Value<String?> customPrimary = const Value.absent(),
+                Value<String?> customAccent = const Value.absent(),
+                Value<String?> customBackground = const Value.absent(),
+                Value<String?> customSidebar = const Value.absent(),
+                Value<String?> customSurface = const Value.absent(),
+                Value<String?> customTextPrimary = const Value.absent(),
+                Value<String> receiptTemplate = const Value.absent(),
+                Value<String?> loginPhotoPath = const Value.absent(),
+                Value<String?> dashboardPhotoPath = const Value.absent(),
                 Value<DateTime?> lastUpdateCheckAt = const Value.absent(),
                 Value<String?> dismissedUpdateVersion = const Value.absent(),
                 Value<bool> reminderAutoSend = const Value.absent(),
@@ -12802,6 +13579,16 @@ class $$GymSettingsTableTableManager
                     whatsappWelcomeTemplateLanguage,
                 whatsappMockFails: whatsappMockFails,
                 themeMode: themeMode,
+                themePreset: themePreset,
+                customPrimary: customPrimary,
+                customAccent: customAccent,
+                customBackground: customBackground,
+                customSidebar: customSidebar,
+                customSurface: customSurface,
+                customTextPrimary: customTextPrimary,
+                receiptTemplate: receiptTemplate,
+                loginPhotoPath: loginPhotoPath,
+                dashboardPhotoPath: dashboardPhotoPath,
                 lastUpdateCheckAt: lastUpdateCheckAt,
                 dismissedUpdateVersion: dismissedUpdateVersion,
                 reminderAutoSend: reminderAutoSend,

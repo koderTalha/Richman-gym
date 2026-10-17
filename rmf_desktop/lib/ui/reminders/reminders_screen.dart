@@ -196,7 +196,7 @@ class _RemindersScreenState extends State<RemindersScreen> {
     if (_loading) return const Center(child: CircularProgressIndicator());
 
     return Padding(
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.fromLTRB(32, 28, 32, 48),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -204,8 +204,9 @@ class _RemindersScreenState extends State<RemindersScreen> {
             children: [
               Text('Reminders',
                   style: TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.bold,
+                      fontSize: 26,
+                      fontWeight: FontWeight.w500,
+                      letterSpacing: -0.5,
                       color: context.palette.textPrimary)),
               const SizedBox(width: 12),
               if (_queue.isNotEmpty)

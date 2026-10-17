@@ -576,7 +576,7 @@ void main() {
           .getSingle();
 
       expect(version, db.schemaVersion);
-      expect(db.schemaVersion, 12);
+      expect(db.schemaVersion, 14);
     });
 
     test('keeps the members, payments and receipts', () async {
@@ -861,6 +861,206 @@ void main() {
 
       expect(await db.select(db.cyclePricings).get(), hasLength(2));
       expect(await db.select(db.membershipChanges).get(), hasLength(1));
+    });
+  });
+
+  /// v13 adds the Appearance settings. The whole promise of this release is
+  /// that updating the app changes nothing the owner can see until they choose
+  /// a theme themselves, so these tests are mostly about what *did not* happen.
+  group('upgrading to themeable branding (v13)', () {
+    test('an upgraded install still looks exactly as it did', () async {
+      await buildOldDatabase(7);
+      final db = await openWithCurrentCode();
+      addTearDown(db.close);
+
+      final settings = await db.select(db.gymSettings).getSingle();
+
+      // The crimson the gym has always used, and the receipt layout every
+      // existing receipt was rendered with. An upgrade that silently
+      // rebranded the app would be a bug, not a feature.
+      expect(settings.themePreset, 'richmanRed',
+          reason: 'updating the app must not change the brand colour');
+      expect(settings.receiptTemplate, 'classic',
+          reason: 'new receipts must keep matching the ones already sent');
+      expect(settings.themeMode, 'dark',
+          reason: 'the dark/light choice is untouched by the branding columns');
+    });
+
+    test('no custom colour is invented on the owner\'s behalf', () async {
+      await buildOldDatabase(7);
+      final db = await openWithCurrentCode();
+      addTearDown(db.close);
+
+      final settings = await db.select(db.gymSettings).getSingle();
+
+      // Null means "never set one". A default here would make an install that
+      // has never opened Appearance look like it had a custom theme.
+      expect(settings.customPrimary, isNull);
+      expect(settings.customAccent, isNull);
+      expect(settings.customBackground, isNull);
+      expect(settings.customSidebar, isNull);
+      expect(settings.customSurface, isNull);
+      expect(settings.customTextPrimary, isNull);
+    });
+
+    test('no logo is conjured, and the v1 column is the only place for one',
+        () async {
+      await buildOldDatabase(7);
+      final db = await openWithCurrentCode();
+      addTearDown(db.close);
+
+      expect((await db.select(db.gymSettings).getSingle()).logoPath, isNull,
+          reason: 'the sidebar and receipts share this one column, and an '
+              'upgrade supplies no logo');
+    });
+
+    test('the branding columns are writable after the upgrade', () async {
+      await buildOldDatabase(7);
+      final db = await openWithCurrentCode();
+      addTearDown(db.close);
+
+      await (db.update(db.gymSettings)..where((s) => s.id.equals(1))).write(
+        const GymSettingsCompanion(
+          themePreset: Value('custom'),
+          customPrimary: Value('#2563EB'),
+          receiptTemplate: Value('minimal'),
+          logoPath: Value('logo.png'),
+        ),
+      );
+
+      final settings = await db.select(db.gymSettings).getSingle();
+      expect(settings.themePreset, 'custom');
+      expect(settings.customPrimary, '#2563EB');
+      expect(settings.receiptTemplate, 'minimal');
+      expect(settings.logoPath, 'logo.png');
+    });
+
+    test('the money and its history are untouched by a branding upgrade',
+        () async {
+      // v13 adds columns to one settings row. Nothing it does should be able
+      // to reach a payment, a cycle, an allocation or a receipt — this is the
+      // assertion that would catch a stray UPDATE in the migration.
+      await buildOldDatabase(7);
+      final db = await openWithCurrentCode();
+      addTearDown(db.close);
+
+      final payment = await db.select(db.payments).getSingle();
+      expect(payment.amountMinor, 300000);
+      expect(payment.idempotencyKey, 'legacy-payment-1');
+      expect(payment.updatedAt, isNull,
+          reason: 'a rebrand is not an edit to anybody\'s payment');
+
+      expect((await db.select(db.receipts).getSingle()).receiptNumber,
+          'RMF-2026-000001');
+      expect((await db.select(db.receiptCounters).getSingle()).lastNumber, 1,
+          reason: 'the next receipt must not reuse a number');
+      expect((await db.select(db.members).getSingle()).fullName,
+          'Legacy Member');
+    });
+
+    test('a theme the owner picked survives the next update', () async {
+      // The forward-compatibility case: an install already on v13 with a
+      // chosen theme must not be reset by simply reopening the database.
+      await buildOldDatabase(7);
+
+      final first = await openWithCurrentCode();
+      await (first.update(first.gymSettings)..where((s) => s.id.equals(1)))
+          .write(const GymSettingsCompanion(
+        themePreset: Value('blackGold'),
+        receiptTemplate: Value('modern'),
+      ));
+      await first.close();
+
+      final db = await openWithCurrentCode();
+      addTearDown(db.close);
+
+      final settings = await db.select(db.gymSettings).getSingle();
+      expect(settings.themePreset, 'blackGold',
+          reason: 'reopening must not reset a theme the owner chose');
+      expect(settings.receiptTemplate, 'modern');
+    });
+
+    test('running the upgrade twice adds nothing a second time', () async {
+      await buildOldDatabase(7);
+
+      final first = await openWithCurrentCode();
+      await first.close();
+
+      final db = await openWithCurrentCode();
+      addTearDown(db.close);
+
+      // Still one settings row, still readable: a replayed addColumn would
+      // throw "duplicate column name" and break the owner's app on launch.
+      expect(await db.select(db.gymSettings).get(), hasLength(1));
+      expect((await db.select(db.gymSettings).getSingle()).themePreset,
+          'richmanRed');
+    });
+  });
+
+  group('upgrading to gym photographs (v14)', () {
+    test('no photograph is invented for either hero slot', () async {
+      await buildOldDatabase(7);
+      final db = await openWithCurrentCode();
+      addTearDown(db.close);
+
+      final settings = await db.select(db.gymSettings).getSingle();
+
+      // Null means "the gym has not chosen one", which the UI draws as the
+      // brand artwork. A default path here would point at a file that does
+      // not exist on the owner's machine.
+      expect(settings.loginPhotoPath, isNull);
+      expect(settings.dashboardPhotoPath, isNull);
+    });
+
+    test('the photo columns are writable after the upgrade', () async {
+      await buildOldDatabase(7);
+      final db = await openWithCurrentCode();
+      addTearDown(db.close);
+
+      await (db.update(db.gymSettings)..where((s) => s.id.equals(1))).write(
+        const GymSettingsCompanion(
+          loginPhotoPath: Value('/branding/photo-1.jpg'),
+          dashboardPhotoPath: Value('/branding/photo-2.jpg'),
+        ),
+      );
+
+      final settings = await db.select(db.gymSettings).getSingle();
+      expect(settings.loginPhotoPath, '/branding/photo-1.jpg');
+      expect(settings.dashboardPhotoPath, '/branding/photo-2.jpg');
+    });
+
+    test('a photograph the owner chose survives the next update', () async {
+      await buildOldDatabase(7);
+
+      final first = await openWithCurrentCode();
+      await (first.update(first.gymSettings)..where((s) => s.id.equals(1)))
+          .write(const GymSettingsCompanion(
+        loginPhotoPath: Value('/branding/photo-1.jpg'),
+      ));
+      await first.close();
+
+      final db = await openWithCurrentCode();
+      addTearDown(db.close);
+
+      expect((await db.select(db.gymSettings).getSingle()).loginPhotoPath,
+          '/branding/photo-1.jpg',
+          reason: 'reopening must not clear a photo the owner chose');
+    });
+
+    test('running the upgrade twice adds nothing a second time', () async {
+      await buildOldDatabase(7);
+
+      final first = await openWithCurrentCode();
+      await first.close();
+
+      // A replayed addColumn would throw "duplicate column name" and break
+      // the owner's app on launch.
+      final db = await openWithCurrentCode();
+      addTearDown(db.close);
+
+      expect(await db.select(db.gymSettings).get(), hasLength(1));
+      expect((await db.select(db.gymSettings).getSingle()).loginPhotoPath,
+          isNull);
     });
   });
 

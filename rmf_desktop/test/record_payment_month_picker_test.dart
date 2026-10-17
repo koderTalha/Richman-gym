@@ -148,7 +148,7 @@ void main() {
     await openDialog(tester);
 
     expect(find.text('Billing period'), findsOneWidget);
-    expect(find.text('Automatic'), findsOneWidget,
+    expect(find.text('Oldest unpaid first'), findsOneWidget,
         reason: 'the counter flow must not change — the owner takes what is '
             'owed without thinking about months');
   });
@@ -158,9 +158,9 @@ void main() {
     await openDialog(tester);
 
     await tester.enterText(
-        find.widgetWithText(TextFormField, 'Amount received *'), '1500');
+        find.byKey(const Key('payment-amount')), '1500');
     await tester.pump();
-    await tapAndSettle(tester, find.text('Confirm Payment'));
+    await tapAndSettle(tester, find.byKey(const Key('confirm-payment')));
 
     expect(find.text('Payment recorded'), findsOneWidget);
     final cycles = await periodsForMember(db, memberId);
@@ -170,7 +170,7 @@ void main() {
 
   /// Drives the month picker back to [monthsBack] months before today.
   Future<void> chooseMonthBack(WidgetTester tester, int monthsBack) async {
-    await tester.tap(find.text('Automatic'));
+    await tester.tap(find.text('Oldest unpaid first'));
     await tester.pumpAndSettle();
 
     // Opens on the year grid, so the year is chosen before the month.
@@ -206,7 +206,7 @@ void main() {
 
     expect(find.text(label), findsWidgets,
         reason: 'the summary names the month the money is for');
-    expect(find.text('Fee for this month *'), findsOneWidget,
+    expect(find.byKey(const Key('payment-month-fee')), findsOneWidget,
         reason: 'that month has no cycle, so this payment opens one and its price is '
             'the owner\'s to state — not silently today\'s fee');
     expect(
@@ -215,12 +215,12 @@ void main() {
     );
 
     await tester.enterText(
-        find.widgetWithText(TextFormField, 'Amount received *'), '2500');
+        find.byKey(const Key('payment-amount')), '2500');
     await tester.enterText(
-        find.widgetWithText(TextFormField, 'Fee for this month *'), '2500');
+        find.byKey(const Key('payment-month-fee')), '2500');
     await tester.pump();
 
-    await tapAndSettle(tester, find.text('Confirm Payment'));
+    await tapAndSettle(tester, find.byKey(const Key('confirm-payment')));
     expect(find.text('Payment recorded'), findsOneWidget);
 
     final cycles = await periodsForMember(db, memberId);
@@ -236,7 +236,7 @@ void main() {
   /// The text sitting in the "Fee for this month" box, if it is on screen.
   String feeFieldText(WidgetTester tester) => tester
       .widget<TextField>(find.descendant(
-        of: find.widgetWithText(TextFormField, 'Fee for this month *'),
+        of: find.byKey(const Key('payment-month-fee')),
         matching: find.byType(TextField),
       ))
       .controller!
@@ -279,12 +279,12 @@ void main() {
     await chooseMonthBack(tester, 10);
 
     await tester.enterText(
-        find.widgetWithText(TextFormField, 'Amount received *'), '1500');
+        find.byKey(const Key('payment-amount')), '1500');
     await tester.enterText(
-        find.widgetWithText(TextFormField, 'Fee for this month *'), '1500');
+        find.byKey(const Key('payment-month-fee')), '1500');
     await tester.pump();
 
-    await tapAndSettle(tester, find.text('Confirm Payment'));
+    await tapAndSettle(tester, find.byKey(const Key('confirm-payment')));
 
     expect(find.text('Payment recorded'), findsNothing);
     expect(find.textContaining('before their membership started'),
@@ -302,14 +302,14 @@ void main() {
     // second across the next month; a named month keeps all of it, and used
     // to say nothing.
     await tester.enterText(
-        find.widgetWithText(TextFormField, 'Amount received *'), '3000');
+        find.byKey(const Key('payment-amount')), '3000');
     await tester.enterText(
-        find.widgetWithText(TextFormField, 'Fee for this month *'), '1500');
+        find.byKey(const Key('payment-month-fee')), '1500');
     await tester.pump();
 
     expect(find.textContaining('Rs. 1,500 more than this month still owes'),
         findsOneWidget);
-    expect(find.textContaining('switch back to Automatic'), findsOneWidget);
+    expect(find.textContaining('switch back to Oldest unpaid first'), findsOneWidget);
   });
 
   testWidgets('a named month says nothing when the amount is what it owes',
@@ -318,23 +318,23 @@ void main() {
     await chooseMonthBack(tester, 4);
 
     await tester.enterText(
-        find.widgetWithText(TextFormField, 'Amount received *'), '1500');
+        find.byKey(const Key('payment-amount')), '1500');
     await tester.enterText(
-        find.widgetWithText(TextFormField, 'Fee for this month *'), '1500');
+        find.byKey(const Key('payment-month-fee')), '1500');
     await tester.pump();
 
     expect(find.textContaining('still owes'), findsNothing);
   });
 
-  testWidgets('clearing the month returns to Automatic', (tester) async {
+  testWidgets('clearing the month returns to oldest unpaid first', (tester) async {
     await openDialog(tester);
     await chooseMonthBack(tester, 4);
-    expect(find.text('Fee for this month *'), findsOneWidget);
+    expect(find.byKey(const Key('payment-month-fee')), findsOneWidget);
 
-    await tester.tap(find.byTooltip('Back to automatic'));
+    await tester.tap(find.byTooltip('Back to oldest unpaid'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Automatic'), findsOneWidget);
-    expect(find.text('Fee for this month *'), findsNothing);
+    expect(find.text('Oldest unpaid first'), findsOneWidget);
+    expect(find.byKey(const Key('payment-month-fee')), findsNothing);
   });
 }

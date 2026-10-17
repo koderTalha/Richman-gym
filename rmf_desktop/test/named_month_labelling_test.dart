@@ -127,7 +127,7 @@ void main() {
 
   /// Names the current month in the picker — September 2026.
   Future<void> chooseThisMonth(WidgetTester tester) async {
-    await tester.tap(find.text('Automatic'));
+    await tester.tap(find.text('Oldest unpaid first'));
     await tester.pumpAndSettle();
 
     await tester.tap(find.text('${DateTime.now().year}'));

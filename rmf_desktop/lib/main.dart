@@ -29,7 +29,9 @@ import 'services/receipt_storage.dart';
 import 'services/update/update_service.dart';
 import 'services/record_payment_service.dart';
 import 'services/startup_maintenance.dart';
+import 'bloc/branding_cubit.dart';
 import 'theme/app_theme.dart';
+import 'theme/branding_config.dart';
 import 'ui/app_shell.dart';
 import 'ui/first_run_password_screen.dart';
 import 'ui/login_screen.dart';
@@ -83,8 +85,12 @@ Future<Widget> _boot() async {
   await runStartupMaintenanceGuarded(db);
 
   // Read before the first frame so the app opens in the owner's chosen theme
-  // rather than flashing dark and correcting itself.
-  final theme = ThemeCubit.parse((await SettingsRepository(db).get()).themeMode);
+  // rather than flashing dark and correcting itself. One read serves both the
+  // light/dark mode and the brand colours — two queries here would be two
+  // chances to paint the wrong thing first.
+  final settingsRow = await SettingsRepository(db).get();
+  final theme = ThemeCubit.parse(settingsRow.themeMode);
+  final branding = SettingsRepository.brandingFrom(settingsRow);
 
   // Likewise for the session: restoring here means the dashboard is the first
   // thing painted, with no login form flashing past on the way.
@@ -114,6 +120,7 @@ Future<Widget> _boot() async {
   return RichManFitnessApp(
     db: db,
     initialTheme: theme,
+    initialBranding: branding,
     restoredUser: restored,
     version: version,
   );
@@ -161,12 +168,18 @@ class RichManFitnessApp extends StatelessWidget {
     super.key,
     required this.db,
     this.initialTheme = ThemeMode.dark,
+    this.initialBranding = const BrandingConfig(),
     this.restoredUser,
     this.version = AppVersion.unknown,
   });
 
   final AppDatabase db;
   final ThemeMode initialTheme;
+
+  /// The brand the app opens in. Defaults to the original crimson, so a test or
+  /// an embedder that does not supply one gets exactly what the app has always
+  /// looked like.
+  final BrandingConfig initialBranding;
 
   /// The version this copy was built as, for the update check.
   /// [AppVersion.unknown] disables checking rather than guessing.
@@ -268,6 +281,12 @@ class RichManFitnessApp extends StatelessWidget {
           BlocProvider(
             create: (_) => ThemeCubit(settings, initial: initialTheme),
           ),
+          // Likewise above MaterialApp: the Appearance screen previews a theme
+          // by repainting the whole app, which only works if the brand lives
+          // above the thing being repainted.
+          BlocProvider(
+            create: (_) => BrandingCubit(settings, initial: initialBranding),
+          ),
           // Above MaterialApp so the banner in the shell and the card in
           // Settings read one state machine. Checks on open, at most once a
           // day; a failure is a log line, not something on screen.
@@ -278,11 +297,16 @@ class RichManFitnessApp extends StatelessWidget {
           ),
         ],
         child: BlocBuilder<ThemeCubit, ThemeMode>(
-          builder: (context, themeMode) => MaterialApp(
+          builder: (context, themeMode) =>
+              BlocBuilder<BrandingCubit, BrandingState>(
+            // The draft, not the saved config: previewing a theme has to show
+            // the owner their real screens in the new brand before they commit
+            // to it.
+            builder: (context, brandingState) => MaterialApp(
             title: 'Rich Man Fitness',
             debugShowCheckedModeBanner: false,
-            theme: buildLightTheme(),
-            darkTheme: buildDarkTheme(),
+            theme: buildLightThemeFor(brandingState.draft),
+            darkTheme: buildDarkThemeFor(brandingState.draft),
             themeMode: themeMode,
             home: BlocBuilder<AuthBloc, AuthState>(
               builder: (context, state) {
@@ -292,6 +316,7 @@ class RichManFitnessApp extends StatelessWidget {
                 return state.isSignedIn ? const AppShell() : const LoginScreen();
               },
             ),
+          ),
           ),
         ),
       ),

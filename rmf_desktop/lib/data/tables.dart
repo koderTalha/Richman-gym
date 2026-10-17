@@ -177,6 +177,48 @@ class GymSettings extends Table {
   /// later needs no migration. Dark is the default the gym has been using.
   TextColumn get themeMode => text().withDefault(const Constant('dark'))();
 
+  // --- Appearance: brand preset, custom colours, receipt style -------------
+  //
+  // Every column here defaults to the look the gym already has, so updating
+  // the app repaints nothing. `richmanRed` is the crimson the owner has been
+  // staring at since the first release, and `classic` is the receipt layout
+  // every historical receipt was rendered with.
+
+  /// Which built-in brand preset is active, by id, or `custom` when the owner
+  /// has mixed their own. Text rather than an enum column so a release that
+  /// adds a preset cannot orphan a row written by a newer build the owner
+  /// rolled back from — an unknown id falls back to the default preset.
+  TextColumn get themePreset =>
+      text().withDefault(const Constant('richmanRed'))();
+
+  /// The owner's own colours, as `#RRGGBB`, used only while [themePreset] is
+  /// `custom`. Null means "never set one", which is why these are nullable
+  /// rather than defaulted: a half-filled custom theme must fall back to the
+  /// preset's value for that role, not to black.
+  TextColumn get customPrimary => text().nullable()();
+  TextColumn get customAccent => text().nullable()();
+  TextColumn get customBackground => text().nullable()();
+  TextColumn get customSidebar => text().nullable()();
+  TextColumn get customSurface => text().nullable()();
+  TextColumn get customTextPrimary => text().nullable()();
+
+  /// Which receipt layout new receipts are rendered with: `classic`, `modern`
+  /// or `minimal`. Only ever read when rendering a *new* receipt — the PNG and
+  /// PDF already on disk are never re-rendered, so changing this cannot alter
+  /// a receipt the gym has already sent a member.
+  TextColumn get receiptTemplate =>
+      text().withDefault(const Constant('classic'))();
+
+  /// Absolute paths to the gym's own photographs for the sign-in art panel and
+  /// the dashboard hero band, or null for the drawn brand artwork.
+  ///
+  /// Paths rather than blobs, like [logoPath] above and for the same reason:
+  /// the images are copied into the app's branding directory on upload, and a
+  /// multi-megabyte photograph in the settings row would be read back on every
+  /// query of a table the app touches constantly.
+  TextColumn get loginPhotoPath => text().nullable()();
+  TextColumn get dashboardPhotoPath => text().nullable()();
+
   /// When the app last asked GitHub whether a newer release exists. Null means
   /// never, which is what an install upgraded from an earlier version reads as.
   DateTimeColumn get lastUpdateCheckAt => dateTime().nullable()();
