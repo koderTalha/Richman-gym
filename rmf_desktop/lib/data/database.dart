@@ -40,7 +40,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 12;
+  int get schemaVersion => 14;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -166,6 +166,45 @@ class AppDatabase extends _$AppDatabase {
             await m.createTable(cyclePricings);
             await m.createTable(membershipChanges);
             await _backfillUnknownCyclePricing();
+          }
+
+          // v13 lets the owner rebrand the app: a colour preset (or their own
+          // colours), a logo, and which layout new receipts use.
+          //
+          // Purely additive and deliberately invisible. Nine columns are added
+          // to the settings singleton and nothing else is touched: no member,
+          // payment, cycle, receipt or audit row is read, altered or deleted,
+          // and no file on disk is rewritten. Every column carries a default
+          // that reproduces exactly what the gym sees today — `richmanRed` is
+          // the crimson this app has always used, `classic` is the receipt
+          // layout every existing receipt was rendered with, and the six
+          // custom colours start null, meaning "never set".
+          //
+          // So an install that updates and never opens Appearance looks and
+          // prints identically to the build it replaced. The logo reuses the
+          // `logo_path` column that has existed since v1 and was never
+          // populated, so there is no second place a logo can live.
+          if (from < 13) {
+            for (final column in [
+              gymSettings.themePreset,
+              gymSettings.customPrimary,
+              gymSettings.customAccent,
+              gymSettings.customBackground,
+              gymSettings.customSidebar,
+              gymSettings.customSurface,
+              gymSettings.customTextPrimary,
+              gymSettings.receiptTemplate,
+            ]) {
+              await m.addColumn(gymSettings, column);
+            }
+          }
+
+          // The owner's own photographs for the sign-in panel and the dashboard
+          // hero. Nullable with no default, so an install that upgrades keeps
+          // the drawn brand artwork until somebody chooses a picture.
+          if (from < 14) {
+            await m.addColumn(gymSettings, gymSettings.loginPhotoPath);
+            await m.addColumn(gymSettings, gymSettings.dashboardPhotoPath);
           }
         },
         beforeOpen: (details) async {

@@ -85,13 +85,12 @@ Future<bool> _confirm(BuildContext context, PaymentRow row) async {
       ),
       actions: [
         TextButton(
+          style: keepButtonStyleOf(dialogContext),
           onPressed: () => Navigator.of(dialogContext).pop(false),
           child: const Text('Keep it'),
         ),
         FilledButton(
-          style: FilledButton.styleFrom(
-            backgroundColor: dialogContext.palette.expired,
-          ),
+          style: dangerButtonStyleOf(dialogContext),
           onPressed: () => Navigator.of(dialogContext).pop(true),
           child: const Text('Delete payment'),
         ),

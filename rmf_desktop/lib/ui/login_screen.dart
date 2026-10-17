@@ -2,8 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../bloc/auth_bloc.dart';
+import '../bloc/branding_cubit.dart';
 import '../theme/app_theme.dart';
 import 'reset_password_screen.dart';
+import 'widgets/brand_photo.dart';
+import 'widgets/rotating_rings.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -62,8 +65,15 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // The handoff's split sign-in: brand art on the left, the form on a fixed
+    // 460 column on the right. Below 900 the art panel is dropped rather than
+    // squeezed — on a narrow window the form is the only part that matters.
     return Scaffold(
-      body: Center(
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          final wide = constraints.maxWidth >= 900;
+
+          final form = Center(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(24),
           child: ConstrainedBox(
@@ -74,19 +84,25 @@ class _LoginScreenState extends State<LoginScreen> {
 
                 return Column(
                   mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    const _Wordmark(),
-                    const SizedBox(height: 8),
-                    Text('Admin sign in', style: mutedStyleOf(context)),
-                    const SizedBox(height: 28),
-                    Container(
-                      padding: const EdgeInsets.all(24),
-                      decoration: BoxDecoration(
-                        color: context.palette.surfaceRaised,
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: context.palette.border),
+                    if (!wide) ...[
+                      const _Wordmark(),
+                      const SizedBox(height: 20),
+                    ],
+                    Text(
+                      'Welcome back',
+                      style: TextStyle(
+                        fontSize: 28,
+                        fontWeight: FontWeight.w500,
+                        color: context.palette.textPrimary,
                       ),
-                      child: Form(
+                    ),
+                    const SizedBox(height: 6),
+                    Text('Sign in to manage members and payments.',
+                        style: mutedStyleOf(context)),
+                    const SizedBox(height: 24),
+                    Form(
                         key: _formKey,
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -164,7 +180,6 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                           ],
                         ),
-                      ),
                     ),
                     const SizedBox(height: 20),
                     Text(
@@ -177,6 +192,82 @@ class _LoginScreenState extends State<LoginScreen> {
             ),
           ),
         ),
+          );
+
+          if (!wide) return form;
+
+          return Row(
+            children: [
+              const Expanded(flex: 2, child: _BrandPanel()),
+              SizedBox(width: 460, child: form),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+/// The art half of the sign-in screen.
+///
+/// A radial wash in the gym's own brand colours with the slowly rotating ring
+/// motif from the handoff, the wordmark and the gym's address in the corner.
+/// The gym's own photograph sits behind all of it once the owner sets one in
+/// Appearance; until then the drawn artwork is the finished look rather than an
+/// empty slot.
+class _BrandPanel extends StatelessWidget {
+  const _BrandPanel();
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.palette;
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: RadialGradient(
+          center: const Alignment(-0.4, -0.2),
+          radius: 1.2,
+          colors: [
+            Color.lerp(palette.surfaceRaised, palette.accent, 0.08)!,
+            palette.surfaceBase,
+          ],
+        ),
+      ),
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          // Behind the rings and the wordmark: the photograph is the backdrop,
+          // not a layer competing with the brand marks drawn on top of it.
+          BlocBuilder<BrandingCubit, BrandingState>(
+            buildWhen: (a, b) =>
+                a.draft.loginPhotoPath != b.draft.loginPhotoPath,
+            builder: (context, state) => BrandPhoto(
+              path: state.draft.loginPhotoPath,
+              slot: BrandPhotoSlot.login,
+            ),
+          ),
+          const Positioned(
+            left: -120,
+            bottom: -160,
+            child: RotatingRings(size: 620),
+          ),
+          Positioned(
+            left: 40,
+            bottom: 40,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const _Wordmark(),
+                const SizedBox(height: 8),
+                Text(
+                  'Block Broadway, Paragon City, Lahore',
+                  style: TextStyle(fontSize: 12, color: palette.textMuted),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -6,14 +6,19 @@ import '../../bloc/settings_bloc.dart';
 import '../../data/database.dart';
 import '../../data/settings_repository.dart';
 import '../../domain/money.dart';
+import '../../domain/receipt_number.dart';
 import '../../domain/reminder_schedule.dart';
 import '../../services/historical_pricing_review.dart';
 import '../../theme/app_theme.dart';
+import '../app_shell.dart' show ShellNavigator;
+import '../widgets/page_scaffold.dart';
+import '../widgets/segmented_filter.dart';
 import 'backup_card.dart';
 import 'delete_members_card.dart';
 import 'historical_review_screen.dart';
 import 'plan_price_change_dialog.dart';
 import 'send_to_developer_card.dart';
+import 'unsaved_changes.dart';
 import 'update_card.dart';
 
 class SettingsScreen extends StatelessWidget {
@@ -29,8 +34,81 @@ class SettingsScreen extends StatelessWidget {
   }
 }
 
-class _SettingsView extends StatelessWidget {
+/// Which group of settings is showing.
+enum _SettingsTab { gym, account, whatsapp, data }
+
+class _SettingsView extends StatefulWidget {
   const _SettingsView();
+
+  @override
+  State<_SettingsView> createState() => _SettingsViewState();
+}
+
+class _SettingsViewState extends State<_SettingsView> {
+  _SettingsTab _tab = _SettingsTab.gym;
+
+  /// Every tab the owner has opened this visit. Those stay built (offstage)
+  /// after the owner moves on, so edits typed on one tab are still there —
+  /// and still counted by the save bar — after looking at another. Tabs never
+  /// opened are never built, so the Data tab's look-ups only run if wanted.
+  final _visited = <_SettingsTab>{_SettingsTab.gym};
+
+  /// Which forms on this screen have edits the owner has not kept. Owned here
+  /// rather than by each card, because the handoff's save bar is one bar for
+  /// the whole screen.
+  final _unsaved = UnsavedChanges();
+
+  ShellNavigator? _shell;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final shell = ShellNavigator.read(context);
+    if (!identical(shell, _shell)) {
+      _shell = shell;
+      shell?.setLeaveGuard(_confirmLeave);
+    }
+  }
+
+  @override
+  void dispose() {
+    _shell?.setLeaveGuard(null);
+    _unsaved.dispose();
+    super.dispose();
+  }
+
+  /// Asked by the shell before a sidebar click or a Reload replaces this
+  /// screen. Unsaved edits are only lost if the owner says so.
+  ///
+  /// There is no "Save and leave": the settings bloc belongs to this screen,
+  /// so a save dispatched as the screen is torn down could be closed before it
+  /// finishes. Keep editing, then Save, is the one path that cannot lose work.
+  Future<bool> _confirmLeave() async {
+    if (!_unsaved.isDirty) return true;
+
+    final discard = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Discard unsaved changes?'),
+        content: const Text(
+            'You have changed settings that are not saved yet. Leaving now '
+            'throws those changes away.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Keep editing'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Discard changes'),
+          ),
+        ],
+      ),
+    );
+    if (discard != true) return false;
+    _unsaved.discardAll();
+    return true;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -44,53 +122,105 @@ class _SettingsView extends StatelessWidget {
             return const Center(child: CircularProgressIndicator());
           }
 
-          return SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
+          // One _Card builder, passed to the cards that take one.
+          Widget card({required String title, String? subtitle,
+              required Widget child}) =>
+              _Card(title: title, subtitle: subtitle, child: child);
+
+          // Nine cards in one scroll meant the owner hunting for WhatsApp
+          // credentials scrolled past the button that deletes every member.
+          // Grouping them also matches the handoff's tabbed Settings.
+          final tabs = <_SettingsTab, List<Widget>>{
+            _SettingsTab.gym: [
+              _GymInfoCard(settings: state.settings!),
+              _PlansCard(plans: state.plans),
+            ],
+            _SettingsTab.account: [
+              const _AccountCard(),
+              UpdateCard(card: card),
+            ],
+            _SettingsTab.whatsapp: [
+              _WhatsAppCard(settings: state.settings!, state: state),
+              _ReminderCard(settings: state.settings!),
+            ],
+            _SettingsTab.data: [
+              BackupCard(card: card),
+              _HistoricalReviewCard(card: card),
+              SendToDeveloperCard(card: card),
+              // Last on the page on purpose: nothing below it to scroll to,
+              // so it is never the thing under the cursor on the way to
+              // somewhere else.
+              DeleteMembersCard(card: card),
+            ],
+          };
+
+          return UnsavedChangesScope(
+            changes: _unsaved,
+            child: Stack(
               children: [
-                Text('Settings',
-                    style: TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.bold,
-                        color: context.palette.textPrimary)),
-                const SizedBox(height: 20),
-                _GymInfoCard(settings: state.settings!),
-                const SizedBox(height: 16),
-                const _AccountCard(),
-                const SizedBox(height: 16),
-                _WhatsAppCard(settings: state.settings!, state: state),
-                const SizedBox(height: 16),
-                _ReminderCard(settings: state.settings!),
-                const SizedBox(height: 16),
-                _PlansCard(plans: state.plans),
-                const SizedBox(height: 16),
-                _HistoricalReviewCard(
-                  card: ({required title, subtitle, required child}) =>
-                      _Card(title: title, subtitle: subtitle, child: child),
+                PageScaffold(
+            title: 'Settings',
+            subtitle: const Text(
+                'Gym details, your account, and how receipts reach members.'),
+            children: [
+              SegmentedFilter<_SettingsTab>(
+                selected: _tab,
+                onSelect: (t) => setState(() {
+                  _tab = t;
+                  _visited.add(t);
+                }),
+                options: const [
+                  SegmentOption(
+                      value: _SettingsTab.gym,
+                      label: 'Gym details',
+                      icon: Icons.storefront_outlined),
+                  SegmentOption(
+                      value: _SettingsTab.account,
+                      label: 'Account',
+                      icon: Icons.person_outline),
+                  SegmentOption(
+                      value: _SettingsTab.whatsapp,
+                      label: 'WhatsApp',
+                      icon: Icons.chat_outlined),
+                  SegmentOption(
+                      value: _SettingsTab.data,
+                      label: 'Data',
+                      icon: Icons.inventory_2_outlined),
+                ],
+              ),
+              const SizedBox(height: 18),
+              // Not an AnimatedSwitcher: that disposes the tab being left, and
+              // with it any edits the owner had not saved yet. Visited tabs
+              // stay mounted but offstage; the one showing fades in.
+              for (final tab in _SettingsTab.values)
+                if (_visited.contains(tab))
+                  Visibility(
+                    visible: tab == _tab,
+                    maintainState: true,
+                    child: AnimatedOpacity(
+                      opacity: tab == _tab ? 1 : 0,
+                      duration: const Duration(milliseconds: 250),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          for (var i = 0; i < tabs[tab]!.length; i++) ...[
+                            if (i > 0) const SizedBox(height: 16),
+                            tabs[tab]![i],
+                          ],
+                        ],
+                      ),
+                    ),
+                  ),
+              // Room for the save bar to float over without covering the last
+              // card's controls.
+              const SizedBox(height: 72),
+            ],
                 ),
-                const SizedBox(height: 16),
-                BackupCard(
-                  card: ({required title, subtitle, required child}) =>
-                      _Card(title: title, subtitle: subtitle, child: child),
-                ),
-                const SizedBox(height: 16),
-                UpdateCard(
-                  card: ({required title, subtitle, required child}) =>
-                      _Card(title: title, subtitle: subtitle, child: child),
-                ),
-                const SizedBox(height: 16),
-                SendToDeveloperCard(
-                  card: ({required title, subtitle, required child}) =>
-                      _Card(title: title, subtitle: subtitle, child: child),
-                ),
-                const SizedBox(height: 16),
-                // Last on the page on purpose: nothing below it to scroll to,
-                // so it is never the thing under the cursor on the way to
-                // somewhere else.
-                DeleteMembersCard(
-                  card: ({required title, subtitle, required child}) =>
-                      _Card(title: title, subtitle: subtitle, child: child),
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  child: UnsavedChangesBar(changes: _unsaved),
                 ),
               ],
             ),
@@ -145,7 +275,8 @@ class _GymInfoCard extends StatefulWidget {
   State<_GymInfoCard> createState() => _GymInfoCardState();
 }
 
-class _GymInfoCardState extends State<_GymInfoCard> {
+class _GymInfoCardState extends State<_GymInfoCard>
+    with ReportsUnsavedChanges<_GymInfoCard> {
   late final _name = TextEditingController(text: widget.settings.gymName);
   late final _phone = TextEditingController(text: widget.settings.phone ?? '');
   late final _address =
@@ -154,6 +285,76 @@ class _GymInfoCardState extends State<_GymInfoCard> {
       TextEditingController(text: widget.settings.receiptPrefix);
   late final _footer =
       TextEditingController(text: widget.settings.receiptFooterMessage);
+
+  /// The sequence the next receipt this year will carry, once read. Shown with
+  /// whatever prefix is typed, so the owner sees the real number a change of
+  /// prefix will produce before saving it.
+  int? _nextSequence;
+
+  @override
+  void initState() {
+    super.initState();
+    context
+        .read<SettingsRepository>()
+        .nextReceiptSequence(DateTime.now().year)
+        .then((n) {
+      if (mounted) setState(() => _nextSequence = n);
+    }).catchError((Object _) {
+      // A preview only; the field still works without it.
+    });
+  }
+
+  String? _nextReceiptPreview() {
+    final prefix = _prefix.text.trim();
+    if (prefix.isEmpty) return 'A prefix is required';
+    final sequence = _nextSequence;
+    if (sequence == null) return null;
+    return 'Next receipt: '
+        '${formatReceiptNumber(prefix, DateTime.now().year, sequence)}';
+  }
+
+  @override
+  List<Listenable> get watchedFields =>
+      [_name, _phone, _address, _prefix, _footer];
+
+  /// Compared trimmed and with blanks as null, exactly as [save] would store
+  /// them — otherwise a stray trailing space would light the bar up for an
+  /// edit that saves as no change at all.
+  @override
+  bool get isDirty {
+    final s = widget.settings;
+    return _name.text.trim() != s.gymName ||
+        _blank(_phone.text) != s.phone ||
+        _blank(_address.text) != s.address ||
+        _prefix.text.trim() != s.receiptPrefix ||
+        _footer.text.trim() != s.receiptFooterMessage;
+  }
+
+  /// A receipt with no gym name or no prefix is not a receipt.
+  @override
+  bool get canSave =>
+      _name.text.trim().isNotEmpty && _prefix.text.trim().isNotEmpty;
+
+  @override
+  void save() => context.read<SettingsBloc>().add(
+        GymInfoSaved(
+          gymName: _name.text.trim(),
+          phone: _blank(_phone.text),
+          address: _blank(_address.text),
+          receiptPrefix: _prefix.text.trim(),
+          receiptFooter: _footer.text.trim(),
+        ),
+      );
+
+  @override
+  void discard() {
+    final s = widget.settings;
+    _name.text = s.gymName;
+    _phone.text = s.phone ?? '';
+    _address.text = s.address ?? '';
+    _prefix.text = s.receiptPrefix;
+    _footer.text = s.receiptFooterMessage;
+  }
 
   @override
   void dispose() {
@@ -191,13 +392,18 @@ class _GymInfoCardState extends State<_GymInfoCard> {
           const SizedBox(height: 14),
           Row(children: [
             SizedBox(
-              width: 160,
-              child: TextField(
-                controller: _prefix,
-                decoration: const InputDecoration(
+              // Wide enough for the live "Next receipt: …" line underneath.
+              width: 240,
+              child: ListenableBuilder(
+                listenable: _prefix,
+                builder: (context, _) => TextField(
+                  controller: _prefix,
+                  decoration: InputDecoration(
                     labelText: 'Receipt prefix',
-                    helperText: 'e.g. RMF-2026-000184',
-                    isDense: true),
+                    helperText: _nextReceiptPreview(),
+                    isDense: true,
+                  ),
+                ),
               ),
             ),
             const SizedBox(width: 14),
@@ -207,22 +413,8 @@ class _GymInfoCardState extends State<_GymInfoCard> {
                     decoration: const InputDecoration(
                         labelText: 'Receipt footer message', isDense: true))),
           ]),
-          const SizedBox(height: 18),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: FilledButton(
-              onPressed: () => context.read<SettingsBloc>().add(
-                    GymInfoSaved(
-                      gymName: _name.text.trim(),
-                      phone: _blank(_phone.text),
-                      address: _blank(_address.text),
-                      receiptPrefix: _prefix.text.trim(),
-                      receiptFooter: _footer.text.trim(),
-                    ),
-                  ),
-              child: const Text('Save gym details'),
-            ),
-          ),
+          // No save button: edits here raise the screen's "unsaved changes"
+          // bar, which saves every section at once.
         ],
       ),
     );
@@ -240,7 +432,8 @@ class _WhatsAppCard extends StatefulWidget {
   State<_WhatsAppCard> createState() => _WhatsAppCardState();
 }
 
-class _WhatsAppCardState extends State<_WhatsAppCard> {
+class _WhatsAppCardState extends State<_WhatsAppCard>
+    with ReportsUnsavedChanges<_WhatsAppCard> {
   late WhatsAppProviderKind _provider = widget.settings.whatsappProvider;
   late bool _mockFails = widget.settings.whatsappMockFails;
   late final _phoneNumberId =
@@ -281,7 +474,58 @@ class _WhatsAppCardState extends State<_WhatsAppCard> {
 
   String? _blank(String v) => v.trim().isEmpty ? null : v.trim();
 
-  void _save() => context.read<SettingsBloc>().add(
+  @override
+  List<Listenable> get watchedFields => [
+        _phoneNumberId,
+        _token,
+        _businessAccountId,
+        _businessNumber,
+        _receiptTemplate,
+        _templateLanguage,
+        _welcomeTemplate,
+        _welcomeTemplateLanguage,
+      ];
+
+  /// Compared the way [save] would store each field — including the fallbacks
+  /// for an emptied template name — so the bar only appears for an edit that
+  /// would actually change what is saved.
+  @override
+  bool get isDirty {
+    final s = widget.settings;
+    return _provider != s.whatsappProvider ||
+        _mockFails != s.whatsappMockFails ||
+        _blank(_phoneNumberId.text) != s.whatsappPhoneNumberId ||
+        _blank(_token.text) != s.whatsappAccessToken ||
+        _blank(_businessAccountId.text) != s.whatsappBusinessAccountId ||
+        _blank(_businessNumber.text) != s.whatsappBusinessNumber ||
+        (_blank(_receiptTemplate.text) ?? 'payment_receipt') !=
+            s.whatsappReceiptTemplate ||
+        (_blank(_templateLanguage.text) ?? 'en') !=
+            s.whatsappReceiptTemplateLanguage ||
+        _blank(_welcomeTemplate.text) != s.whatsappWelcomeTemplate ||
+        (_blank(_welcomeTemplateLanguage.text) ?? 'en') !=
+            s.whatsappWelcomeTemplateLanguage;
+  }
+
+  @override
+  void discard() {
+    final s = widget.settings;
+    setState(() {
+      _provider = s.whatsappProvider;
+      _mockFails = s.whatsappMockFails;
+    });
+    _phoneNumberId.text = s.whatsappPhoneNumberId ?? '';
+    _token.text = s.whatsappAccessToken ?? '';
+    _businessAccountId.text = s.whatsappBusinessAccountId ?? '';
+    _businessNumber.text = s.whatsappBusinessNumber ?? '';
+    _receiptTemplate.text = s.whatsappReceiptTemplate;
+    _templateLanguage.text = s.whatsappReceiptTemplateLanguage;
+    _welcomeTemplate.text = s.whatsappWelcomeTemplate ?? '';
+    _welcomeTemplateLanguage.text = s.whatsappWelcomeTemplateLanguage;
+  }
+
+  @override
+  void save() => context.read<SettingsBloc>().add(
         WhatsAppSettingsSaved(
           provider: _provider,
           mockFails: _mockFails,
@@ -328,7 +572,10 @@ class _WhatsAppCardState extends State<_WhatsAppCard> {
                   ? WhatsAppProviderKind.mock
                   : _provider
             },
-            onSelectionChanged: (s) => setState(() => _provider = s.first),
+            onSelectionChanged: (s) {
+              setState(() => _provider = s.first);
+              reportUnsaved();
+            },
           ),
           const SizedBox(height: 16),
           if (isMeta) ...[
@@ -500,7 +747,10 @@ class _WhatsAppCardState extends State<_WhatsAppCard> {
             const SizedBox(height: 10),
             CheckboxListTile(
               value: _mockFails,
-              onChanged: (v) => setState(() => _mockFails = v ?? false),
+              onChanged: (v) {
+                setState(() => _mockFails = v ?? false);
+                reportUnsaved();
+              },
               controlAffinity: ListTileControlAffinity.leading,
               activeColor: context.palette.accent,
               dense: true,
@@ -509,14 +759,7 @@ class _WhatsAppCardState extends State<_WhatsAppCard> {
                   style: TextStyle(fontSize: 13, color: context.palette.textPrimary)),
             ),
           ],
-          const SizedBox(height: 18),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: FilledButton(
-              onPressed: _save,
-              child: const Text('Save WhatsApp settings'),
-            ),
-          ),
+          // Saved through the screen's "unsaved changes" bar.
         ],
       ),
     );
@@ -546,6 +789,10 @@ class _AccountCardState extends State<_AccountCard> {
     _confirm.dispose();
     super.dispose();
   }
+
+  bool get _longEnough => _next.text.length >= 8;
+  bool get _matches => _confirm.text.isNotEmpty && _confirm.text == _next.text;
+  bool get _ready => _current.text.isNotEmpty && _longEnough && _matches;
 
   void _submit() {
     if (!_formKey.currentState!.validate()) return;
@@ -602,7 +849,6 @@ class _AccountCardState extends State<_AccountCard> {
                       obscureText: !_show,
                       decoration: const InputDecoration(
                         labelText: 'New password',
-                        helperText: 'At least 8 characters',
                         isDense: true,
                       ),
                       validator: (v) => (v == null || v.length < 8)
@@ -622,6 +868,21 @@ class _AccountCardState extends State<_AccountCard> {
                     ),
                   ),
                 ]),
+                const SizedBox(height: 10),
+                // The rules tick themselves off as the owner types, rather than
+                // appearing as errors only after Change password is pressed.
+                ListenableBuilder(
+                  listenable: Listenable.merge([_next, _confirm]),
+                  builder: (context, _) => Wrap(
+                    spacing: 20,
+                    runSpacing: 6,
+                    children: [
+                      _PasswordRule(
+                          met: _longEnough, label: 'At least 8 characters'),
+                      _PasswordRule(met: _matches, label: 'Passwords match'),
+                    ],
+                  ),
+                ),
                 if (state.passwordError != null) ...[
                   const SizedBox(height: 12),
                   Container(
@@ -638,9 +899,16 @@ class _AccountCardState extends State<_AccountCard> {
                 const SizedBox(height: 18),
                 Align(
                   alignment: Alignment.centerLeft,
-                  child: FilledButton(
-                    onPressed: _submit,
-                    child: const Text('Change password'),
+                  child: ListenableBuilder(
+                    listenable: Listenable.merge([_current, _next, _confirm]),
+                    // Outlined, per the handoff: no solid accent buttons.
+                    // Disabled until the rules above are met, so pressing it
+                    // can only fail for a reason the screen could not know —
+                    // a wrong current password.
+                    builder: (context, _) => AccentButton(
+                      label: 'Change password',
+                      onPressed: _ready ? _submit : null,
+                    ),
                   ),
                 ),
               ],
@@ -648,6 +916,30 @@ class _AccountCardState extends State<_AccountCard> {
           ),
         );
       },
+    );
+  }
+}
+
+/// One live password rule: a hollow dot until it is met, then a green tick.
+class _PasswordRule extends StatelessWidget {
+  const _PasswordRule({required this.met, required this.label});
+
+  final bool met;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.palette;
+    final colour = met ? palette.paid : palette.textMuted;
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(met ? Icons.check : Icons.radio_button_unchecked,
+            size: met ? 14 : 10, color: colour),
+        const SizedBox(width: 6),
+        Text(label, style: TextStyle(fontSize: 12, color: colour)),
+      ],
     );
   }
 }
@@ -941,7 +1233,8 @@ class _ReminderCard extends StatefulWidget {
   State<_ReminderCard> createState() => _ReminderCardState();
 }
 
-class _ReminderCardState extends State<_ReminderCard> {
+class _ReminderCardState extends State<_ReminderCard>
+    with ReportsUnsavedChanges<_ReminderCard> {
   late bool _autoSend = widget.settings.reminderAutoSend;
   late bool _onDueDate = widget.settings.reminderOnDueDate;
   late int _fromHour = widget.settings.reminderSendFromHour;
@@ -977,7 +1270,62 @@ class _ReminderCardState extends State<_ReminderCard> {
 
   String? _blank(String v) => v.trim().isEmpty ? null : v.trim();
 
-  void _save() => context.read<SettingsBloc>().add(
+  @override
+  List<Listenable> get watchedFields => [
+        _daysBefore,
+        _daysAfter,
+        _maxPerRun,
+        _template,
+        _templateLanguage,
+        _instructions,
+      ];
+
+  /// Compared after the same normalisation [save] applies, so retyping "3,1"
+  /// as "1, 3" — the same schedule — does not count as a change.
+  @override
+  bool get isDirty {
+    final s = widget.settings;
+    return _autoSend != s.reminderAutoSend ||
+        _onDueDate != s.reminderOnDueDate ||
+        _fromHour != s.reminderSendFromHour ||
+        _untilHour != s.reminderSendUntilHour ||
+        formatOffsetDays(parseOffsetDays(_daysBefore.text)) !=
+            formatOffsetDays(parseOffsetDays(s.reminderDaysBefore)) ||
+        formatOffsetDays(parseOffsetDays(_daysAfter.text)) !=
+            formatOffsetDays(parseOffsetDays(s.reminderDaysAfter)) ||
+        (int.tryParse(_maxPerRun.text.trim()) ?? 25) != s.reminderMaxPerRun ||
+        _blank(_template.text) != s.whatsappReminderTemplate ||
+        (_blank(_templateLanguage.text) ?? 'en') !=
+            s.whatsappReminderTemplateLanguage ||
+        _blank(_instructions.text) != s.paymentInstructions;
+  }
+
+  @override
+  void discard() {
+    final s = widget.settings;
+    setState(() {
+      _autoSend = s.reminderAutoSend;
+      _onDueDate = s.reminderOnDueDate;
+      _fromHour = s.reminderSendFromHour;
+      _untilHour = s.reminderSendUntilHour;
+    });
+    _daysBefore.text = s.reminderDaysBefore;
+    _daysAfter.text = s.reminderDaysAfter;
+    _maxPerRun.text = s.reminderMaxPerRun.toString();
+    _template.text = s.whatsappReminderTemplate ?? '';
+    _templateLanguage.text = s.whatsappReminderTemplateLanguage;
+    _instructions.text = s.paymentInstructions ?? '';
+  }
+
+  /// For the switches and dropdowns, which live in state rather than in a
+  /// text controller and so are not seen by [watchedFields].
+  void _changed(VoidCallback change) {
+    setState(change);
+    reportUnsaved();
+  }
+
+  @override
+  void save() => context.read<SettingsBloc>().add(
         ReminderSettingsSaved(
           autoSend: _autoSend,
           // Normalised through the same parser the schedule reads them with,
@@ -1006,7 +1354,7 @@ class _ReminderCardState extends State<_ReminderCard> {
         children: [
           SwitchListTile(
             value: _autoSend,
-            onChanged: (v) => setState(() => _autoSend = v),
+            onChanged: (v) => _changed(() => _autoSend = v),
             contentPadding: EdgeInsets.zero,
             activeThumbColor: context.palette.accent,
             title: Text('Send reminders automatically',
@@ -1048,7 +1396,7 @@ class _ReminderCardState extends State<_ReminderCard> {
           const SizedBox(height: 8),
           CheckboxListTile(
             value: _onDueDate,
-            onChanged: (v) => setState(() => _onDueDate = v ?? true),
+            onChanged: (v) => _changed(() => _onDueDate = v ?? true),
             contentPadding: EdgeInsets.zero,
             controlAffinity: ListTileControlAffinity.leading,
             activeColor: context.palette.accent,
@@ -1069,7 +1417,7 @@ class _ReminderCardState extends State<_ReminderCard> {
                     for (var h = 0; h < 24; h++)
                       DropdownMenuItem(value: h, child: Text(_hourLabel(h))),
                   ],
-                  onChanged: (v) => setState(() => _fromHour = v ?? _fromHour),
+                  onChanged: (v) => _changed(() => _fromHour = v ?? _fromHour),
                 ),
               ),
               const SizedBox(width: 14),
@@ -1083,7 +1431,7 @@ class _ReminderCardState extends State<_ReminderCard> {
                       DropdownMenuItem(value: h, child: Text(_hourLabel(h))),
                   ],
                   onChanged: (v) =>
-                      setState(() => _untilHour = v ?? _untilHour),
+                      _changed(() => _untilHour = v ?? _untilHour),
                 ),
               ),
               const SizedBox(width: 14),
@@ -1151,14 +1499,7 @@ class _ReminderCardState extends State<_ReminderCard> {
               isDense: true,
             ),
           ),
-          const SizedBox(height: 18),
-          Align(
-            alignment: Alignment.centerRight,
-            child: FilledButton(
-              onPressed: _save,
-              child: const Text('Save reminder settings'),
-            ),
-          ),
+          // Saved through the screen's "unsaved changes" bar.
         ],
       ),
     );

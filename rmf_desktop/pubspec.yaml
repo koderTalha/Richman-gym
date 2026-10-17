@@ -118,6 +118,26 @@ flutter:
   # the material Icons class.
   uses-material-design: true
 
+  # Inter, bundled rather than fetched: the theme has always asked for it, but
+  # with no font shipped Flutter silently fell back to the system face. The
+  # app runs offline at a gym counter, so the files ship with it. Static
+  # weights rather than the variable font, because Flutter does not map
+  # FontWeight onto a variable font's weight axis by itself. Licence (SIL OFL
+  # 1.1) is alongside in assets/fonts/Inter-LICENSE.txt.
+  fonts:
+    - family: Inter
+      fonts:
+        - asset: assets/fonts/Inter-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/Inter-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/Inter-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/Inter-Bold.ttf
+          weight: 700
+        - asset: assets/fonts/Inter-ExtraBold.ttf
+          weight: 800
+
   # To add assets to your application, add an assets section, like this:
   # assets:
   #   - images/a_dot_burr.jpeg

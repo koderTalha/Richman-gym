@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:rich_man_fitness/bloc/auth_bloc.dart';
+import 'package:rich_man_fitness/bloc/branding_cubit.dart';
 import 'package:rich_man_fitness/bloc/theme_cubit.dart';
 import 'package:rich_man_fitness/bloc/update_bloc.dart';
 import 'package:rich_man_fitness/data/audit_repository.dart';
@@ -18,7 +19,10 @@ import 'package:rich_man_fitness/services/reminder_service.dart';
 import 'package:rich_man_fitness/services/update/update_service.dart';
 import 'package:rich_man_fitness/services/whatsapp/whatsapp_client.dart';
 import 'package:rich_man_fitness/theme/app_theme.dart';
+import 'package:rich_man_fitness/theme/branding_config.dart';
 import 'package:rich_man_fitness/ui/app_shell.dart';
+
+import 'support/still_motion.dart';
 
 class _Client implements WhatsAppClient {
   final sent = <WhatsAppTemplateInput>[];
@@ -106,6 +110,11 @@ void main() {
               create: (_) => AuthBloc(db, restored: admin)),
           BlocProvider<ThemeCubit>(
               create: (_) => ThemeCubit(SettingsRepository(db))),
+          // The sidebar reads the branding to decide whether to draw a logo.
+          BlocProvider<BrandingCubit>(
+            create: (_) => BrandingCubit(SettingsRepository(db),
+                initial: const BrandingConfig()),
+          ),
           BlocProvider<UpdateBloc>(
             create: (_) => UpdateBloc(UpdateService(
               db: db,
@@ -114,7 +123,13 @@ void main() {
             )),
           ),
         ],
-        child: MaterialApp(theme: buildDarkTheme(), home: const AppShell()),
+        child: MaterialApp(
+          theme: buildDarkTheme(),
+          // The dashboard's rings turn forever; without this pumpAndSettle
+          // never returns. See test/support/still_motion.dart.
+          builder: stillMotion,
+          home: const AppShell(),
+        ),
       ),
     ));
     await tester.pumpAndSettle();

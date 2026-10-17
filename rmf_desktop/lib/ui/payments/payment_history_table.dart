@@ -34,6 +34,7 @@ class PaymentHistoryTable extends StatelessWidget {
     this.showMember = true,
     this.emptyMessage = 'No payments recorded yet.',
     this.onMutated,
+    this.highlightIds = const {},
   });
 
   final List<PaymentRow> rows;
@@ -47,6 +48,10 @@ class PaymentHistoryTable extends StatelessWidget {
   final VoidCallback? onMutated;
 
   bool get _showActions => onMutated != null;
+
+  /// Payments to draw with a brand tint that fades out — the ones just
+  /// recorded, so the owner's eye lands on the row their action produced.
+  final Set<int> highlightIds;
 
   @override
   Widget build(BuildContext context) {
@@ -97,95 +102,99 @@ class PaymentHistoryTable extends StatelessWidget {
             separatorBuilder: (_, _) => const Divider(height: 1),
             itemBuilder: (context, i) {
               final row = rows[i];
-              return Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                child: Row(
-                  children: [
-                    Expanded(
-                      flex: 2,
-                      child: Text(
-                        row.receipt?.receiptNumber ?? '—',
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontFamily: 'monospace',
-                          color: row.receipt == null
-                              ? context.palette.textHint
-                              : context.palette.accentText,
-                        ),
-                      ),
-                    ),
-                    if (showMember)
+              return _FadingHighlight(
+                key: ValueKey(row.payment.id),
+                active: highlightIds.contains(row.payment.id),
+                child: Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  child: Row(
+                    children: [
                       Expanded(
-                        flex: 3,
+                        flex: 2,
                         child: Text(
-                          row.member.fullName,
+                          row.receipt?.receiptNumber ?? '—',
                           style: TextStyle(
-                              fontSize: 13, color: context.palette.textPrimary),
-                        ),
-                      ),
-                    Expanded(
-                      flex: 2,
-                      child: Row(
-                        children: [
-                          // Every month the payment paid for, which for money
-                          // taken months ahead is a span longer than the
-                          // column: the tooltip keeps the whole of it
-                          // readable where the ellipsis cuts it off.
-                          Flexible(
-                            child: Tooltip(
-                              message: row.periodLabel,
-                              child: Text(row.periodLabel,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                      fontSize: 13,
-                                      color: context.palette.textSecondary)),
-                            ),
+                            fontSize: 12,
+                            fontFamily: 'monospace',
+                            color: row.receipt == null
+                                ? context.palette.textHint
+                                : context.palette.accentText,
                           ),
-                          // Beside the period rather than beside the date, so
-                          // the answer sits next to the question: this is the
-                          // cycle the money bought, and this is why its date
-                          // looks wrong.
-                          if (row.timing.isNoteworthy) ...[
-                            const SizedBox(width: 6),
-                            PaymentTimingBadge(timing: row.timing),
-                          ],
-                        ],
-                      ),
-                    ),
-                    Expanded(
-                      flex: 2,
-                      child: Text(
-                        formatMinorUnits(row.payment.amountMinor),
-                        style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w500,
-                            color: context.palette.textPrimary),
-                      ),
-                    ),
-                    Expanded(
-                      flex: 2,
-                      child: Text(paymentMethodLabel(row.payment.method),
-                          style: mutedStyleOf(context)),
-                    ),
-                    Expanded(
-                      flex: 2,
-                      child: Text(formatShortDate(row.payment.paymentDate),
-                          style: mutedStyleOf(context)),
-                    ),
-                    SizedBox(
-                      width: 100,
-                      child: WhatsAppStatusBadge(status: row.whatsAppStatus),
-                    ),
-                    if (_showActions)
-                      SizedBox(
-                        width: 40,
-                        child: _RowActions(
-                          row: row,
-                          onMutated: onMutated!,
                         ),
                       ),
-                  ],
+                      if (showMember)
+                        Expanded(
+                          flex: 3,
+                          child: Text(
+                            row.member.fullName,
+                            style: TextStyle(
+                                fontSize: 13, color: context.palette.textPrimary),
+                          ),
+                        ),
+                      Expanded(
+                        flex: 2,
+                        child: Row(
+                          children: [
+                            // Every month the payment paid for, which for money
+                            // taken months ahead is a span longer than the
+                            // column: the tooltip keeps the whole of it
+                            // readable where the ellipsis cuts it off.
+                            Flexible(
+                              child: Tooltip(
+                                message: row.periodLabel,
+                                child: Text(row.periodLabel,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                        fontSize: 13,
+                                        color: context.palette.textSecondary)),
+                              ),
+                            ),
+                            // Beside the period rather than beside the date, so
+                            // the answer sits next to the question: this is the
+                            // cycle the money bought, and this is why its date
+                            // looks wrong.
+                            if (row.timing.isNoteworthy) ...[
+                              const SizedBox(width: 6),
+                              PaymentTimingBadge(timing: row.timing),
+                            ],
+                          ],
+                        ),
+                      ),
+                      Expanded(
+                        flex: 2,
+                        child: Text(
+                          formatMinorUnits(row.payment.amountMinor),
+                          style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500,
+                              color: context.palette.textPrimary),
+                        ),
+                      ),
+                      Expanded(
+                        flex: 2,
+                        child: Text(paymentMethodLabel(row.payment.method),
+                            style: mutedStyleOf(context)),
+                      ),
+                      Expanded(
+                        flex: 2,
+                        child: Text(formatShortDate(row.payment.paymentDate),
+                            style: mutedStyleOf(context)),
+                      ),
+                      SizedBox(
+                        width: 100,
+                        child: WhatsAppStatusBadge(status: row.whatsAppStatus),
+                      ),
+                      if (_showActions)
+                        SizedBox(
+                          width: 40,
+                          child: _RowActions(
+                            row: row,
+                            onMutated: onMutated!,
+                          ),
+                        ),
+                    ],
+                  ),
                 ),
               );
             },
@@ -255,3 +264,34 @@ class _RowActions extends StatelessWidget {
 }
 
 enum _RowAction { edit, delete }
+
+/// A row background that starts in the brand tint and fades to nothing over
+/// 1.5s, for a payment that has just been recorded.
+class _FadingHighlight extends StatelessWidget {
+  const _FadingHighlight({super.key, required this.active, required this.child});
+
+  final bool active;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!active) return child;
+    final tint = context.palette.accent.withValues(alpha: 0.14);
+    // Under reduced motion the tint still says "this one is new" — it just
+    // does not animate away.
+    if (MediaQuery.of(context).disableAnimations) {
+      return ColoredBox(color: tint, child: child);
+    }
+
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 1, end: 0),
+      duration: const Duration(milliseconds: 1500),
+      curve: Curves.easeIn,
+      child: child,
+      builder: (context, t, child) => ColoredBox(
+        color: Color.lerp(tint.withValues(alpha: 0), tint, t)!,
+        child: child,
+      ),
+    );
+  }
+}

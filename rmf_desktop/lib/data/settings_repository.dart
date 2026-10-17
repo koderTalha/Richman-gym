@@ -1,8 +1,11 @@
 import 'package:bcrypt/bcrypt.dart';
 import 'package:drift/drift.dart';
+import 'package:flutter/material.dart' show Color;
 import 'package:logging/logging.dart';
 
 import '../domain/money.dart';
+import '../theme/branding_config.dart';
+import '../theme/theme_preset.dart';
 import '../services/whatsapp/meta_client.dart';
 import '../services/whatsapp/mock_client.dart';
 import '../services/whatsapp/whatsapp_client.dart';
@@ -30,6 +33,80 @@ class SettingsRepository {
   Future<void> update(GymSettingsCompanion changes) async {
     await (db.update(db.gymSettings)..where((s) => s.id.equals(1)))
         .write(changes);
+  }
+
+  // --- Appearance ----------------------------------------------------------
+
+  /// Reads the branding the app should paint itself with.
+  ///
+  /// Tolerant by construction: an unrecognised preset id, a malformed hex left
+  /// by a hand-edited database, or a logo file that has since been deleted all
+  /// resolve to the default rather than throwing. This runs during startup,
+  /// before the first frame, so a bad value here must never be able to stop the
+  /// gym opening its own books.
+  Future<BrandingConfig> branding() async => brandingFrom(await get());
+
+  /// The pure mapping, split out so it can be unit tested and reused by the
+  /// startup path without a second query.
+  static BrandingConfig brandingFrom(GymSetting row) {
+    Color? colour(String? stored) =>
+        stored == null ? null : parseHexColor(stored);
+
+    return BrandingConfig(
+      // An id no longer in ThemePreset.all (a downgrade, a typo) reads as the
+      // default; `custom` is passed through because it is not a preset id.
+      presetId: row.themePreset == BrandingConfig.customId
+          ? BrandingConfig.customId
+          : ThemePreset.byId(row.themePreset).id,
+      custom: CustomColors(
+        primary: colour(row.customPrimary),
+        accent: colour(row.customAccent),
+        background: colour(row.customBackground),
+        sidebar: colour(row.customSidebar),
+        surface: colour(row.customSurface),
+        textPrimary: colour(row.customTextPrimary),
+      ),
+      logoPath: row.logoPath,
+      loginPhotoPath: row.loginPhotoPath,
+      dashboardPhotoPath: row.dashboardPhotoPath,
+      receiptTemplate: ReceiptTemplate.parse(row.receiptTemplate),
+    );
+  }
+
+  /// Persists [branding] to the settings singleton.
+  ///
+  /// Writes every branding column rather than only the changed ones, so
+  /// clearing a custom colour actually clears it — a Companion that omitted the
+  /// field would leave the old value in place and the owner's "reset" would
+  /// appear to do nothing.
+  Future<void> saveBranding(BrandingConfig branding) async {
+    String? hex(Color? c) => c == null ? null : formatHexColor(c);
+
+    await update(GymSettingsCompanion(
+      themePreset: Value(branding.presetId),
+      customPrimary: Value(hex(branding.custom.primary)),
+      customAccent: Value(hex(branding.custom.accent)),
+      customBackground: Value(hex(branding.custom.background)),
+      customSidebar: Value(hex(branding.custom.sidebar)),
+      customSurface: Value(hex(branding.custom.surface)),
+      customTextPrimary: Value(hex(branding.custom.textPrimary)),
+      logoPath: Value(branding.logoPath),
+      loginPhotoPath: Value(branding.loginPhotoPath),
+      dashboardPhotoPath: Value(branding.dashboardPhotoPath),
+      receiptTemplate: Value(branding.receiptTemplate.name),
+    ));
+  }
+
+  /// The sequence number the next receipt dated in [year] will be given.
+  ///
+  /// Read-only: it previews what the payment flow will allocate, it does not
+  /// reserve anything. Two payments recorded at once still get distinct numbers
+  /// because the real allocation happens in a transaction when one is saved.
+  Future<int> nextReceiptSequence(int year) async {
+    final counter = await (db.select(db.receiptCounters)
+          ..where((c) => c.year.equals(year)))
+        .getSingleOrNull();
+    return (counter?.lastNumber ?? 0) + 1;
   }
 
   // --- Membership plans ----------------------------------------------------

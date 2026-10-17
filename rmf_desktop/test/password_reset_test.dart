@@ -175,7 +175,10 @@ void main() {
       await fill(tester, defaultPassword: defaultAdminPassword);
       await save(tester);
 
-      expect(find.text('Admin sign in'), findsOneWidget);
+      // The sign-in screen's own heading. Was "Admin sign in" before the
+      // redesign gave it the handoff's wording; the assertion still means
+      // "we are back on the sign-in screen".
+      expect(find.text('Welcome back'), findsOneWidget);
       expect(find.textContaining('Password reset'), findsOneWidget);
       final hash = await tester.runAsync(currentHash);
       expect(BCrypt.checkpw('BrandNewPass2', hash!), isTrue);

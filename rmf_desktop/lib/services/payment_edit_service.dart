@@ -17,6 +17,7 @@ import '../domain/payment_method.dart';
 import '../domain/phone.dart';
 import 'billing_cycle_service.dart';
 import 'billing_month_checker.dart';
+import 'logo_storage.dart';
 import 'receipt_renderer.dart';
 import 'receipt_storage.dart';
 import 'record_payment_service.dart';
@@ -388,6 +389,11 @@ class PaymentEditService {
           footerMessage: settings.receiptFooterMessage,
           gymPhone: settings.phone,
           gymAddress: settings.address,
+          // Same branding the original receipt would have been rendered with
+          // today — a corrected receipt must not look like it came from a
+          // different gym than the one beside it.
+          branding: SettingsRepository.brandingFrom(settings),
+          logoBytes: await LogoStorage.read(settings.logoPath),
         ));
       } catch (error, stack) {
         // Not fatal to the correction: the money is what matters and the

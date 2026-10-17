@@ -52,6 +52,39 @@ class DashboardState extends Equatable {
           m.status == MemberStatus.due || m.status == MemberStatus.expired)
       .toList();
 
+  /// Paid up, but running out within the week.
+  ///
+  /// Derived here rather than added to [MemberStatus]: these members are not in
+  /// a different *state* — they have paid, and nothing is owed — they are
+  /// simply the ones worth a reminder before they lapse. Giving them a status
+  /// would change what every badge, filter and reminder in the app considers
+  /// "paid", which is far more than the dashboard needs.
+  ///
+  /// The window is deliberately exclusive of today: a cycle ending today is
+  /// already handled by the due list once it lapses.
+  List<MemberRow> get expiringSoon {
+    final now = DateTime.now();
+    final cutoff = DateTime(now.year, now.month, now.day + 7);
+    return members.where((m) {
+      if (m.status != MemberStatus.paid) return false;
+      final until = m.paidUntil;
+      if (until == null) return false;
+      return !until.isAfter(cutoff);
+    }).toList()
+      ..sort((a, b) => a.paidUntil!.compareTo(b.paidUntil!));
+  }
+
+  /// The longest-overdue members first — who to chase before anyone else.
+  List<MemberRow> get mostOverdue {
+    final rows = dueMembers
+        .where((m) => m.paidUntil != null)
+        .toList()
+      ..sort((a, b) => a.paidUntil!.compareTo(b.paidUntil!));
+    // Members with no recorded cycle still owe money; they just cannot be
+    // ranked by date, so they follow the ones that can.
+    return [...rows, ...dueMembers.where((m) => m.paidUntil == null)];
+  }
+
   @override
   List<Object?> get props => [
         status,
