@@ -21,6 +21,7 @@ import 'package:rich_man_fitness/services/whatsapp/whatsapp_client.dart';
 import 'package:rich_man_fitness/theme/app_theme.dart';
 import 'package:rich_man_fitness/theme/branding_config.dart';
 import 'package:rich_man_fitness/ui/app_shell.dart';
+import 'package:rich_man_fitness/ui/automatic_reminders.dart';
 
 import 'support/still_motion.dart';
 
@@ -87,7 +88,10 @@ void main() {
 
   tearDown(() async => db.close());
 
-  Future<void> pumpShell(WidgetTester tester) async {
+  /// [home] is the shell by default; anything else stands in for the app with
+  /// nobody signed in.
+  Future<void> pumpShell(WidgetTester tester,
+      {Widget home = const AppShell()}) async {
     final admin = await db.select(db.users).getSingle();
     final audit = AuditRepository(db);
 
@@ -123,12 +127,15 @@ void main() {
             )),
           ),
         ],
-        child: MaterialApp(
-          theme: buildDarkTheme(),
-          // The dashboard's rings turn forever; without this pumpAndSettle
-          // never returns. See test/support/still_motion.dart.
-          builder: stillMotion,
-          home: const AppShell(),
+        // Where main.dart puts it: above the sign-in switch.
+        child: AutomaticReminders(
+          child: MaterialApp(
+            theme: buildDarkTheme(),
+            // The dashboard's rings turn forever; without this pumpAndSettle
+            // never returns. See test/support/still_motion.dart.
+            builder: stillMotion,
+            home: home,
+          ),
         ),
       ),
     ));
@@ -164,6 +171,17 @@ void main() {
     await tester.pumpAndSettle();
     client.sent.clear();
     await (db.delete(db.paymentReminders)).go();
+
+    await tester.pump(reminderRunInterval);
+    await tester.pumpAndSettle();
+
+    expect(client.sent, hasLength(1));
+  });
+
+  // The inactivity lock takes the shell away after two idle minutes, which at
+  // a quiet front desk is most of the day.
+  testWidgets('they keep running while the app is locked', (tester) async {
+    await pumpShell(tester, home: const Text('Login'));
 
     await tester.pump(reminderRunInterval);
     await tester.pumpAndSettle();

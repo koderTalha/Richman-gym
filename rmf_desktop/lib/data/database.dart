@@ -40,7 +40,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 14;
+  int get schemaVersion => 15;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -205,6 +205,16 @@ class AppDatabase extends _$AppDatabase {
           if (from < 14) {
             await m.addColumn(gymSettings, gymSettings.loginPhotoPath);
             await m.addColumn(gymSettings, gymSettings.dashboardPhotoPath);
+          }
+
+          // When the app was last touched, for the inactivity lock. Left null
+          // on upgrade, so the first launch of this version asks for the
+          // password once — nothing recorded how long the app had sat idle.
+          // Not below v6: the step above has just created the table from the
+          // current definition, column included, and adding it again would
+          // stop the app opening.
+          if (from >= 6 && from < 15) {
+            await m.addColumn(appSessions, appSessions.lastActiveAt);
           }
         },
         beforeOpen: (details) async {

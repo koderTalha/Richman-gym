@@ -444,8 +444,19 @@ class $AppSessionsTable extends AppSessions
     type: DriftSqlType.dateTime,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _lastActiveAtMeta = const VerificationMeta(
+    'lastActiveAt',
+  );
   @override
-  List<GeneratedColumn> get $columns => [id, userId, signedInAt];
+  late final GeneratedColumn<DateTime> lastActiveAt = GeneratedColumn<DateTime>(
+    'last_active_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [id, userId, signedInAt, lastActiveAt];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -476,6 +487,15 @@ class $AppSessionsTable extends AppSessions
         ),
       );
     }
+    if (data.containsKey('last_active_at')) {
+      context.handle(
+        _lastActiveAtMeta,
+        lastActiveAt.isAcceptableOrUnknown(
+          data['last_active_at']!,
+          _lastActiveAtMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -497,6 +517,10 @@ class $AppSessionsTable extends AppSessions
         DriftSqlType.dateTime,
         data['${effectivePrefix}signed_in_at'],
       ),
+      lastActiveAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}last_active_at'],
+      ),
     );
   }
 
@@ -513,7 +537,18 @@ class AppSession extends DataClass implements Insertable<AppSession> {
   /// rather than leaving a row pointing at a user who no longer exists.
   final int? userId;
   final DateTime? signedInAt;
-  const AppSession({required this.id, this.userId, this.signedInAt});
+
+  /// The last time anybody touched the app, written at most every few seconds.
+  /// A restart only restores the session when this is inside the idle limit,
+  /// so closing the app is not a way round the inactivity lock. Null on rows
+  /// written before v15, which the restore treats as too old.
+  final DateTime? lastActiveAt;
+  const AppSession({
+    required this.id,
+    this.userId,
+    this.signedInAt,
+    this.lastActiveAt,
+  });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
@@ -523,6 +558,9 @@ class AppSession extends DataClass implements Insertable<AppSession> {
     }
     if (!nullToAbsent || signedInAt != null) {
       map['signed_in_at'] = Variable<DateTime>(signedInAt);
+    }
+    if (!nullToAbsent || lastActiveAt != null) {
+      map['last_active_at'] = Variable<DateTime>(lastActiveAt);
     }
     return map;
   }
@@ -536,6 +574,9 @@ class AppSession extends DataClass implements Insertable<AppSession> {
       signedInAt: signedInAt == null && nullToAbsent
           ? const Value.absent()
           : Value(signedInAt),
+      lastActiveAt: lastActiveAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(lastActiveAt),
     );
   }
 
@@ -548,6 +589,7 @@ class AppSession extends DataClass implements Insertable<AppSession> {
       id: serializer.fromJson<int>(json['id']),
       userId: serializer.fromJson<int?>(json['userId']),
       signedInAt: serializer.fromJson<DateTime?>(json['signedInAt']),
+      lastActiveAt: serializer.fromJson<DateTime?>(json['lastActiveAt']),
     );
   }
   @override
@@ -557,6 +599,7 @@ class AppSession extends DataClass implements Insertable<AppSession> {
       'id': serializer.toJson<int>(id),
       'userId': serializer.toJson<int?>(userId),
       'signedInAt': serializer.toJson<DateTime?>(signedInAt),
+      'lastActiveAt': serializer.toJson<DateTime?>(lastActiveAt),
     };
   }
 
@@ -564,10 +607,12 @@ class AppSession extends DataClass implements Insertable<AppSession> {
     int? id,
     Value<int?> userId = const Value.absent(),
     Value<DateTime?> signedInAt = const Value.absent(),
+    Value<DateTime?> lastActiveAt = const Value.absent(),
   }) => AppSession(
     id: id ?? this.id,
     userId: userId.present ? userId.value : this.userId,
     signedInAt: signedInAt.present ? signedInAt.value : this.signedInAt,
+    lastActiveAt: lastActiveAt.present ? lastActiveAt.value : this.lastActiveAt,
   );
   AppSession copyWithCompanion(AppSessionsCompanion data) {
     return AppSession(
@@ -576,6 +621,9 @@ class AppSession extends DataClass implements Insertable<AppSession> {
       signedInAt: data.signedInAt.present
           ? data.signedInAt.value
           : this.signedInAt,
+      lastActiveAt: data.lastActiveAt.present
+          ? data.lastActiveAt.value
+          : this.lastActiveAt,
     );
   }
 
@@ -584,45 +632,52 @@ class AppSession extends DataClass implements Insertable<AppSession> {
     return (StringBuffer('AppSession(')
           ..write('id: $id, ')
           ..write('userId: $userId, ')
-          ..write('signedInAt: $signedInAt')
+          ..write('signedInAt: $signedInAt, ')
+          ..write('lastActiveAt: $lastActiveAt')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(id, userId, signedInAt);
+  int get hashCode => Object.hash(id, userId, signedInAt, lastActiveAt);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       (other is AppSession &&
           other.id == this.id &&
           other.userId == this.userId &&
-          other.signedInAt == this.signedInAt);
+          other.signedInAt == this.signedInAt &&
+          other.lastActiveAt == this.lastActiveAt);
 }
 
 class AppSessionsCompanion extends UpdateCompanion<AppSession> {
   final Value<int> id;
   final Value<int?> userId;
   final Value<DateTime?> signedInAt;
+  final Value<DateTime?> lastActiveAt;
   const AppSessionsCompanion({
     this.id = const Value.absent(),
     this.userId = const Value.absent(),
     this.signedInAt = const Value.absent(),
+    this.lastActiveAt = const Value.absent(),
   });
   AppSessionsCompanion.insert({
     this.id = const Value.absent(),
     this.userId = const Value.absent(),
     this.signedInAt = const Value.absent(),
+    this.lastActiveAt = const Value.absent(),
   });
   static Insertable<AppSession> custom({
     Expression<int>? id,
     Expression<int>? userId,
     Expression<DateTime>? signedInAt,
+    Expression<DateTime>? lastActiveAt,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
       if (userId != null) 'user_id': userId,
       if (signedInAt != null) 'signed_in_at': signedInAt,
+      if (lastActiveAt != null) 'last_active_at': lastActiveAt,
     });
   }
 
@@ -630,11 +685,13 @@ class AppSessionsCompanion extends UpdateCompanion<AppSession> {
     Value<int>? id,
     Value<int?>? userId,
     Value<DateTime?>? signedInAt,
+    Value<DateTime?>? lastActiveAt,
   }) {
     return AppSessionsCompanion(
       id: id ?? this.id,
       userId: userId ?? this.userId,
       signedInAt: signedInAt ?? this.signedInAt,
+      lastActiveAt: lastActiveAt ?? this.lastActiveAt,
     );
   }
 
@@ -650,6 +707,9 @@ class AppSessionsCompanion extends UpdateCompanion<AppSession> {
     if (signedInAt.present) {
       map['signed_in_at'] = Variable<DateTime>(signedInAt.value);
     }
+    if (lastActiveAt.present) {
+      map['last_active_at'] = Variable<DateTime>(lastActiveAt.value);
+    }
     return map;
   }
 
@@ -658,7 +718,8 @@ class AppSessionsCompanion extends UpdateCompanion<AppSession> {
     return (StringBuffer('AppSessionsCompanion(')
           ..write('id: $id, ')
           ..write('userId: $userId, ')
-          ..write('signedInAt: $signedInAt')
+          ..write('signedInAt: $signedInAt, ')
+          ..write('lastActiveAt: $lastActiveAt')
           ..write(')'))
         .toString();
   }
@@ -12322,12 +12383,14 @@ typedef $$AppSessionsTableCreateCompanionBuilder =
       Value<int> id,
       Value<int?> userId,
       Value<DateTime?> signedInAt,
+      Value<DateTime?> lastActiveAt,
     });
 typedef $$AppSessionsTableUpdateCompanionBuilder =
     AppSessionsCompanion Function({
       Value<int> id,
       Value<int?> userId,
       Value<DateTime?> signedInAt,
+      Value<DateTime?> lastActiveAt,
     });
 
 final class $$AppSessionsTableReferences
@@ -12368,6 +12431,11 @@ class $$AppSessionsTableFilterComposer
 
   ColumnFilters<DateTime> get signedInAt => $composableBuilder(
     column: $table.signedInAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get lastActiveAt => $composableBuilder(
+    column: $table.lastActiveAt,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -12414,6 +12482,11 @@ class $$AppSessionsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<DateTime> get lastActiveAt => $composableBuilder(
+    column: $table.lastActiveAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   $$UsersTableOrderingComposer get userId {
     final $$UsersTableOrderingComposer composer = $composerBuilder(
       composer: this,
@@ -12452,6 +12525,11 @@ class $$AppSessionsTableAnnotationComposer
 
   GeneratedColumn<DateTime> get signedInAt => $composableBuilder(
     column: $table.signedInAt,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get lastActiveAt => $composableBuilder(
+    column: $table.lastActiveAt,
     builder: (column) => column,
   );
 
@@ -12510,20 +12588,24 @@ class $$AppSessionsTableTableManager
                 Value<int> id = const Value.absent(),
                 Value<int?> userId = const Value.absent(),
                 Value<DateTime?> signedInAt = const Value.absent(),
+                Value<DateTime?> lastActiveAt = const Value.absent(),
               }) => AppSessionsCompanion(
                 id: id,
                 userId: userId,
                 signedInAt: signedInAt,
+                lastActiveAt: lastActiveAt,
               ),
           createCompanionCallback:
               ({
                 Value<int> id = const Value.absent(),
                 Value<int?> userId = const Value.absent(),
                 Value<DateTime?> signedInAt = const Value.absent(),
+                Value<DateTime?> lastActiveAt = const Value.absent(),
               }) => AppSessionsCompanion.insert(
                 id: id,
                 userId: userId,
                 signedInAt: signedInAt,
+                lastActiveAt: lastActiveAt,
               ),
           withReferenceMapper: (p0) => p0
               .map(

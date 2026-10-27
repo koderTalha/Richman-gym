@@ -32,18 +32,6 @@ final _log = Logger('shell');
 /// on its icon: several screens carry a refresh icon of their own.
 const appShellReloadKey = Key('app-shell-reload');
 
-/// How often the automatic reminder run is tried again while the app stays
-/// open.
-///
-/// It used to be tried once per launch, and only then: a launch before sending
-/// hours sent nothing all day, and on the 1st — when most legacy members fall
-/// due at once — everything past the per-run cap waited for the next launch
-/// and was by then superseded. Hourly is often enough that a morning launch
-/// still sends once the gym opens, and rare enough that the per-run cap still
-/// means something. Every run is hours-aware, capped and single-flight; see
-/// `ReminderService.runAutoSend`.
-const reminderRunInterval = Duration(hours: 1);
-
 class NavDestination {
   const NavDestination(this.label, this.icon, this.builder, {this.enabled = true});
 
@@ -196,22 +184,9 @@ class _AppShellState extends State<AppShell> {
 
   bool _reloading = false;
 
-  Timer? _reminderTimer;
-
-  @override
-  void initState() {
-    super.initState();
-    _reminderTimer =
-        Timer.periodic(reminderRunInterval, (_) => _runAutomaticReminders());
-  }
-
-  @override
-  void dispose() {
-    _reminderTimer?.cancel();
-    super.dispose();
-  }
-
-  /// Starts an automatic reminder run in the background.
+  /// Starts an automatic reminder run in the background. The hourly run lives
+  /// in `AutomaticReminders`, above the sign-in switch, so it carries on while
+  /// the app is locked.
   ///
   /// Not awaited: up to a full per-run cap of WhatsApp calls must not hold the
   /// Reload button, or anything else, hostage. Read as nullable so a shell
