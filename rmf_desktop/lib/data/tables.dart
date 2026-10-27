@@ -107,6 +107,12 @@ class AppSessions extends Table {
 
   DateTimeColumn get signedInAt => dateTime().nullable()();
 
+  /// The last time anybody touched the app, written at most every few seconds.
+  /// A restart only restores the session when this is inside the idle limit,
+  /// so closing the app is not a way round the inactivity lock. Null on rows
+  /// written before v15, which the restore treats as too old.
+  DateTimeColumn get lastActiveAt => dateTime().nullable()();
+
   @override
   Set<Column> get primaryKey => {id};
 }

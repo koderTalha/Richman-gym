@@ -33,7 +33,9 @@ import 'bloc/branding_cubit.dart';
 import 'theme/app_theme.dart';
 import 'theme/branding_config.dart';
 import 'ui/app_shell.dart';
+import 'ui/automatic_reminders.dart';
 import 'ui/first_run_password_screen.dart';
+import 'ui/idle_lock.dart';
 import 'ui/login_screen.dart';
 import 'ui/startup_failure_screen.dart';
 
@@ -93,8 +95,13 @@ Future<Widget> _boot() async {
   final branding = SettingsRepository.brandingFrom(settingsRow);
 
   // Likewise for the session: restoring here means the dashboard is the first
-  // thing painted, with no login form flashing past on the way.
-  final restored = await SessionRepository(db).restore();
+  // thing painted, with no login form flashing past on the way. Only within
+  // the inactivity limit, and from the deadline it had — see
+  // SessionRepository.restore.
+  final sessions = SessionRepository(db);
+  final restored = await sessions.restore();
+  final restoredActiveAt =
+      restored == null ? null : await sessions.lastActiveAt();
 
   // Read from the executable rather than a constant, so the update check
   // compares against what is genuinely installed.
@@ -122,6 +129,7 @@ Future<Widget> _boot() async {
     initialTheme: theme,
     initialBranding: branding,
     restoredUser: restored,
+    restoredActiveAt: restoredActiveAt,
     version: version,
   );
 }
@@ -170,6 +178,7 @@ class RichManFitnessApp extends StatelessWidget {
     this.initialTheme = ThemeMode.dark,
     this.initialBranding = const BrandingConfig(),
     this.restoredUser,
+    this.restoredActiveAt,
     this.version = AppVersion.unknown,
   });
 
@@ -187,6 +196,10 @@ class RichManFitnessApp extends StatelessWidget {
 
   /// Signed in on a previous run; null means show the login screen.
   final User? restoredUser;
+
+  /// When [restoredUser]'s session was last touched, so the inactivity lock
+  /// keeps its deadline across the restart.
+  final DateTime? restoredActiveAt;
 
   @override
   Widget build(BuildContext context) {
@@ -276,7 +289,13 @@ class RichManFitnessApp extends StatelessWidget {
       ],
       child: MultiBlocProvider(
         providers: [
-          BlocProvider(create: (_) => AuthBloc(db, restored: restoredUser)),
+          BlocProvider(
+            create: (_) => AuthBloc(
+              db,
+              restored: restoredUser,
+              restoredActiveAt: restoredActiveAt,
+            ),
+          ),
           // Above MaterialApp so the login screen follows the theme too.
           BlocProvider(
             create: (_) => ThemeCubit(settings, initial: initialTheme),
@@ -296,25 +315,40 @@ class RichManFitnessApp extends StatelessWidget {
                   ..add(const UpdateCheckRequested()),
           ),
         ],
-        child: BlocBuilder<ThemeCubit, ThemeMode>(
+        child: AutomaticReminders(
+          child: BlocBuilder<ThemeCubit, ThemeMode>(
           builder: (context, themeMode) =>
               BlocBuilder<BrandingCubit, BrandingState>(
             // The draft, not the saved config: previewing a theme has to show
             // the owner their real screens in the new brand before they commit
             // to it.
-            builder: (context, brandingState) => MaterialApp(
-            title: 'Rich Man Fitness',
-            debugShowCheckedModeBanner: false,
-            theme: buildLightThemeFor(brandingState.draft),
-            darkTheme: buildDarkThemeFor(brandingState.draft),
-            themeMode: themeMode,
-            home: BlocBuilder<AuthBloc, AuthState>(
-              builder: (context, state) {
-                if (state.mustChangePassword) {
-                  return const FirstRunPasswordScreen();
-                }
-                return state.isSignedIn ? const AppShell() : const LoginScreen();
-              },
+            builder: (context, brandingState) =>
+                BlocBuilder<AuthBloc, AuthState>(
+              buildWhen: (a, b) => a.user?.id != b.user?.id,
+              // Keyed on who is signed in, so every sign-in and sign-out builds
+              // a new Navigator. Swapping `home` alone leaves pushed screens and
+              // open dialogs standing on top of it: a member's details would
+              // stay up over the login form after the inactivity lock, and
+              // Back would return to them.
+              builder: (context, auth) => MaterialApp(
+              key: ValueKey(auth.user?.id),
+              title: 'Rich Man Fitness',
+              debugShowCheckedModeBanner: false,
+              theme: buildLightThemeFor(brandingState.draft),
+              darkTheme: buildDarkThemeFor(brandingState.draft),
+              themeMode: themeMode,
+              builder: (context, child) => IdleLock(child: child!),
+              home: BlocBuilder<AuthBloc, AuthState>(
+                builder: (context, state) {
+                  if (state.mustChangePassword) {
+                    return const FirstRunPasswordScreen();
+                  }
+                  return state.isSignedIn
+                      ? const AppShell()
+                      : const LoginScreen();
+                },
+              ),
+            ),
             ),
           ),
           ),

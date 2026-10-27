@@ -3,6 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../bloc/auth_bloc.dart';
 import '../bloc/branding_cubit.dart';
+import '../domain/inactivity.dart';
 import '../theme/app_theme.dart';
 import 'reset_password_screen.dart';
 import 'widgets/brand_photo.dart';
@@ -101,6 +102,10 @@ class _LoginScreenState extends State<LoginScreen> {
                     const SizedBox(height: 6),
                     Text('Sign in to manage members and payments.',
                         style: mutedStyleOf(context)),
+                    if (state.lockedForInactivity) ...[
+                      const SizedBox(height: 18),
+                      const _InactivityNotice(),
+                    ],
                     const SizedBox(height: 24),
                     Form(
                         key: _formKey,
@@ -265,6 +270,43 @@ class _BrandPanel extends StatelessWidget {
                   style: TextStyle(fontSize: 12, color: palette.textMuted),
                 ),
               ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Why the password is being asked for again, after the inactivity lock.
+///
+/// Neutral rather than red: nothing went wrong, and the owner should not read
+/// it as a failed sign-in. Goes as soon as a sign-in is attempted.
+class _InactivityNotice extends StatelessWidget {
+  const _InactivityNotice();
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.palette;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: palette.surfaceOverlay,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: palette.border),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.lock_clock_outlined, size: 18, color: palette.textMuted),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'Your session was locked after '
+              '${inactivityLockAfter.inMinutes} minutes of inactivity. '
+              'Please log in again to continue.',
+              style: TextStyle(fontSize: 13, color: palette.textSecondary),
             ),
           ),
         ],

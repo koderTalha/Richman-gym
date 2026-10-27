@@ -34,6 +34,8 @@ void main() {
     ]) {
       raw.execute('ALTER TABLE gym_settings DROP COLUMN $col');
     }
+    // v15's inactivity lock.
+    raw.execute('ALTER TABLE app_sessions DROP COLUMN last_active_at');
     // Real-looking gym data, as a working install would hold. Inserted rather
     // than updated: forTesting() creates the schema but seeds no rows.
     raw.execute("INSERT INTO gym_settings (id, gym_name, receipt_prefix, "

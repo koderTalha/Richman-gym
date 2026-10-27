@@ -6,6 +6,7 @@ import 'package:logging/logging.dart';
 import '../data/database.dart';
 import '../data/seed.dart';
 import '../data/session_repository.dart';
+import '../domain/inactivity.dart';
 
 final _log = Logger('auth');
 
@@ -36,6 +37,12 @@ class AuthSignOutRequested extends AuthEvent {
   const AuthSignOutRequested();
 }
 
+/// Nobody has touched the app for [inactivityLockAfter]. Ends the session the
+/// way signing out does, and tells the login screen why it is showing.
+class AuthLockedForInactivity extends AuthEvent {
+  const AuthLockedForInactivity();
+}
+
 /// The owner has chosen a password of their own; let them into the app.
 class AuthPasswordChanged extends AuthEvent {
   const AuthPasswordChanged();
@@ -53,11 +60,20 @@ enum AuthStatus {
 }
 
 class AuthState extends Equatable {
-  const AuthState({this.status = AuthStatus.signedOut, this.user, this.error});
+  const AuthState({
+    this.status = AuthStatus.signedOut,
+    this.user,
+    this.error,
+    this.lockedForInactivity = false,
+  });
 
   final AuthStatus status;
   final User? user;
   final String? error;
+
+  /// Signed out by the inactivity lock rather than by the Log out button, so
+  /// the login screen can say why the password is being asked for again.
+  final bool lockedForInactivity;
 
   bool get isSignedIn => status == AuthStatus.signedIn && user != null;
 
@@ -72,19 +88,27 @@ class AuthState extends Equatable {
       );
 
   @override
-  List<Object?> get props => [status, user?.id, error];
+  List<Object?> get props => [status, user?.id, error, lockedForInactivity];
 }
 
 class AuthBloc extends Bloc<AuthEvent, AuthState> {
   /// [restored] is the admin recovered from a previous run, so the app opens
-  /// straight onto the dashboard instead of the login form.
-  AuthBloc(this._db, {SessionRepository? sessions, User? restored})
-      : _sessions = sessions ?? SessionRepository(_db),
+  /// straight onto the dashboard instead of the login form. [restoredActiveAt]
+  /// is when that run was last touched, so the inactivity lock carries on from
+  /// the deadline it had rather than starting a fresh one.
+  AuthBloc(
+    this._db, {
+    SessionRepository? sessions,
+    User? restored,
+    DateTime? restoredActiveAt,
+  })  : _sessions = sessions ?? SessionRepository(_db),
+        _restoredActiveAt = restored == null ? null : restoredActiveAt,
         super(restored == null
             ? const AuthState()
             : AuthState(status: _statusFor(restored), user: restored)) {
     on<AuthSignInRequested>(_onSignIn);
     on<AuthSignOutRequested>(_onSignOut);
+    on<AuthLockedForInactivity>(_onLocked);
     on<AuthPasswordChanged>((_, emit) {
       final user = state.user;
       if (user == null) return;
@@ -103,11 +127,31 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
   final AppDatabase _db;
   final SessionRepository _sessions;
 
+  DateTime? _restoredActiveAt;
+
+  /// When the restored session was last touched, or null for any session
+  /// begun by signing in on this run.
+  DateTime? get restoredActiveAt => _restoredActiveAt;
+
+  /// Records that the signed-in admin is still at the keyboard, so a restart
+  /// shortly afterwards restores the session. Never throws: a failed write
+  /// costs a password prompt on the next launch, nothing more.
+  Future<void> recordActivity(DateTime at) async {
+    final user = state.user;
+    if (user == null) return;
+    try {
+      await _sessions.touch(user.id, at: at);
+    } catch (e, s) {
+      _log.warning('Could not record activity', e, s);
+    }
+  }
+
   Future<void> _onSignIn(
     AuthSignInRequested event,
     Emitter<AuthState> emit,
   ) async {
     emit(const AuthState(status: AuthStatus.submitting));
+    _restoredActiveAt = null;
 
     final email = event.email.trim().toLowerCase();
     final user = await (_db.select(_db.users)..where((u) => u.email.equals(email)))
@@ -146,6 +190,29 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     } catch (e, s) {
       _log.severe('Could not clear the session', e, s);
     }
+    _restoredActiveAt = null;
     emit(const AuthState());
+  }
+
+  Future<void> _onLocked(
+    AuthLockedForInactivity event,
+    Emitter<AuthState> emit,
+  ) async {
+    // Nobody to lock: a second expiry, or one that arrived after Log out.
+    if (state.user == null) return;
+    _restoredActiveAt = null;
+
+    // The reverse of signing out's order, on purpose. The screens must go the
+    // moment the deadline passes, not once a disk write finishes, and a write
+    // that fails must not leave them up. The session row is a second line:
+    // even left uncleared, its activity time is already too old to restore.
+    emit(const AuthState(lockedForInactivity: true));
+    _log.info('Locked after ${inactivityLockAfter.inSeconds}s without activity');
+
+    try {
+      await _sessions.clear();
+    } catch (e, s) {
+      _log.severe('Could not clear the session after the inactivity lock', e, s);
+    }
   }
 }
