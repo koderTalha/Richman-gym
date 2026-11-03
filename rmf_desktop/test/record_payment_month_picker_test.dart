@@ -63,11 +63,15 @@ void main() {
     await (db.update(db.membershipPlans)..where((p) => p.id.equals(monthlyId)))
         .write(const MembershipPlansCompanion(priceMinor: Value(150000)));
 
+    final now = DateTime.now();
     memberId = await members.create(
       fullName: 'Talha',
       phone: '+923000000001',
       planId: monthlyId,
-      joiningDate: DateTime.utc(2026, 1, 1),
+      // Relative to today, as the month picker is: the cases below step back
+      // from the current month, so a fixed date drifted — by November 2026
+      // "ten months back" had reached the joining month itself.
+      joiningDate: DateTime.utc(now.year, now.month - 8, 1),
     );
 
     final workspace = await Directory.systemTemp.createTemp('rmf-monthpick');
@@ -245,7 +249,7 @@ void main() {
   testWidgets('a past month is not pre-filled with what the fee is today',
       (tester) async {
     await openDialog(tester);
-    await chooseMonthBack(tester, 4); // September -> May
+    await chooseMonthBack(tester, 4); // four months before this one
 
     expect(
       feeFieldText(tester),
@@ -274,8 +278,8 @@ void main() {
 
   testWidgets('a month before the member joined is refused', (tester) async {
     await openDialog(tester);
-    // The member joined 01 Jan 2026; September minus 10 months is November
-    // 2025, which no confirmation can make billable.
+    // The member joined eight months ago; ten months back is before that,
+    // which no confirmation can make billable.
     await chooseMonthBack(tester, 10);
 
     await tester.enterText(

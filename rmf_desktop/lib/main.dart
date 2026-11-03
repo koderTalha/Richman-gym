@@ -30,6 +30,7 @@ import 'services/update/update_service.dart';
 import 'services/record_payment_service.dart';
 import 'services/startup_maintenance.dart';
 import 'bloc/branding_cubit.dart';
+import 'bloc/revenue_visibility_cubit.dart';
 import 'theme/app_theme.dart';
 import 'theme/branding_config.dart';
 import 'ui/app_shell.dart';
@@ -306,6 +307,9 @@ class RichManFitnessApp extends StatelessWidget {
           BlocProvider(
             create: (_) => BrandingCubit(settings, initial: initialBranding),
           ),
+          // Above MaterialApp so hidden revenue stays hidden across screens
+          // and the remount at every sign-in, for as long as the app is open.
+          BlocProvider(create: (_) => RevenueVisibilityCubit()),
           // Above MaterialApp so the banner in the shell and the card in
           // Settings read one state machine. Checks on open, at most once a
           // day; a failure is a log line, not something on screen.

@@ -21,6 +21,7 @@ import 'members/members_screen.dart';
 import 'payments/payments_screen.dart';
 import 'receipts/receipts_screen.dart';
 import 'reminders/reminders_screen.dart';
+import 'reports/reports_screen.dart';
 import 'settings/settings_screen.dart';
 import 'widgets/connection_status.dart';
 import 'widgets/update_banner.dart';
@@ -59,8 +60,8 @@ final navDestinations = <NavDestination>[
   NavDestination('WhatsApp', Icons.chat_outlined,
       (_) => const WhatsAppScreen()),
   NavDestination('Logs', Icons.article_outlined, (_) => const LogsScreen()),
-  NavDestination('Reports', Icons.bar_chart_outlined, (_) => const SizedBox(),
-      enabled: false),
+  NavDestination('Reports', Icons.bar_chart_outlined,
+      (_) => const ReportsScreen()),
   NavDestination('Appearance', Icons.palette_outlined,
       (_) => const AppearanceScreen()),
   NavDestination('Settings', Icons.settings_outlined,

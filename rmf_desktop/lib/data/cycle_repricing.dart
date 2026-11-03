@@ -281,6 +281,70 @@ Future<Set<int>> _periodsHoldingMoney(
   return holding;
 }
 
+/// The members [repriceOpenCycles] could possibly change, found in one pass.
+///
+/// The launch sweep used to ask it about every active member, five queries
+/// each, and on an ordinary morning every answer was "nothing to do": the
+/// gym's 600 members cost thousands of statements and over a second before the
+/// window appeared. Nearly all of them are ruled out by one cheap test —
+/// every cycle still open to repricing is a whole cycle already at the fee
+/// their enrolment charges now, so each target equals what it holds and
+/// [repriceOpenCycles] returns 0 for them without writing anything.
+///
+/// Deliberately generous: a member is kept for any open cycle that is not
+/// whole, or not at today's fee, whatever their "applies from" date says.
+/// Keeping one too many costs that member's five queries; dropping one that
+/// needed repricing would leave a stale price to be paid into, which is the
+/// fee-rise treadmill this sweep exists to stop.
+Future<Set<int>> _membersWithRepricingWork(
+  AppDatabase db, {
+  DateTime? now,
+}) async {
+  final at = (now ?? DateTime.now()).toUtc();
+  final today = DateTime.utc(at.year, at.month, at.day);
+
+  final plans = {
+    for (final p in await db.select(db.membershipPlans).get()) p.id: p,
+  };
+
+  // The enrolment [openMembershipFor] would pick: the newest open one.
+  final memberOf = <int, int>{};
+  final openFor = <int, Membership>{};
+  for (final m in await (db.select(db.memberships)
+        ..orderBy([(m) => OrderingTerm(expression: m.id)]))
+      .get()) {
+    memberOf[m.id] = m.memberId;
+    if (m.endDate == null) openFor[m.memberId] = m;
+  }
+
+  final open = await (db.select(db.membershipPeriods)
+        ..where((p) =>
+            p.settledAt.isNull() & p.periodEnd.isBiggerThanValue(today)))
+      .get();
+
+  final candidates = <int>{};
+  for (final period in open) {
+    final memberId = memberOf[period.membershipId];
+    if (memberId == null || candidates.contains(memberId)) continue;
+    final membership = openFor[memberId];
+    final plan = membership == null ? null : plans[membership.planId];
+    // No open enrolment or no plan: [repriceOpenCycles] stops before
+    // looking at a single cycle.
+    if (membership == null || plan == null) continue;
+
+    final fee = membership.feeOverrideMinor ?? plan.priceMinor;
+    final shape = cycleShapeFor(
+      start: period.periodStart,
+      end: period.periodEnd,
+      durationMonths: plan.durationMonths,
+    );
+    if (shape != CycleShape.whole || period.expectedAmountMinor != fee) {
+      candidates.add(memberId);
+    }
+  }
+  return candidates;
+}
+
 /// Re-prices every active member's not-yet-issued cycles to their current fee.
 ///
 /// The sweep `runStartupMaintenance` makes, and the thing that stops a stale
@@ -331,8 +395,11 @@ Future<int> repriceAllOpenCycles(AppDatabase db, {DateTime? now}) async {
     }
   }
 
+  final mayChange = await _membersWithRepricingWork(db, now: now);
+
   var repriced = 0;
   for (final member in active) {
+    if (!mayChange.contains(member.id)) continue;
     repriced += await repriceOpenCycles(
       db,
       memberId: member.id,

@@ -34,6 +34,10 @@ Iterable<List<int>> idChunks(List<int> ids) sync* {
   }
 }
 
+/// [idChunks] of [ids], or a single null — "no filter" — when [ids] is null.
+Iterable<List<int>?> _chunksOrAll(List<int>? ids) =>
+    ids == null ? const [null] : idChunks(ids);
+
 /// The member's current enrolment, or null if they have none.
 ///
 /// Tolerant of a database that somehow holds two open enrolments for one
@@ -191,26 +195,144 @@ Future<List<MembershipPeriod>> periodsForMember(
 ///
 /// One grouped query rather than one per cycle: the members screen and the
 /// reminder queue both ask this about the whole roster at once.
+///
+/// [paidBy] counts only the money from payments dated on or before it — what
+/// a cycle held at that moment, for the month-end picture on the Reports
+/// screen. Null counts everything, as every other caller wants.
+///
+/// Null [periodIds] asks about every cycle in one statement — for the whole
+/// roster, where naming each cycle in chunks of [idChunkSize] grew to
+/// hundreds of statements as the gym's history did.
 Future<Map<int, int>> collectedByPeriod(
   AppDatabase db,
-  List<int> periodIds,
-) async {
-  if (periodIds.isEmpty) return const {};
+  List<int>? periodIds, {
+  DateTime? paidBy,
+}) async {
+  if (periodIds != null && periodIds.isEmpty) return const {};
 
   final total = db.paymentAllocations.amountMinor.sum();
   final collected = <int, int>{};
-  for (final chunk in idChunks(periodIds)) {
-    final rows = await (db.selectOnly(db.paymentAllocations)
-          ..addColumns([db.paymentAllocations.membershipPeriodId, total])
-          ..where(db.paymentAllocations.membershipPeriodId.isIn(chunk))
-          ..groupBy([db.paymentAllocations.membershipPeriodId]))
-        .get();
-    for (final row in rows) {
+  for (final chunk in _chunksOrAll(periodIds)) {
+    final query = db.selectOnly(db.paymentAllocations)
+      ..addColumns([db.paymentAllocations.membershipPeriodId, total])
+      ..groupBy([db.paymentAllocations.membershipPeriodId]);
+    if (chunk != null) {
+      query.where(db.paymentAllocations.membershipPeriodId.isIn(chunk));
+    }
+    if (paidBy != null) {
+      query
+        ..join([
+          innerJoin(db.payments,
+              db.payments.id.equalsExp(db.paymentAllocations.paymentId),
+              useColumns: false),
+        ])
+        ..where(db.payments.paymentDate.isSmallerOrEqualValue(paidBy));
+    }
+    for (final row in await query.get()) {
       collected[row.read(db.paymentAllocations.membershipPeriodId)!] =
           row.read(total) ?? 0;
     }
   }
   return collected;
+}
+
+/// What the roster needs to know about the money behind each cycle that is
+/// not stamped settled: whether an allocation names it, whether a payment
+/// names it in its own column, and how much has been allocated to it.
+///
+/// One statement and one row per such cycle, against the three grouped
+/// queries over every cycle the gym has ever billed that answered the same
+/// questions before. Null [periodIds] means every unstamped cycle; otherwise
+/// only those named, which should themselves be unstamped.
+Future<Map<int, ({bool allocated, bool linked, int collected})>>
+    unsettledCycleMoney(AppDatabase db, List<int>? periodIds) async {
+  if (periodIds != null && periodIds.isEmpty) return const {};
+
+  const select = 'SELECT p.id AS id, '
+      'EXISTS (SELECT 1 FROM payment_allocations a '
+      'WHERE a.membership_period_id = p.id) AS allocated, '
+      'EXISTS (SELECT 1 FROM payments y '
+      'WHERE y.membership_period_id = p.id) AS linked, '
+      'COALESCE((SELECT SUM(a.amount_minor) FROM payment_allocations a '
+      'WHERE a.membership_period_id = p.id), 0) AS collected '
+      'FROM membership_periods p WHERE p.settled_at IS NULL';
+
+  final money = <int, ({bool allocated, bool linked, int collected})>{};
+  for (final chunk in _chunksOrAll(periodIds)) {
+    final rows = await db.customSelect(
+      chunk == null
+          ? select
+          : '$select AND p.id IN (${List.filled(chunk.length, '?').join(', ')})',
+      variables: [
+        if (chunk != null)
+          for (final id in chunk) Variable.withInt(id),
+      ],
+      readsFrom: {db.membershipPeriods, db.paymentAllocations, db.payments},
+    ).get();
+    for (final row in rows) {
+      money[row.read<int>('id')] = (
+        allocated: row.read<bool>('allocated'),
+        linked: row.read<bool>('linked'),
+        collected: row.read<int>('collected'),
+      );
+    }
+  }
+  return money;
+}
+
+/// The date of the last payment that put money towards each of [periodIds],
+/// through an allocation or through the older single-cycle column.
+///
+/// A cycle settled today was not settled at the end of a month if some of the
+/// money that settled it arrived afterwards; this is the date that decides it.
+/// Cycles nobody ever paid towards — free and waived ones — are absent.
+///
+/// Null [periodIds] asks about every cycle, as [collectedByPeriod] does.
+Future<Map<int, DateTime>> lastPaymentDateByPeriod(
+  AppDatabase db,
+  List<int>? periodIds,
+) async {
+  if (periodIds != null && periodIds.isEmpty) return const {};
+
+  final latest = <int, DateTime>{};
+  void keep(int? periodId, DateTime? date) {
+    if (periodId == null || date == null) return;
+    final seen = latest[periodId];
+    if (seen == null || date.isAfter(seen)) latest[periodId] = date;
+  }
+
+  final allocated = db.payments.paymentDate.max();
+  final linked = db.payments.paymentDate.max();
+  for (final chunk in _chunksOrAll(periodIds)) {
+    final allocatedQuery = db.selectOnly(db.paymentAllocations)
+      ..addColumns([db.paymentAllocations.membershipPeriodId, allocated])
+      ..join([
+        innerJoin(db.payments,
+            db.payments.id.equalsExp(db.paymentAllocations.paymentId),
+            useColumns: false),
+      ])
+      ..groupBy([db.paymentAllocations.membershipPeriodId]);
+    if (chunk != null) {
+      allocatedQuery
+          .where(db.paymentAllocations.membershipPeriodId.isIn(chunk));
+    }
+    for (final row in await allocatedQuery.get()) {
+      keep(row.read(db.paymentAllocations.membershipPeriodId),
+          row.read(allocated));
+    }
+
+    final columnQuery = db.selectOnly(db.payments)
+      ..addColumns([db.payments.membershipPeriodId, linked])
+      ..where(chunk == null
+          ? db.payments.membershipPeriodId.isNotNull()
+          : db.payments.membershipPeriodId.isIn(chunk))
+      ..groupBy([db.payments.membershipPeriodId]);
+    final viaColumn = await columnQuery.get();
+    for (final row in viaColumn) {
+      keep(row.read(db.payments.membershipPeriodId), row.read(linked));
+    }
+  }
+  return latest;
 }
 
 /// Every allocation belonging to [paymentId].
@@ -253,18 +375,22 @@ Future<MembershipPeriod?> latestPeriodForMember(
 /// all — the shape a database predating v10, or a test fixture that writes
 /// straight to the payments table, leaves behind. See
 /// `MemberRepository._buildRows`.
+///
+/// Null [periodIds] asks about every cycle, as [collectedByPeriod] does.
 Future<Set<int>> periodsWithAnyAllocation(
   AppDatabase db,
-  List<int> periodIds,
+  List<int>? periodIds,
 ) async {
-  if (periodIds.isEmpty) return const {};
+  if (periodIds != null && periodIds.isEmpty) return const {};
 
   final found = <int>{};
-  for (final chunk in idChunks(periodIds)) {
-    final rows = await (db.selectOnly(db.paymentAllocations, distinct: true)
-          ..addColumns([db.paymentAllocations.membershipPeriodId])
-          ..where(db.paymentAllocations.membershipPeriodId.isIn(chunk)))
-        .get();
+  for (final chunk in _chunksOrAll(periodIds)) {
+    final query = db.selectOnly(db.paymentAllocations, distinct: true)
+      ..addColumns([db.paymentAllocations.membershipPeriodId]);
+    if (chunk != null) {
+      query.where(db.paymentAllocations.membershipPeriodId.isIn(chunk));
+    }
+    final rows = await query.get();
     for (final row in rows) {
       final id = row.read(db.paymentAllocations.membershipPeriodId);
       if (id != null) found.add(id);

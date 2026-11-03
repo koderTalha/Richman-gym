@@ -66,6 +66,18 @@ String formatAmountInput(int minor) {
 String formatMinorUnits(int minor, [String currency = defaultCurrency]) =>
     formatCurrency(fromMinorUnits(minor), currency);
 
+/// A chart axis's amount — "12k", "1.5M" — where the full figure would crowd
+/// the label column. Never for a figure the owner reads as money owed or
+/// taken; those go through [formatMinorUnits].
+String formatCompactMinor(int minor) {
+  final rupees = minor / 100;
+  String trim(double v) =>
+      v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toStringAsFixed(1);
+  if (rupees.abs() >= 1000000) return '${trim(rupees / 1000000)}M';
+  if (rupees.abs() >= 1000) return '${trim(rupees / 1000)}k';
+  return trim(rupees);
+}
+
 /// Why [text] cannot be taken as a payment amount, or null when it can.
 ///
 /// One wording for every amount field: "1,500" used to be refused as "Enter

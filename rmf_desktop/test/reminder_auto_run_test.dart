@@ -5,6 +5,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:rich_man_fitness/bloc/auth_bloc.dart';
 import 'package:rich_man_fitness/bloc/branding_cubit.dart';
+import 'package:rich_man_fitness/bloc/revenue_visibility_cubit.dart';
 import 'package:rich_man_fitness/bloc/theme_cubit.dart';
 import 'package:rich_man_fitness/bloc/update_bloc.dart';
 import 'package:rich_man_fitness/data/audit_repository.dart';
@@ -118,6 +119,9 @@ void main() {
           BlocProvider<BrandingCubit>(
             create: (_) => BrandingCubit(SettingsRepository(db),
                 initial: const BrandingConfig()),
+          ),
+          BlocProvider<RevenueVisibilityCubit>(
+            create: (_) => RevenueVisibilityCubit(),
           ),
           BlocProvider<UpdateBloc>(
             create: (_) => UpdateBloc(UpdateService(

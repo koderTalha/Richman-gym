@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
@@ -50,8 +52,17 @@ class _MembersView extends StatefulWidget {
 class _MembersViewState extends State<_MembersView> {
   final _searchController = TextEditingController();
 
+  /// Holds a search back until typing pauses. Every load rebuilds the status
+  /// of every matching member, and the first letter or two of a name match
+  /// nearly the whole roster: searched on each keystroke, an eight-letter name queued
+  /// eight full loads on the one database connection, and the list arrived
+  /// after all of them. Older loads were already kept off the screen; now
+  /// they are not started.
+  Timer? _searchDelay;
+
   @override
   void dispose() {
+    _searchDelay?.cancel();
     _searchController.dispose();
     super.dispose();
   }
@@ -113,8 +124,15 @@ class _MembersViewState extends State<_MembersView> {
                     ),
                     // Live, as the handoff asks: the owner looking for one
                     // member should not have to press anything.
-                    onChanged: (_) => _search(),
-                    onSubmitted: (_) => _search(),
+                    onChanged: (_) {
+                      _searchDelay?.cancel();
+                      _searchDelay = Timer(
+                          const Duration(milliseconds: 250), _search);
+                    },
+                    onSubmitted: (_) {
+                      _searchDelay?.cancel();
+                      _search();
+                    },
                   ),
                 ),
                 SegmentedFilter<MemberFilter>(
@@ -223,6 +241,10 @@ class _MembersTable extends StatelessWidget {
   // and action are fixed so the money and the pills line up down the page.
   static const _gap = SizedBox(width: 12);
 
+  /// More than a full-height window shows below the header, so the stagger
+  /// still reads top to bottom on a tall monitor.
+  static const _animatedRows = 24;
+
   @override
   Widget build(BuildContext context) {
     final palette = context.palette;
@@ -275,15 +297,19 @@ class _MembersTable extends StatelessWidget {
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
               itemCount: rows.length,
-              itemBuilder: (context, i) => FadeRise(
-                index: i,
-                child: _MemberTableRow(
+              itemBuilder: (context, i) {
+                final row = _MemberTableRow(
                   row: rows[i],
                   showPlan: showPlan,
                   onOpen: onOpen,
                   onRecordPayment: onRecordPayment,
-                ),
-              ),
+                );
+                // Only the rows on screen when the list arrives rise in. Each
+                // FadeRise is its own animation and compositing layer, and
+                // giving one to every row ran six hundred of them at once,
+                // for rows below the fold that nobody could see move.
+                return i < _animatedRows ? FadeRise(index: i, child: row) : row;
+              },
             ),
           ],
         ),

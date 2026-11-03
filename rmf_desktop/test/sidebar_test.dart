@@ -5,6 +5,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:rich_man_fitness/bloc/auth_bloc.dart';
 import 'package:rich_man_fitness/bloc/branding_cubit.dart';
+import 'package:rich_man_fitness/bloc/revenue_visibility_cubit.dart';
 import 'package:rich_man_fitness/bloc/theme_cubit.dart';
 import 'package:rich_man_fitness/bloc/update_bloc.dart';
 import 'package:rich_man_fitness/data/audit_repository.dart';
@@ -82,6 +83,9 @@ void main() {
             create: (_) => BrandingCubit(SettingsRepository(db),
                 initial: const BrandingConfig()),
           ),
+          BlocProvider<RevenueVisibilityCubit>(
+            create: (_) => RevenueVisibilityCubit(),
+          ),
           BlocProvider<UpdateBloc>(
             create: (_) => UpdateBloc(UpdateService(
               db: db,
@@ -154,8 +158,14 @@ void main() {
         reason: 'switching provider in Settings shows here straight away');
   });
 
-  testWidgets('Reports is marked as not here yet', (tester) async {
+  testWidgets('Reports is open and leads to the reports', (tester) async {
     await pumpShell(tester);
-    expect(find.text('SOON'), findsOneWidget);
+    expect(find.text('SOON'), findsNothing,
+        reason: 'no screen is waiting to land any more');
+
+    await tester.tap(find.text('Reports'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Reports & Analytics'), findsOneWidget);
   });
 }

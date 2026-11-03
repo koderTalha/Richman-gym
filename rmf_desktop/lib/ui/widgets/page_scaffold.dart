@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../theme/app_theme.dart';
+import 'revenue_visibility.dart' show ObscuredText;
 
 /// The page frame every screen sits in, per the handoff.
 ///
@@ -277,11 +278,16 @@ class StatFigure extends StatelessWidget {
     required this.value,
     this.hint,
     this.tone,
+    this.obscured = false,
     this.child,
   });
 
   final String label;
   final String value;
+
+  /// Paints a mask over [value] instead of the figure, as the revenue figures
+  /// do when the owner hides them.
+  final bool obscured;
 
   /// The quieter half of a value, like "· 0 payments".
   final String? hint;
@@ -313,8 +319,9 @@ class StatFigure extends StatelessWidget {
           textBaseline: TextBaseline.alphabetic,
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(
-              value,
+            ObscuredText(
+              text: value,
+              obscured: obscured,
               style: TextStyle(
                 fontSize: 22,
                 fontWeight: FontWeight.w500,

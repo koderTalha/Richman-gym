@@ -3,6 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../bloc/branding_cubit.dart';
 import '../bloc/dashboard_bloc.dart';
+import '../bloc/revenue_visibility_cubit.dart';
 import '../data/database.dart' show WhatsAppStatus;
 import '../data/member_repository.dart';
 import '../data/payment_repository.dart';
@@ -20,6 +21,7 @@ import 'widgets/brand_photo.dart';
 import 'widgets/count_up.dart';
 import 'widgets/fade_rise.dart';
 import 'widgets/page_scaffold.dart';
+import 'widgets/revenue_visibility.dart';
 import 'widgets/rotating_rings.dart';
 
 class DashboardScreen extends StatelessWidget {
@@ -73,6 +75,7 @@ class _DashboardView extends StatelessWidget {
             revenueMonthMinor: state.revenueMonthMinor,
           ),
           actions: [
+            const RevenueVisibilityButton(),
             GhostButton(
               label: 'Refresh',
               icon: Icons.refresh,
@@ -172,9 +175,19 @@ class _Summary extends StatelessWidget {
             style: TextStyle(color: palette.due, fontWeight: FontWeight.w500),
           ),
           const TextSpan(text: ', and '),
-          TextSpan(
-            text: formatMinorUnits(revenueMonthMinor),
-            style: TextStyle(color: palette.textSecondary),
+          // The month's figure again, so it hides with the stat below it.
+          WidgetSpan(
+            alignment: PlaceholderAlignment.baseline,
+            baseline: TextBaseline.alphabetic,
+            child: BlocBuilder<RevenueVisibilityCubit, bool>(
+              builder: (context, visible) => ObscuredText(
+                text: formatMinorUnits(revenueMonthMinor),
+                obscured: !visible,
+                style: DefaultTextStyle.of(context)
+                    .style
+                    .copyWith(color: palette.textSecondary),
+              ),
+            ),
           ),
           const TextSpan(text: ' has come in this month.'),
         ],
@@ -372,6 +385,7 @@ class _SecondaryStats extends StatelessWidget {
     final total = state.members.length;
     final active = state.activeCount;
     final fraction = total == 0 ? 0.0 : active / total;
+    final revenueVisible = context.watch<RevenueVisibilityCubit>().state;
 
     return Wrap(
       spacing: 40,
@@ -385,6 +399,7 @@ class _SecondaryStats extends StatelessWidget {
           builder: (context, animated) => StatFigure(
             label: 'Revenue this month',
             value: formatMinorUnits(animated.round()),
+            obscured: !revenueVisible,
           ),
         ),
         CountUp(
@@ -392,6 +407,7 @@ class _SecondaryStats extends StatelessWidget {
           builder: (context, animated) => StatFigure(
             label: 'Today',
             value: formatMinorUnits(animated.round()),
+            obscured: !revenueVisible,
             hint: '· ${state.paymentsToday} '
                 'payment${state.paymentsToday == 1 ? '' : 's'}',
           ),

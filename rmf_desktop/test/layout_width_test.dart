@@ -4,6 +4,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:rich_man_fitness/bloc/auth_bloc.dart';
 import 'package:rich_man_fitness/bloc/branding_cubit.dart';
+import 'package:rich_man_fitness/bloc/revenue_visibility_cubit.dart';
 import 'package:rich_man_fitness/bloc/theme_cubit.dart';
 import 'package:rich_man_fitness/bloc/update_bloc.dart';
 import 'package:rich_man_fitness/data/audit_repository.dart';
@@ -83,6 +84,9 @@ void main() {
             create: (_) => BrandingCubit(SettingsRepository(db),
                 initial: const BrandingConfig()),
           ),
+          BlocProvider<RevenueVisibilityCubit>(
+            create: (_) => RevenueVisibilityCubit(),
+          ),
           BlocProvider<UpdateBloc>(
             create: (_) => UpdateBloc(UpdateService(
               db: db,
@@ -117,6 +121,7 @@ void main() {
         // needs the reminder service, which this harness does not build.
         'Appearance',
         'Settings',
+        'Reports',
         'Dashboard',
       ]) {
         await tester.tap(find.text(screen).first);

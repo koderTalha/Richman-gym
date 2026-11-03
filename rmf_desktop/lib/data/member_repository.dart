@@ -59,6 +59,7 @@ class MemberRow {
     required this.feeMinor,
     required this.paidUntil,
     this.outstandingMinor,
+    this.arrearsMinor = 0,
   });
 
   final Member member;
@@ -80,6 +81,12 @@ class MemberRow {
   /// `domain/payment_settlement.dart` — and it is what a reminder message
   /// quotes rather than the plan's full fee.
   final int? outstandingMinor;
+
+  /// Everything still unpaid on cycles that have already begun — every month
+  /// owed, where [outstandingMinor] is only the earliest. A cycle billed
+  /// twice under two enrolments counts once, and not at all if either copy
+  /// is paid, by the same rule as the status. Zero when nothing is owed.
+  final int arrearsMinor;
 
   int get id => member.id;
 }
@@ -221,7 +228,9 @@ class MemberRepository {
             (code != null ? m.memberCode.equals(code) : const Constant(false)));
     }
 
-    return _buildRows(await membersQuery.get(), now: now);
+    final searching = term != null && term.isNotEmpty;
+    return _buildRows(await membersQuery.get(),
+        now: now, everyone: !searching);
   }
 
   /// The digits of a phone number as typed, without the prefix that only
@@ -248,9 +257,22 @@ class MemberRepository {
   /// attached to the closed one — reading only the open enrolment made a
   /// fully-paid member read DUE the moment their plan was changed, with the
   /// money still sitting in the database.
+  ///
+  /// [asOf] rewinds the money and the deactivations to that moment, for
+  /// [listAsOf]; null reads the database as it stands.
+  ///
+  /// [everyone] says [memberRows] is the whole roster, or near enough, so
+  /// each table is read in one statement rather than named an id at a time.
+  /// Naming them went in chunks of [idChunkSize] cycles, three queries per
+  /// chunk: harmless at a few hundred members, but the count grows with every
+  /// month of history, and a large roster took hundreds of statements to
+  /// draw the Dashboard. The rows reached are the same; extra ones belonging
+  /// to members not asked about are simply never looked up.
   Future<List<MemberRow>> _buildRows(
     List<Member> memberRows, {
     DateTime? now,
+    DateTime? asOf,
+    bool everyone = false,
   }) async {
     if (memberRows.isEmpty) return const [];
 
@@ -263,10 +285,13 @@ class MemberRepository {
     // Named in chunks: every id is a bound variable, and SQLite stops at
     // 32,766 — see [idChunkSize].
     final memberships = <Membership>[
-      for (final chunk in idChunks(memberIds))
-        ...await (db.select(db.memberships)
-              ..where((m) => m.memberId.isIn(chunk)))
-            .get(),
+      if (everyone)
+        ...await db.select(db.memberships).get()
+      else
+        for (final chunk in idChunks(memberIds))
+          ...await (db.select(db.memberships)
+                ..where((m) => m.memberId.isIn(chunk)))
+              .get(),
     ]..sort((a, b) => a.id.compareTo(b.id));
 
     // The open enrolment (endDate == null) is what the member is on *now*.
@@ -284,41 +309,93 @@ class MemberRepository {
     final membershipIds = memberships.map((m) => m.id).toList();
 
     final periods = <MembershipPeriod>[
-      for (final chunk in idChunks(membershipIds))
-        ...await (db.select(db.membershipPeriods)
-              ..where((p) => p.membershipId.isIn(chunk)))
-            .get(),
+      if (everyone)
+        ...await db.select(db.membershipPeriods).get()
+      else
+        for (final chunk in idChunks(membershipIds))
+          ...await (db.select(db.membershipPeriods)
+                ..where((p) => p.membershipId.isIn(chunk)))
+              .get(),
     ]..sort((a, b) => a.periodStart.compareTo(b.periodStart));
 
     // Which cycles have at least one payment — the old signal, kept as a
     // fallback for a cycle whose money was never given an allocation row: a
     // database predating v10 that has not been grandfathered by anything
     // running the migration, or a raw row written straight to `payments`.
+    //
+    // Once a cycle has an allocation, its money is judged by the balance rule
+    // — `settledAt` — and the any-payment-exists fallback no longer applies to
+    // it: a part-payment recorded through the current app must read as still
+    // owing, not as paid because a payment row happens to exist.
     final periodIds = periods.map((p) => p.id).toList();
-    final paidPeriodIds = <int>{};
-    for (final chunk in idChunks(periodIds)) {
-      final paid = await (db.selectOnly(db.payments)
-            ..addColumns([db.payments.membershipPeriodId])
-            ..where(db.payments.membershipPeriodId.isIn(chunk))
-            ..groupBy([db.payments.membershipPeriodId]))
-          .get();
-      for (final row in paid) {
-        final id = row.read(db.payments.membershipPeriodId);
-        if (id != null) paidPeriodIds.add(id);
+    final Set<int> paidPeriodIds;
+    final Set<int> allocatedPeriodIds;
+    final Map<int, int> collectedByPeriodId;
+
+    if (asOf == null) {
+      // Read as things stand, a cycle stamped settled is settled and nothing
+      // below is asked about it, so only the unstamped ones are fetched — a
+      // few hundred rows rather than one for every month of the gym's
+      // history, which at large rosters was most of the time this took.
+      final unsettled = [
+        for (final p in periods)
+          if (p.settledAt == null) p.id,
+      ];
+      final money = await unsettledCycleMoney(db, everyone ? null : unsettled);
+      paidPeriodIds = {
+        for (final e in money.entries)
+          if (e.value.linked) e.key,
+      };
+      allocatedPeriodIds = {
+        for (final e in money.entries)
+          if (e.value.allocated) e.key,
+      };
+      collectedByPeriodId = {
+        for (final e in money.entries) e.key: e.value.collected,
+      };
+    } else {
+      // Rewound, a cycle settled today may not have been settled then, so
+      // every cycle's money is needed.
+      final askAbout = everyone ? null : periodIds;
+      paidPeriodIds = <int>{};
+      final chunks = everyone
+          ? const <List<int>?>[null]
+          : <List<int>?>[...idChunks(periodIds)];
+      for (final chunk in chunks) {
+        final paid = await (db.selectOnly(db.payments)
+              ..addColumns([db.payments.membershipPeriodId])
+              ..where(chunk == null
+                  ? db.payments.membershipPeriodId.isNotNull()
+                  : db.payments.membershipPeriodId.isIn(chunk))
+              ..groupBy([db.payments.membershipPeriodId]))
+            .get();
+        for (final row in paid) {
+          final id = row.read(db.payments.membershipPeriodId);
+          if (id != null) paidPeriodIds.add(id);
+        }
       }
+      allocatedPeriodIds = await periodsWithAnyAllocation(db, askAbout);
+      collectedByPeriodId =
+          await collectedByPeriod(db, askAbout, paidBy: asOf);
     }
 
-    // Once a cycle has an allocation, its money is judged by the balance rule
-    // — `settledAt` — and the any-payment-exists fallback above no longer
-    // applies to it: a part-payment recorded through the current app must read
-    // as still owing, not as paid because a payment row happens to exist.
-    final allocatedPeriodIds = await periodsWithAnyAllocation(db, periodIds);
-    final collectedByPeriodId = await collectedByPeriod(db, periodIds);
+    // Settled now, but only settled *then* if every payment towards it had
+    // already been made — a cycle paid off on the 3rd was still owing on the
+    // last day of the month before.
+    final lastPaidOn = asOf == null
+        ? const <int, DateTime>{}
+        : await lastPaymentDateByPeriod(db, everyone ? null : periodIds);
 
-    bool isSettled(MembershipPeriod period) {
+    bool isSettledNow(MembershipPeriod period) {
       if (period.settledAt != null) return true;
       if (allocatedPeriodIds.contains(period.id)) return false;
       return paidPeriodIds.contains(period.id);
+    }
+
+    bool isSettled(MembershipPeriod period) {
+      if (!isSettledNow(period)) return false;
+      final last = lastPaidOn[period.id];
+      return asOf == null || last == null || !last.isAfter(asOf);
     }
 
     final settledPeriodIds = {
@@ -358,14 +435,27 @@ class MemberRepository {
           : owingCycle.expectedAmountMinor -
               (collectedByPeriodId[owingCycle.id] ?? 0);
 
+      // A member deactivated after [asOf] was still active at it.
+      final deactivatedAt = asOf != null &&
+              member.deactivatedAt != null &&
+              member.deactivatedAt!.isAfter(asOf)
+          ? null
+          : member.deactivatedAt;
+
       return MemberRow(
         member: member,
         membership: membership,
         plan: plan,
         status: deriveMemberStatus(
-          deactivatedAt: member.deactivatedAt,
+          deactivatedAt: deactivatedAt,
           periods: statusPeriods,
           now: at,
+        ),
+        arrearsMinor: _arrears(
+          memberPeriods,
+          settledPeriodIds,
+          collectedByPeriodId,
+          at,
         ),
         feeMinor: membership == null
             ? null
@@ -377,6 +467,38 @@ class MemberRepository {
             outstanding == null ? null : (outstanding < 0 ? 0 : outstanding),
       );
     }).toList();
+  }
+
+  /// What is unpaid across the member's cycles that began by [at].
+  ///
+  /// Cycles are grouped by start exactly as [_mergeCycles] groups them: a
+  /// month billed under two enrolments is one month owed, and owes nothing if
+  /// either copy is settled. Where neither is, the newer enrolment's bill is
+  /// the one that stands, as it is the price the member is on.
+  static int _arrears(
+    List<MembershipPeriod> periods,
+    Set<int> settledPeriodIds,
+    Map<int, int> collectedByPeriodId,
+    DateTime at,
+  ) {
+    final byStart = <int, List<MembershipPeriod>>{};
+    for (final period in periods) {
+      if (period.periodStart.isAfter(at)) continue;
+      byStart
+          .putIfAbsent(period.periodStart.millisecondsSinceEpoch, () => [])
+          .add(period);
+    }
+
+    var owed = 0;
+    for (final copies in byStart.values) {
+      if (copies.any((p) => settledPeriodIds.contains(p.id))) continue;
+      final standing =
+          copies.reduce((a, b) => a.membershipId >= b.membershipId ? a : b);
+      final balance = standing.expectedAmountMinor -
+          (collectedByPeriodId[standing.id] ?? 0);
+      if (balance > 0) owed += balance;
+    }
+    return owed;
   }
 
   /// Collapses the member's cycles into one timeline, oldest first.
@@ -458,6 +580,25 @@ class MemberRepository {
 
     final rows = await _buildRows([member], now: now?.toUtc());
     return rows.isEmpty ? null : rows.first;
+  }
+
+  /// The roster as it stood at [at], for a month-end picture on the Reports
+  /// screen.
+  ///
+  /// The same rows and the same status rules as [list], rewound: only members
+  /// who had joined by then, a deactivation counted only once it had
+  /// happened, and a cycle paid only if the money that paid it had arrived.
+  /// It cannot rewind what was overwritten rather than recorded — a fee rise
+  /// re-prices unpaid cycles in place, and reactivating a member clears the
+  /// date they were deactivated — so a past month reads by today's prices
+  /// and today's reactivations.
+  Future<List<MemberRow>> listAsOf(DateTime at) async {
+    final when = at.toUtc();
+    final joined = await (db.select(db.members)
+          ..where((m) => m.joiningDate.isSmallerOrEqualValue(when))
+          ..orderBy([(m) => OrderingTerm(expression: m.memberCode)]))
+        .get();
+    return _buildRows(joined, now: when, asOf: when, everyone: true);
   }
 
   /// One past the highest member code ever handed out — not merely the

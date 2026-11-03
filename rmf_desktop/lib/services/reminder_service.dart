@@ -217,21 +217,25 @@ class ReminderService {
 
     final candidates = <ReminderCandidate>[];
 
+    // Every member's billing and reminder history read once, rather than six
+    // queries a member: the screen asks this of the whole active roster each
+    // time it opens, and that was a second's wait at 600 members.
+    final billings = await _cycles.forMembers(members);
+    final history = await _reminderHistory();
+
     for (final member in members) {
       // Being messaged right now by another send; offering it here is how the
       // screen used to hand the owner a second copy to send.
       if (_inFlight.contains(member.id)) continue;
 
-      final billing = await _cycles.forMember(member.id);
+      final billing = billings[member.id];
       if (billing == null) continue;
 
       final target = _targetFor(billing, today);
       if (target == null) continue;
 
-      final rows = await _reminderRows(
-        memberId: member.id,
-        dueDate: target.dueDate,
-      );
+      final rows = history[(member.id, target.dueDate.millisecondsSinceEpoch)] ??
+          const <ReminderKey, ReminderSendStatus>{};
       final retryFailed = _recipientFor(member) != null;
       final decision = decideReminder(
         settings: settings,
@@ -723,6 +727,22 @@ class ReminderService {
 
   /// Every reminder already recorded against the cycle due on [dueDate], and
   /// what became of it.
+  /// [_reminderRows] for every member and due date at once, keyed by member
+  /// id and the due date's milliseconds.
+  Future<Map<(int, int), Map<ReminderKey, ReminderSendStatus>>>
+      _reminderHistory() async {
+    final history = <(int, int), Map<ReminderKey, ReminderSendStatus>>{};
+    for (final row in await db.select(db.paymentReminders).get()) {
+      history.putIfAbsent(
+          (row.memberId, row.dueDate.millisecondsSinceEpoch),
+          () => {})[ReminderKey(
+        ReminderStage.values.byName(row.stage),
+        row.offsetDays,
+      )] = row.status;
+    }
+    return history;
+  }
+
   Future<Map<ReminderKey, ReminderSendStatus>> _reminderRows({
     required int memberId,
     required DateTime dueDate,

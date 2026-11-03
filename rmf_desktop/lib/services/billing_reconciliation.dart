@@ -3,7 +3,6 @@ import 'package:logging/logging.dart';
 
 import '../data/audit_repository.dart';
 import '../data/database.dart';
-import '../data/membership_queries.dart';
 import '../domain/dates.dart';
 import '../domain/money.dart';
 
@@ -87,27 +86,30 @@ Future<List<BillingDiscrepancy>> findBillingDiscrepancies(
       .get();
 
   final found = <BillingDiscrepancy>[];
+  if (members.isEmpty) return found;
+
+  // Everything the per-member test needs, read once for the whole roster
+  // rather than six queries a member: at launch this ran for every active
+  // member, and was most of the second the gym waited for the window.
+  final books = await _Books.load(db);
 
   for (final member in members) {
-    final periods = await periodsForMember(db, member.id);
+    final periods = books.periodsByMember[member.id] ?? const [];
     if (periods.isEmpty) continue;
-
-    final settled = await _settledPeriodIds(db, periods);
 
     // The earliest cycle still owing, which is the one the members screen
     // reports — see `MemberRepository._buildRows`.
-    final owing = periods.where((p) => !settled.contains(p.id)).firstOrNull;
+    final owing = periods.where((p) => !books.isSettled(p)).firstOrNull;
     if (owing == null) continue;
 
-    final collected = await collectedByPeriod(db, [owing.id]);
     final outstanding =
-        owing.expectedAmountMinor - (collected[owing.id] ?? 0);
+        owing.expectedAmountMinor - (books.collected[owing.id] ?? 0);
     if (outstanding <= 0) continue;
 
     final billed = periods
         .where((p) => !p.periodStart.toUtc().isAfter(today))
         .fold(0, (sum, p) => sum + p.expectedAmountMinor);
-    final paid = await _totalPaidBy(db, member.id);
+    final paid = books.paidByMember[member.id] ?? 0;
 
     if (paid < billed) continue;
 
@@ -180,41 +182,89 @@ Future<int> reportBillingDiscrepancies(
   return recorded;
 }
 
-/// Which of [periods] count as settled, by the same rule the members screen
-/// uses: the stamp first, then an allocation meaning the balance rule applies,
-/// then the bare existence of a payment for rows predating v10.
-Future<Set<int>> _settledPeriodIds(
-  AppDatabase db,
-  List<MembershipPeriod> periods,
-) async {
-  final ids = [for (final period in periods) period.id];
-  final allocated = await periodsWithAnyAllocation(db, ids);
+/// The roster's cycles and money, loaded together for
+/// [findBillingDiscrepancies].
+class _Books {
+  _Books._(this.periodsByMember, this._allocated, this._linked,
+      this.collected, this.paidByMember);
 
-  final paid = <int>{};
-  final rows = await (db.selectOnly(db.payments, distinct: true)
-        ..addColumns([db.payments.membershipPeriodId])
-        ..where(db.payments.membershipPeriodId.isIn(ids)))
-      .get();
-  for (final row in rows) {
-    final id = row.read(db.payments.membershipPeriodId);
-    if (id != null) paid.add(id);
+  /// Every member's cycles across all their enrolments, oldest first — what
+  /// `periodsForMember` returns, for everyone at once.
+  final Map<int, List<MembershipPeriod>> periodsByMember;
+
+  /// Cycles with an allocation against them.
+  final Set<int> _allocated;
+
+  /// Cycles a payment names in its own column.
+  final Set<int> _linked;
+
+  /// Money allocated to each cycle.
+  final Map<int, int> collected;
+
+  /// Everything each member has ever paid.
+  final Map<int, int> paidByMember;
+
+  /// Closed by its stamp, or — for history with no allocations at all — by
+  /// a payment naming it. The same rule `MemberRepository._buildRows` applies.
+  bool isSettled(MembershipPeriod period) =>
+      period.settledAt != null ||
+      (!_allocated.contains(period.id) && _linked.contains(period.id));
+
+  static Future<_Books> load(AppDatabase db) async {
+    final memberOf = {
+      for (final m in await db.select(db.memberships).get()) m.id: m.memberId,
+    };
+
+    final periodsByMember = <int, List<MembershipPeriod>>{};
+    for (final period in await (db.select(db.membershipPeriods)
+          ..orderBy([
+            (p) => OrderingTerm(expression: p.periodStart),
+            (p) => OrderingTerm(expression: p.id),
+          ]))
+        .get()) {
+      final memberId = memberOf[period.membershipId];
+      if (memberId == null) continue;
+      periodsByMember.putIfAbsent(memberId, () => []).add(period);
+    }
+
+    final allocated = {
+      for (final row in await (db.selectOnly(db.paymentAllocations,
+                  distinct: true)
+                ..addColumns([db.paymentAllocations.membershipPeriodId]))
+              .get())
+        row.read(db.paymentAllocations.membershipPeriodId)!,
+    };
+
+    final linked = <int>{
+      for (final row in await (db.selectOnly(db.payments, distinct: true)
+                ..addColumns([db.payments.membershipPeriodId])
+                ..where(db.payments.membershipPeriodId.isNotNull()))
+              .get())
+        row.read(db.payments.membershipPeriodId)!,
+    };
+
+    final allocatedSum = db.paymentAllocations.amountMinor.sum();
+    final collected = {
+      for (final row in await (db.selectOnly(db.paymentAllocations)
+                ..addColumns(
+                    [db.paymentAllocations.membershipPeriodId, allocatedSum])
+                ..groupBy([db.paymentAllocations.membershipPeriodId]))
+              .get())
+        row.read(db.paymentAllocations.membershipPeriodId)!:
+            row.read(allocatedSum) ?? 0,
+    };
+
+    final paidSum = db.payments.amountMinor.sum();
+    final paidByMember = {
+      for (final row in await (db.selectOnly(db.payments)
+                ..addColumns([db.payments.memberId, paidSum])
+                ..groupBy([db.payments.memberId]))
+              .get())
+        row.read(db.payments.memberId)!: row.read(paidSum) ?? 0,
+    };
+
+    return _Books._(periodsByMember, allocated, linked, collected, paidByMember);
   }
-
-  return {
-    for (final period in periods)
-      if (period.settledAt != null ||
-          (!allocated.contains(period.id) && paid.contains(period.id)))
-        period.id,
-  };
-}
-
-Future<int> _totalPaidBy(AppDatabase db, int memberId) async {
-  final total = db.payments.amountMinor.sum();
-  final row = await (db.selectOnly(db.payments)
-        ..addColumns([total])
-        ..where(db.payments.memberId.equals(memberId)))
-      .getSingle();
-  return row.read(total) ?? 0;
 }
 
 Future<Set<int>> _membersAlreadyReported(AppDatabase db) async {

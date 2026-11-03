@@ -63,7 +63,66 @@ class BillingCycleService {
       db,
       periods.map((p) => p.id).toList(),
     );
+    return _billingFrom(member, membership, plan, periods, collected);
+  }
 
+  /// [forMember] for each of [members] at once, keyed by member id; a member
+  /// [forMember] would answer null for is absent.
+  ///
+  /// Reads each table once for the whole list instead of five queries a
+  /// member — the reminder queue asks this about every active member each
+  /// time the Reminders screen opens.
+  Future<Map<int, MemberBilling>> forMembers(List<Member> members) async {
+    if (members.isEmpty) return const {};
+    final wanted = {for (final m in members) m.id};
+
+    final plans = {
+      for (final p in await db.select(db.membershipPlans).get()) p.id: p,
+    };
+
+    // Every enrolment, so cycles on closed ones count, and the newest open
+    // one per member, as [openMembershipFor] picks it.
+    final memberOf = <int, int>{};
+    final openFor = <int, Membership>{};
+    for (final m in await (db.select(db.memberships)
+          ..orderBy([(m) => OrderingTerm(expression: m.id)]))
+        .get()) {
+      if (!wanted.contains(m.memberId)) continue;
+      memberOf[m.id] = m.memberId;
+      if (m.endDate == null) openFor[m.memberId] = m;
+    }
+
+    final periodsByMember = <int, List<MembershipPeriod>>{};
+    final periodIds = <int>[];
+    for (final period in await (db.select(db.membershipPeriods)
+          ..orderBy([
+            (p) => OrderingTerm(expression: p.periodStart),
+            (p) => OrderingTerm(expression: p.id),
+          ]))
+        .get()) {
+      final memberId = memberOf[period.membershipId];
+      if (memberId == null) continue;
+      periodsByMember.putIfAbsent(memberId, () => []).add(period);
+      periodIds.add(period.id);
+    }
+    final collected = await collectedByPeriod(db, periodIds);
+
+    return {
+      for (final member in members)
+        if (openFor[member.id] case final membership?)
+          if (plans[membership.planId] case final plan?)
+            member.id: _billingFrom(member, membership, plan,
+                periodsByMember[member.id] ?? const [], collected),
+    };
+  }
+
+  static MemberBilling _billingFrom(
+    Member member,
+    Membership membership,
+    MembershipPlan plan,
+    List<MembershipPeriod> periods,
+    Map<int, int> collected,
+  ) {
     final cycles = [
       for (final period in periods)
         SettleableCycle(
