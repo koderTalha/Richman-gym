@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import '../services/payment_inactivity_service.dart';
 import '../services/reminder_service.dart';
 
 /// How often the automatic reminder run is tried again while the app stays
@@ -54,6 +55,12 @@ class _AutomaticRemindersState extends State<AutomaticReminders> {
   /// automatic run.
   void _run() {
     if (!mounted) return;
+    // Here for the same reason the reminders are: the gym leaves the app open
+    // for days, and launch is otherwise the only time it runs. Off until the
+    // owner switches it on, single-flight, and never throws.
+    final inactivity = context.read<PaymentInactivityService?>();
+    if (inactivity != null) unawaited(inactivity.run());
+
     final reminders = context.read<ReminderService?>();
     if (reminders == null) return;
     unawaited(reminders.runAutoSend());

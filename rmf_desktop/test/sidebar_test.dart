@@ -16,7 +16,9 @@ import 'package:rich_man_fitness/data/receipt_repository.dart';
 import 'package:rich_man_fitness/data/seed.dart';
 import 'package:rich_man_fitness/data/settings_repository.dart';
 import 'package:rich_man_fitness/domain/app_version.dart';
+import 'package:rich_man_fitness/services/reminder_service.dart';
 import 'package:rich_man_fitness/services/startup_maintenance.dart';
+import 'package:rich_man_fitness/services/whatsapp/mock_client.dart';
 import 'package:rich_man_fitness/services/update/update_service.dart';
 import 'package:rich_man_fitness/theme/app_theme.dart';
 import 'package:rich_man_fitness/theme/branding_config.dart';
@@ -29,11 +31,16 @@ import 'support/still_motion.dart';
 void main() {
   late AppDatabase db;
   late MemberRepository members;
+  late ReminderService reminders;
 
   setUp(() async {
     db = AppDatabase.forTesting(NativeDatabase.memory());
     await seedDatabase(db);
     members = MemberRepository(db);
+    reminders = ReminderService(
+      db: db,
+      clientFactory: () async => MockWhatsAppClient(),
+    );
   });
 
   tearDown(() async => db.close());
@@ -72,6 +79,7 @@ void main() {
             create: (_) => ReceiptRepository(db)),
         RepositoryProvider<SettingsRepository>(
             create: (_) => SettingsRepository(db, audit: audit)),
+        RepositoryProvider<ReminderService>.value(value: reminders),
       ],
       child: MultiBlocProvider(
         providers: [
@@ -116,13 +124,45 @@ void main() {
         reason: 'a zero is not worth the owner\'s attention');
   });
 
-  testWidgets('Reminders shows how many members are due', (tester) async {
+  testWidgets('Reminders shows how many reminders are waiting', (tester) async {
     await addDueMember('Test Overdue', '+923000000101');
     await addDueMember('Test Payer', '+923000000102');
     await pumpShell(tester);
 
     expect(badge(), findsOneWidget);
     expect(badgeText(tester), '2');
+  });
+
+  testWidgets('dealing with the reminders clears the badge, though the '
+      'members still owe', (tester) async {
+    await addDueMember('Test Overdue', '+923000000101');
+    await addDueMember('Test Payer', '+923000000102');
+    final queue = await reminders.buildQueue();
+    await pumpShell(tester);
+    expect(badgeText(tester), '2');
+
+    await tester.runAsync(() => reminders.dismiss(queue.first));
+    await tester.pumpAndSettle();
+    expect(badgeText(tester), '1');
+
+    await tester.runAsync(() => reminders.dismiss(queue.last));
+    await tester.pumpAndSettle();
+    expect(badge(), findsNothing);
+
+    final due = (await tester.runAsync(members.filterCounts))!;
+    expect(due[MemberFilter.due], 2, reason: 'nobody paid');
+  });
+
+  testWidgets('no badge while reminders are switched off', (tester) async {
+    await addDueMember('Test Overdue', '+923000000101');
+    await (db.update(db.gymSettings)..where((s) => s.id.equals(1))).write(
+        const GymSettingsCompanion(
+      reminderDaysBefore: Value(''),
+      reminderDaysAfter: Value(''),
+      reminderOnDueDate: Value(false),
+    ));
+    await pumpShell(tester);
+    expect(badge(), findsNothing);
   });
 
   testWidgets('the count follows the database without a Reload',

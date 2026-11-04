@@ -31,11 +31,16 @@ void main() {
       'receipt_template',
       // v14's hero photographs.
       'login_photo_path', 'dashboard_photo_path',
+      // v16's missed-payment switch.
+      'auto_deactivate_unpaid', 'inactivity_grace_days',
     ]) {
       raw.execute('ALTER TABLE gym_settings DROP COLUMN $col');
     }
     // v15's inactivity lock.
     raw.execute('ALTER TABLE app_sessions DROP COLUMN last_active_at');
+    // v16's missed-payment deactivations.
+    raw.execute('DROP TABLE inactivity_waivers');
+    raw.execute('DROP TABLE member_deactivations');
     // Real-looking gym data, as a working install would hold. Inserted rather
     // than updated: forTesting() creates the schema but seeds no rows.
     raw.execute("INSERT INTO gym_settings (id, gym_name, receipt_prefix, "
@@ -79,6 +84,9 @@ void main() {
     expect(branding.loginPhotoPath, isNull);
     expect(branding.dashboardPhotoPath, isNull);
     expect((await SettingsRepository(db).get()).themeMode, 'dark');
+    // Nobody is deactivated by installing the update: the owner switches it on.
+    expect((await SettingsRepository(db).get()).autoDeactivateUnpaid, isFalse);
+    expect(await db.select(db.memberDeactivations).get(), isEmpty);
 
     // 5. The new settings are writable afterwards.
     await SettingsRepository(db)

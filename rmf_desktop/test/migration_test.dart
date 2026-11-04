@@ -576,7 +576,7 @@ void main() {
           .getSingle();
 
       expect(version, db.schemaVersion);
-      expect(db.schemaVersion, 15);
+      expect(db.schemaVersion, 17);
     });
 
     test('keeps the members, payments and receipts', () async {

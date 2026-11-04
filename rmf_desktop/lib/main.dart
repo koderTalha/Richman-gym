@@ -20,6 +20,7 @@ import 'services/backup_service.dart';
 import 'services/billing_cycle_service.dart';
 import 'services/billing_month_checker.dart';
 import 'services/payment_edit_service.dart';
+import 'services/payment_inactivity_service.dart';
 import 'services/reminder_service.dart';
 import 'services/whatsapp/member_welcome_service.dart';
 import 'services/logging/app_logger.dart';
@@ -241,6 +242,11 @@ class RichManFitnessApp extends StatelessWidget {
       cycles: cycles,
     );
 
+    // Shared so the hourly tick and the Settings card cannot run it twice at
+    // once; startup maintenance has already run it once before this.
+    final inactivity =
+        PaymentInactivityService(db, cycles: cycles, audit: audit);
+
     // Off by default — see GymSettings.reminderAutoSend. A closed gym reopens
     // to at most one capped, hours-aware batch, never a silent backlog blast.
     // AppShell tries again on Reload and hourly; the run never throws and
@@ -268,6 +274,7 @@ class RichManFitnessApp extends StatelessWidget {
         RepositoryProvider<RecordPaymentService>.value(value: recordPayments),
         RepositoryProvider<BillingCycleService>.value(value: cycles),
         RepositoryProvider<ReminderService>.value(value: reminders),
+        RepositoryProvider<PaymentInactivityService>.value(value: inactivity),
         RepositoryProvider<MemberWelcomeService>.value(value: welcome),
         RepositoryProvider<UpdateService>(
           create: (_) => UpdateService(

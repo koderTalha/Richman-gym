@@ -30,6 +30,8 @@ final _log = Logger('database');
     ReceiptCounters,
     WhatsAppMessages,
     MemberNotes,
+    MemberDeactivations,
+    InactivityWaivers,
     AuditEvents,
   ],
 )
@@ -40,7 +42,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 15;
+  int get schemaVersion => 17;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -216,6 +218,46 @@ class AppDatabase extends _$AppDatabase {
           if (from >= 6 && from < 15) {
             await m.addColumn(appSessions, appSessions.lastActiveAt);
           }
+
+          // Deactivating members who stop paying. The switch is added off, and
+          // the two tables start empty: nobody is deactivated, and no bill is
+          // written off, by installing the update — only by the owner turning
+          // it on after seeing who it would affect.
+          if (from < 16) {
+            await m.addColumn(gymSettings, gymSettings.autoDeactivateUnpaid);
+            await m.createTable(memberDeactivations);
+            await m.createTable(inactivityWaivers);
+          }
+
+          // The owner's threshold, and what reinstating a member who kept
+          // coming needs. v16 had already been opened by a development build
+          // when these were added, so they are their own step rather than an
+          // edit to v16 — a version that has run on a real file is shipped.
+          if (from < 17) {
+            await m.addColumn(gymSettings, gymSettings.inactivityGraceDays);
+          }
+          // Only for a file that ran v16 itself: below that, the step above
+          // has just created both tables from the current definition.
+          if (from == 16) {
+            await m.addColumn(
+                memberDeactivations, memberDeactivations.graceDays);
+            await m.addColumn(
+                memberDeactivations, memberDeactivations.reinstated);
+            // Rebuilt rather than altered: the cycle stops being unique on
+            // its own, which SQLite cannot drop in place. A write-off made
+            // under v16 takes its enrolment from the cycle it names; one
+            // whose cycle has since gone gets 0, and is simply not put back
+            // if that member is ever reinstated.
+            await m.alterTable(TableMigration(
+              inactivityWaivers,
+              columnTransformer: {
+                inactivityWaivers.membershipId: const CustomExpression<int>(
+                    'COALESCE((SELECT mp.membership_id FROM membership_periods '
+                    'mp WHERE mp.id = membership_period_id), 0)'),
+              },
+              newColumns: [inactivityWaivers.membershipId],
+            ));
+          }
         },
         beforeOpen: (details) async {
           // Enforce the foreign keys declared in tables.dart; SQLite ignores
@@ -352,6 +394,12 @@ class AppDatabase extends _$AppDatabase {
           'ON cycle_pricings (membership_period_id)',
       'CREATE INDEX IF NOT EXISTS idx_membership_changes_member '
           'ON membership_changes (member_id)',
+      // The member list reads every open missed-payment deactivation, and a
+      // member's screen reads their own.
+      'CREATE INDEX IF NOT EXISTS idx_member_deactivations_member '
+          'ON member_deactivations (member_id)',
+      'CREATE INDEX IF NOT EXISTS idx_inactivity_waivers_deactivation '
+          'ON inactivity_waivers (deactivation_id)',
     ];
     for (final statement in indexes) {
       await customStatement(statement);
