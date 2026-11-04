@@ -2,6 +2,7 @@ import '../data/cycle_repricing.dart';
 import '../data/database.dart';
 import 'billing_maintenance.dart';
 import 'billing_reconciliation.dart';
+import 'payment_inactivity_service.dart';
 
 /// What opening the app does to the books, in one place.
 ///
@@ -29,6 +30,12 @@ Future<void> runStartupMaintenance(AppDatabase db, {DateTime? now}) async {
   // before the report below so it never names a member this has just put
   // right.
   await repriceAllOpenCycles(db, now: now);
+
+  // Deactivates members whose last month has gone 40 days unpaid, and writes
+  // that lapse off — only once the owner has switched it on in Settings. After
+  // the roll, so the month running today exists to be cut short at today.
+  // See `payment_inactivity_service.dart`.
+  await PaymentInactivityService(db).run(now: now);
 
   // Points at members an earlier release left permanently owing money after a
   // fee rise. Reports only, and only once per member — the rows it finds are

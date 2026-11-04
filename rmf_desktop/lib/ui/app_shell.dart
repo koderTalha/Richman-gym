@@ -644,15 +644,19 @@ class _NavItemState extends State<_NavItem> {
   }
 }
 
-/// How many members are due, beside Reminders.
+/// How many reminders are waiting on the Reminders screen, beside Reminders.
 ///
-/// Recounted whenever a table that decides who is due changes, so recording a
-/// payment or adding a member moves the number without a Reload. The count is
-/// the same join the Members screen runs, so a burst of writes — a payment
-/// writes several tables at once — is coalesced into one recount rather than
-/// one per row: while a count is running, further changes only mark it stale,
-/// and it runs once more when it finishes. No timer, so nothing is left
-/// pending when the screen goes away.
+/// The same queue the screen lists, so sending or dismissing them clears the
+/// badge. It used to count every member who owed money — the Members screen's
+/// Due filter — which stayed in the hundreds after every reminder had gone
+/// out, beside a screen saying there was nothing to send.
+///
+/// Recounted whenever a table that decides the queue changes, so recording a
+/// payment, sending a reminder or adding a member moves the number without a
+/// Reload. A burst of writes — a payment writes several tables at once — is
+/// coalesced into one recount rather than one per row: while a count is
+/// running, further changes only mark it stale, and it runs once more when it
+/// finishes. No timer, so nothing is left pending when the screen goes away.
 class _DueBadge extends StatefulWidget {
   const _DueBadge();
 
@@ -677,6 +681,10 @@ class _DueBadgeState extends State<_DueBadge> {
           db.membershipPeriods,
           db.payments,
           db.paymentAllocations,
+          // Sending or dismissing a reminder is what clears it.
+          db.paymentReminders,
+          // Reminder days and stages decide what is in the queue.
+          db.gymSettings,
         ]))
         .listen((_) => _recount());
     _recount();
@@ -691,9 +699,14 @@ class _DueBadgeState extends State<_DueBadge> {
     try {
       do {
         _stale = false;
-        final counts = await context.read<MemberRepository>().filterCounts();
+        // Read as nullable so a shell built without the service — in a
+        // widget test — simply has no badge.
+        final reminders = context.read<ReminderService?>();
+        final waiting = reminders == null
+            ? 0
+            : (await reminders.buildQueue(recordSkipped: false)).length;
         if (!mounted) return;
-        setState(() => _due = counts[MemberFilter.due] ?? 0);
+        setState(() => _due = waiting);
       } while (_stale && mounted);
     } catch (_) {
       // A badge is a convenience. If the count cannot be read the Reminders

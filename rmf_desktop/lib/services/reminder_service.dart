@@ -204,7 +204,15 @@ class ReminderService {
   /// A reminder that failed to send is offered again — it was never
   /// delivered — unless the member still has no number WhatsApp could use,
   /// which no amount of retrying fixes. Correct the number and it comes back.
-  Future<List<ReminderCandidate>> buildQueue({DateTime? now}) async {
+  ///
+  /// [recordSkipped] false makes this a pure read, for the sidebar badge: the
+  /// same queue, but the superseded reminders are left for the screen or the
+  /// automatic run to record. The badge recounts whenever reminder rows
+  /// change, so a count that wrote them would set itself off again.
+  Future<List<ReminderCandidate>> buildQueue({
+    DateTime? now,
+    bool recordSkipped = true,
+  }) async {
     final settings = await loadSettings();
     if (!settings.sendsAnything) return const [];
 
@@ -247,7 +255,8 @@ class ReminderService {
         },
       );
 
-      for (final skipped in decision.superseded) {
+      for (final skipped
+          in recordSkipped ? decision.superseded : const <ScheduledReminder>[]) {
         await _recordOutcome(
           member: member,
           periodId: target.periodId,

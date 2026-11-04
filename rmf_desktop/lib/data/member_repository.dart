@@ -8,6 +8,7 @@ import '../domain/phone.dart';
 import 'audit_repository.dart';
 import 'cycle_repricing.dart';
 import 'database.dart';
+import 'member_deactivations.dart';
 import 'membership_history.dart';
 import 'membership_queries.dart';
 
@@ -60,6 +61,7 @@ class MemberRow {
     required this.paidUntil,
     this.outstandingMinor,
     this.arrearsMinor = 0,
+    this.missedPaymentDeactivation,
   });
 
   final Member member;
@@ -88,10 +90,24 @@ class MemberRow {
   /// is paid, by the same rule as the status. Zero when nothing is owed.
   final int arrearsMinor;
 
+  /// Set while the member is inactive because the app deactivated them for
+  /// missed payments, rather than because the owner did.
+  final MemberDeactivation? missedPaymentDeactivation;
+
   int get id => member.id;
 }
 
-enum MemberFilter { all, active, paid, due, expiringSoon, inactive }
+enum MemberFilter {
+  all,
+  active,
+  paid,
+  due,
+  expiringSoon,
+  inactive,
+
+  /// The inactive members the app deactivated for missed payments.
+  missedPayments,
+}
 
 extension MemberFilterLabel on MemberFilter {
   String get label => switch (this) {
@@ -101,6 +117,7 @@ extension MemberFilterLabel on MemberFilter {
         MemberFilter.due => 'Due',
         MemberFilter.expiringSoon => 'Expiring Soon',
         MemberFilter.inactive => 'Inactive',
+        MemberFilter.missedPayments => 'Missed payments',
       };
 }
 
@@ -308,6 +325,22 @@ class MemberRepository {
 
     final membershipIds = memberships.map((m) => m.id).toList();
 
+    // A write-off made after [asOf] had not happened yet then: the bill read
+    // as owing, over its own days. Rewinding it here, before anything reads a
+    // cycle, keeps a past month's report the way it read at the time.
+    final writeOffs = await currentWriteOffs(db);
+    MembershipPeriod asItStood(MembershipPeriod period) {
+      final w = writeOffs[period.id];
+      if (asOf == null || w == null || !w.writtenOffAt.isAfter(asOf)) {
+        return period;
+      }
+      return period.copyWith(
+        expectedAmountMinor: w.amountMinor,
+        periodEnd: w.periodEnd,
+        settledAt: const Value(null),
+      );
+    }
+
     final periods = <MembershipPeriod>[
       if (everyone)
         ...await db.select(db.membershipPeriods).get()
@@ -316,7 +349,8 @@ class MemberRepository {
           ...await (db.select(db.membershipPeriods)
                 ..where((p) => p.membershipId.isIn(chunk)))
               .get(),
-    ]..sort((a, b) => a.periodStart.compareTo(b.periodStart));
+    ].map(asItStood).toList()
+      ..sort((a, b) => a.periodStart.compareTo(b.periodStart));
 
     // Which cycles have at least one payment — the old signal, kept as a
     // fallback for a cycle whose money was never given an allocation row: a
@@ -412,6 +446,14 @@ class MemberRepository {
 
     final at = now ?? DateTime.now().toUtc();
 
+    // Only open ones, so a handful of rows whatever the size of the roster.
+    final lapses = await openDeactivationsByMember(db);
+    // Rewound ones were put back as bills above.
+    final writtenOff = {
+      for (final p in periods)
+        if (writeOffs.containsKey(p.id) && p.settledAt != null) p.id,
+    };
+
     return memberRows.map((member) {
       final membership = membershipByMember[member.id];
       final plan = membership == null ? null : plans[membership.planId];
@@ -419,8 +461,17 @@ class MemberRepository {
       final memberPeriods = periodsByMember[member.id] ?? const [];
       final statusPeriods = _mergeCycles(memberPeriods, settledPeriodIds);
 
+      // A month written off for missed payments is closed, but nobody paid
+      // for it: "paid until" stops where the money did. Counting it would put
+      // a returning member's due date on the day they were deactivated.
+      final paidPeriods = memberPeriods.any((p) => writtenOff.contains(p.id))
+          ? _mergeCycles([
+              for (final p in memberPeriods)
+                if (!writtenOff.contains(p.id)) p,
+            ], settledPeriodIds)
+          : statusPeriods;
       final paidEnds =
-          statusPeriods.where((p) => p.isPaid).map((p) => p.periodEnd);
+          paidPeriods.where((p) => p.isPaid).map((p) => p.periodEnd);
 
       // The earliest unsettled cycle, raw rather than merged — merging keeps
       // only the boundaries a status needs, and outstanding is a question
@@ -465,6 +516,8 @@ class MemberRepository {
             : paidEnds.reduce((a, b) => a.isAfter(b) ? a : b),
         outstandingMinor:
             outstanding == null ? null : (outstanding < 0 ? 0 : outstanding),
+        missedPaymentDeactivation:
+            deactivatedAt == null ? null : lapses[member.id],
       );
     }).toList();
   }
@@ -555,6 +608,8 @@ class MemberRepository {
         return rows.where((r) => r.status != MemberStatus.inactive).toList();
       case MemberFilter.inactive:
         return rows.where((r) => r.status == MemberStatus.inactive).toList();
+      case MemberFilter.missedPayments:
+        return rows.where((r) => r.missedPaymentDeactivation != null).toList();
       case MemberFilter.paid:
         return rows.where((r) => r.status == MemberStatus.paid).toList();
       case MemberFilter.due:
@@ -1001,6 +1056,9 @@ class MemberRepository {
         deactivatedAt: Value(active ? null : DateTime.now().toUtc()),
       ),
     );
+    // Coming back closes a missed-payment deactivation. What it wrote off
+    // stays written off: billing restarts fresh, it does not resume.
+    if (active) await closeDeactivationFor(db, id, actorId: actorId);
 
     if (member == null) return;
     await _audit.record(

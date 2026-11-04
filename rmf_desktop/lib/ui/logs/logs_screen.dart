@@ -481,6 +481,13 @@ String auditActionLabel(String action) => switch (action) {
       AuditAction.memberDeleteRefused => 'Deletion refused',
       AuditAction.memberDeactivated => 'Member deactivated',
       AuditAction.memberReactivated => 'Member reactivated',
+      AuditAction.memberDeactivatedForMissedPayments =>
+        'Deactivated, missed payments',
+      AuditAction.autoDeactivationSwitched => 'Auto-deactivation switched',
+      AuditAction.inactivityThresholdChanged => 'Unpaid-days limit changed',
+      AuditAction.memberReinstated => 'Reinstated, kept coming',
+      AuditAction.paymentAfterMissedPaymentWaiver =>
+        'Payment after write-off',
       AuditAction.memberUpdated => 'Member details edited',
       AuditAction.paymentEdited => 'Payment edited',
       AuditAction.paymentDeleted => 'Payment deleted',

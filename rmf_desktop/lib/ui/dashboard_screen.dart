@@ -13,6 +13,7 @@ import '../domain/payment_method.dart';
 import '../domain/phone.dart';
 import '../theme/app_theme.dart';
 import 'app_shell.dart' show ShellNavigator;
+import 'deactivating_soon_panel.dart';
 import 'members/member_detail_screen.dart';
 import 'payments/advance_payment_dialog.dart';
 import 'payments/payment_history_table.dart' show formatShortDate;
@@ -90,6 +91,11 @@ class _DashboardView extends StatelessWidget {
             _SecondaryStats(state: state),
             const SizedBox(height: 22),
             _Lists(state: state, due: due),
+            DeactivatingSoonPanel(
+              refreshKey: state,
+              onChanged: () =>
+                  context.read<DashboardBloc>().add(const DashboardRequested()),
+            ),
           ],
         );
       },

@@ -677,12 +677,16 @@ class ImportService {
   }
 
   /// Whether the member screen has ever deactivated this member, which is the
-  /// only way the owner can.
+  /// only way the owner can — or the missed-payment rule the owner switched
+  /// on has, which is theirs too and not the importer's to overturn.
   Future<bool> _deactivatedByHand(int memberId) async {
     final events = await (db.select(db.auditEvents)
           ..where((e) =>
               e.memberId.equals(memberId) &
-              e.action.equals(AuditAction.memberDeactivated))
+              e.action.isIn(const [
+                AuditAction.memberDeactivated,
+                AuditAction.memberDeactivatedForMissedPayments,
+              ]))
           ..limit(1))
         .get();
     return events.isNotEmpty;

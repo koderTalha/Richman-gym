@@ -24,6 +24,7 @@ import '../../services/billing_month_checker.dart';
 import '../../services/receipt_storage.dart';
 import '../../services/record_payment_service.dart';
 import '../../theme/app_theme.dart';
+import '../members/missed_payment_choice.dart';
 import '../widgets/page_scaffold.dart' show AccentButton;
 import '../widgets/status_badge.dart';
 import 'billing_warnings_dialog.dart';
@@ -55,6 +56,26 @@ import 'payment_history_table.dart' show formatShortDate;
 ///
 /// Resolves to true if a payment was recorded, so the caller can refresh.
 Future<bool?> showAdvancePaymentDialog(
+  BuildContext context, {
+  required MemberRow member,
+}) async {
+  // A member the app deactivated for missed payments: where this money goes
+  // depends on whether they kept coming, so that is settled first. Taken
+  // without asking, it would skip the written-off months and land on months
+  // nobody has billed yet.
+  if (member.missedPaymentDeactivation != null &&
+      member.member.deactivatedAt != null) {
+    if (!await resolveMissedPaymentLapse(context, member: member)) return null;
+    if (!context.mounted) return true;
+    final fresh = await context.read<MemberRepository>().byId(member.id);
+    if (fresh == null || !context.mounted) return true;
+    // True even if the payment is then cancelled: the member changed.
+    return await _showPaymentDialog(context, member: fresh) ?? true;
+  }
+  return _showPaymentDialog(context, member: member);
+}
+
+Future<bool?> _showPaymentDialog(
   BuildContext context, {
   required MemberRow member,
 }) {

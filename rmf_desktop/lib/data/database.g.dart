@@ -1244,6 +1244,31 @@ class $GymSettingsTable extends GymSettings
         requiredDuringInsert: false,
         defaultValue: const Constant('Pay Cash/Online'),
       );
+  static const VerificationMeta _autoDeactivateUnpaidMeta =
+      const VerificationMeta('autoDeactivateUnpaid');
+  @override
+  late final GeneratedColumn<bool> autoDeactivateUnpaid = GeneratedColumn<bool>(
+    'auto_deactivate_unpaid',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("auto_deactivate_unpaid" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  static const VerificationMeta _inactivityGraceDaysMeta =
+      const VerificationMeta('inactivityGraceDays');
+  @override
+  late final GeneratedColumn<int> inactivityGraceDays = GeneratedColumn<int>(
+    'inactivity_grace_days',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(40),
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -1290,6 +1315,8 @@ class $GymSettingsTable extends GymSettings
     whatsappReminderTemplate,
     whatsappReminderTemplateLanguage,
     paymentInstructions,
+    autoDeactivateUnpaid,
+    inactivityGraceDays,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -1663,6 +1690,24 @@ class $GymSettingsTable extends GymSettings
         ),
       );
     }
+    if (data.containsKey('auto_deactivate_unpaid')) {
+      context.handle(
+        _autoDeactivateUnpaidMeta,
+        autoDeactivateUnpaid.isAcceptableOrUnknown(
+          data['auto_deactivate_unpaid']!,
+          _autoDeactivateUnpaidMeta,
+        ),
+      );
+    }
+    if (data.containsKey('inactivity_grace_days')) {
+      context.handle(
+        _inactivityGraceDaysMeta,
+        inactivityGraceDays.isAcceptableOrUnknown(
+          data['inactivity_grace_days']!,
+          _inactivityGraceDaysMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -1850,6 +1895,14 @@ class $GymSettingsTable extends GymSettings
         DriftSqlType.string,
         data['${effectivePrefix}payment_instructions'],
       ),
+      autoDeactivateUnpaid: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}auto_deactivate_unpaid'],
+      )!,
+      inactivityGraceDays: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}inactivity_grace_days'],
+      )!,
     );
   }
 
@@ -2008,6 +2061,19 @@ class GymSetting extends DataClass implements Insertable<GymSetting> {
   /// unfinished, and cash-or-online is a true answer for every gym this app
   /// has shipped to so far.
   final String? paymentInstructions;
+
+  /// Whether a member who leaves a month unpaid for 40 days is deactivated, and
+  /// that month written off, without anybody pressing a button.
+  ///
+  /// Off by default, on every install and every upgrade, like
+  /// [reminderAutoSend]: switching it on is the owner's decision, made after
+  /// seeing who it would deactivate on the day. See
+  /// `services/payment_inactivity_service.dart`.
+  final bool autoDeactivateUnpaid;
+
+  /// How many days a month may go unpaid, from its due date, before that
+  /// happens. One of `inactivityGraceDayChoices`.
+  final int inactivityGraceDays;
   const GymSetting({
     required this.id,
     required this.gymName,
@@ -2053,6 +2119,8 @@ class GymSetting extends DataClass implements Insertable<GymSetting> {
     this.whatsappReminderTemplate,
     required this.whatsappReminderTemplateLanguage,
     this.paymentInstructions,
+    required this.autoDeactivateUnpaid,
+    required this.inactivityGraceDays,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -2169,6 +2237,8 @@ class GymSetting extends DataClass implements Insertable<GymSetting> {
     if (!nullToAbsent || paymentInstructions != null) {
       map['payment_instructions'] = Variable<String>(paymentInstructions);
     }
+    map['auto_deactivate_unpaid'] = Variable<bool>(autoDeactivateUnpaid);
+    map['inactivity_grace_days'] = Variable<int>(inactivityGraceDays);
     return map;
   }
 
@@ -2265,6 +2335,8 @@ class GymSetting extends DataClass implements Insertable<GymSetting> {
       paymentInstructions: paymentInstructions == null && nullToAbsent
           ? const Value.absent()
           : Value(paymentInstructions),
+      autoDeactivateUnpaid: Value(autoDeactivateUnpaid),
+      inactivityGraceDays: Value(inactivityGraceDays),
     );
   }
 
@@ -2358,6 +2430,12 @@ class GymSetting extends DataClass implements Insertable<GymSetting> {
       paymentInstructions: serializer.fromJson<String?>(
         json['paymentInstructions'],
       ),
+      autoDeactivateUnpaid: serializer.fromJson<bool>(
+        json['autoDeactivateUnpaid'],
+      ),
+      inactivityGraceDays: serializer.fromJson<int>(
+        json['inactivityGraceDays'],
+      ),
     );
   }
   @override
@@ -2430,6 +2508,8 @@ class GymSetting extends DataClass implements Insertable<GymSetting> {
         whatsappReminderTemplateLanguage,
       ),
       'paymentInstructions': serializer.toJson<String?>(paymentInstructions),
+      'autoDeactivateUnpaid': serializer.toJson<bool>(autoDeactivateUnpaid),
+      'inactivityGraceDays': serializer.toJson<int>(inactivityGraceDays),
     };
   }
 
@@ -2478,6 +2558,8 @@ class GymSetting extends DataClass implements Insertable<GymSetting> {
     Value<String?> whatsappReminderTemplate = const Value.absent(),
     String? whatsappReminderTemplateLanguage,
     Value<String?> paymentInstructions = const Value.absent(),
+    bool? autoDeactivateUnpaid,
+    int? inactivityGraceDays,
   }) => GymSetting(
     id: id ?? this.id,
     gymName: gymName ?? this.gymName,
@@ -2562,6 +2644,8 @@ class GymSetting extends DataClass implements Insertable<GymSetting> {
     paymentInstructions: paymentInstructions.present
         ? paymentInstructions.value
         : this.paymentInstructions,
+    autoDeactivateUnpaid: autoDeactivateUnpaid ?? this.autoDeactivateUnpaid,
+    inactivityGraceDays: inactivityGraceDays ?? this.inactivityGraceDays,
   );
   GymSetting copyWithCompanion(GymSettingsCompanion data) {
     return GymSetting(
@@ -2684,6 +2768,12 @@ class GymSetting extends DataClass implements Insertable<GymSetting> {
       paymentInstructions: data.paymentInstructions.present
           ? data.paymentInstructions.value
           : this.paymentInstructions,
+      autoDeactivateUnpaid: data.autoDeactivateUnpaid.present
+          ? data.autoDeactivateUnpaid.value
+          : this.autoDeactivateUnpaid,
+      inactivityGraceDays: data.inactivityGraceDays.present
+          ? data.inactivityGraceDays.value
+          : this.inactivityGraceDays,
     );
   }
 
@@ -2739,7 +2829,9 @@ class GymSetting extends DataClass implements Insertable<GymSetting> {
           ..write(
             'whatsappReminderTemplateLanguage: $whatsappReminderTemplateLanguage, ',
           )
-          ..write('paymentInstructions: $paymentInstructions')
+          ..write('paymentInstructions: $paymentInstructions, ')
+          ..write('autoDeactivateUnpaid: $autoDeactivateUnpaid, ')
+          ..write('inactivityGraceDays: $inactivityGraceDays')
           ..write(')'))
         .toString();
   }
@@ -2790,6 +2882,8 @@ class GymSetting extends DataClass implements Insertable<GymSetting> {
     whatsappReminderTemplate,
     whatsappReminderTemplateLanguage,
     paymentInstructions,
+    autoDeactivateUnpaid,
+    inactivityGraceDays,
   ]);
   @override
   bool operator ==(Object other) =>
@@ -2841,7 +2935,9 @@ class GymSetting extends DataClass implements Insertable<GymSetting> {
           other.whatsappReminderTemplate == this.whatsappReminderTemplate &&
           other.whatsappReminderTemplateLanguage ==
               this.whatsappReminderTemplateLanguage &&
-          other.paymentInstructions == this.paymentInstructions);
+          other.paymentInstructions == this.paymentInstructions &&
+          other.autoDeactivateUnpaid == this.autoDeactivateUnpaid &&
+          other.inactivityGraceDays == this.inactivityGraceDays);
 }
 
 class GymSettingsCompanion extends UpdateCompanion<GymSetting> {
@@ -2889,6 +2985,8 @@ class GymSettingsCompanion extends UpdateCompanion<GymSetting> {
   final Value<String?> whatsappReminderTemplate;
   final Value<String> whatsappReminderTemplateLanguage;
   final Value<String?> paymentInstructions;
+  final Value<bool> autoDeactivateUnpaid;
+  final Value<int> inactivityGraceDays;
   const GymSettingsCompanion({
     this.id = const Value.absent(),
     this.gymName = const Value.absent(),
@@ -2934,6 +3032,8 @@ class GymSettingsCompanion extends UpdateCompanion<GymSetting> {
     this.whatsappReminderTemplate = const Value.absent(),
     this.whatsappReminderTemplateLanguage = const Value.absent(),
     this.paymentInstructions = const Value.absent(),
+    this.autoDeactivateUnpaid = const Value.absent(),
+    this.inactivityGraceDays = const Value.absent(),
   });
   GymSettingsCompanion.insert({
     this.id = const Value.absent(),
@@ -2980,6 +3080,8 @@ class GymSettingsCompanion extends UpdateCompanion<GymSetting> {
     this.whatsappReminderTemplate = const Value.absent(),
     this.whatsappReminderTemplateLanguage = const Value.absent(),
     this.paymentInstructions = const Value.absent(),
+    this.autoDeactivateUnpaid = const Value.absent(),
+    this.inactivityGraceDays = const Value.absent(),
   });
   static Insertable<GymSetting> custom({
     Expression<int>? id,
@@ -3026,6 +3128,8 @@ class GymSettingsCompanion extends UpdateCompanion<GymSetting> {
     Expression<String>? whatsappReminderTemplate,
     Expression<String>? whatsappReminderTemplateLanguage,
     Expression<String>? paymentInstructions,
+    Expression<bool>? autoDeactivateUnpaid,
+    Expression<int>? inactivityGraceDays,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -3089,6 +3193,10 @@ class GymSettingsCompanion extends UpdateCompanion<GymSetting> {
         'whatsapp_reminder_template_language': whatsappReminderTemplateLanguage,
       if (paymentInstructions != null)
         'payment_instructions': paymentInstructions,
+      if (autoDeactivateUnpaid != null)
+        'auto_deactivate_unpaid': autoDeactivateUnpaid,
+      if (inactivityGraceDays != null)
+        'inactivity_grace_days': inactivityGraceDays,
     });
   }
 
@@ -3137,6 +3245,8 @@ class GymSettingsCompanion extends UpdateCompanion<GymSetting> {
     Value<String?>? whatsappReminderTemplate,
     Value<String>? whatsappReminderTemplateLanguage,
     Value<String?>? paymentInstructions,
+    Value<bool>? autoDeactivateUnpaid,
+    Value<int>? inactivityGraceDays,
   }) {
     return GymSettingsCompanion(
       id: id ?? this.id,
@@ -3197,6 +3307,8 @@ class GymSettingsCompanion extends UpdateCompanion<GymSetting> {
           whatsappReminderTemplateLanguage ??
           this.whatsappReminderTemplateLanguage,
       paymentInstructions: paymentInstructions ?? this.paymentInstructions,
+      autoDeactivateUnpaid: autoDeactivateUnpaid ?? this.autoDeactivateUnpaid,
+      inactivityGraceDays: inactivityGraceDays ?? this.inactivityGraceDays,
     );
   }
 
@@ -3367,6 +3479,14 @@ class GymSettingsCompanion extends UpdateCompanion<GymSetting> {
     if (paymentInstructions.present) {
       map['payment_instructions'] = Variable<String>(paymentInstructions.value);
     }
+    if (autoDeactivateUnpaid.present) {
+      map['auto_deactivate_unpaid'] = Variable<bool>(
+        autoDeactivateUnpaid.value,
+      );
+    }
+    if (inactivityGraceDays.present) {
+      map['inactivity_grace_days'] = Variable<int>(inactivityGraceDays.value);
+    }
     return map;
   }
 
@@ -3422,7 +3542,9 @@ class GymSettingsCompanion extends UpdateCompanion<GymSetting> {
           ..write(
             'whatsappReminderTemplateLanguage: $whatsappReminderTemplateLanguage, ',
           )
-          ..write('paymentInstructions: $paymentInstructions')
+          ..write('paymentInstructions: $paymentInstructions, ')
+          ..write('autoDeactivateUnpaid: $autoDeactivateUnpaid, ')
+          ..write('inactivityGraceDays: $inactivityGraceDays')
           ..write(')'))
         .toString();
   }
@@ -10975,6 +11097,1370 @@ class MemberNotesCompanion extends UpdateCompanion<MemberNote> {
   }
 }
 
+class $MemberDeactivationsTable extends MemberDeactivations
+    with TableInfo<$MemberDeactivationsTable, MemberDeactivation> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $MemberDeactivationsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _memberIdMeta = const VerificationMeta(
+    'memberId',
+  );
+  @override
+  late final GeneratedColumn<int> memberId = GeneratedColumn<int>(
+    'member_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES members (id) ON DELETE CASCADE',
+    ),
+  );
+  static const VerificationMeta _reasonMeta = const VerificationMeta('reason');
+  @override
+  late final GeneratedColumn<String> reason = GeneratedColumn<String>(
+    'reason',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _deactivatedAtMeta = const VerificationMeta(
+    'deactivatedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> deactivatedAt =
+      GeneratedColumn<DateTime>(
+        'deactivated_at',
+        aliasedName,
+        false,
+        type: DriftSqlType.dateTime,
+        requiredDuringInsert: true,
+      );
+  static const VerificationMeta _deactivatedOnMeta = const VerificationMeta(
+    'deactivatedOn',
+  );
+  @override
+  late final GeneratedColumn<DateTime> deactivatedOn =
+      GeneratedColumn<DateTime>(
+        'deactivated_on',
+        aliasedName,
+        false,
+        type: DriftSqlType.dateTime,
+        requiredDuringInsert: true,
+      );
+  static const VerificationMeta _firstMissedDueMeta = const VerificationMeta(
+    'firstMissedDue',
+  );
+  @override
+  late final GeneratedColumn<DateTime> firstMissedDue =
+      GeneratedColumn<DateTime>(
+        'first_missed_due',
+        aliasedName,
+        false,
+        type: DriftSqlType.dateTime,
+        requiredDuringInsert: true,
+      );
+  static const VerificationMeta _lastPaidUntilMeta = const VerificationMeta(
+    'lastPaidUntil',
+  );
+  @override
+  late final GeneratedColumn<DateTime> lastPaidUntil =
+      GeneratedColumn<DateTime>(
+        'last_paid_until',
+        aliasedName,
+        true,
+        type: DriftSqlType.dateTime,
+        requiredDuringInsert: false,
+      );
+  static const VerificationMeta _waivedMinorMeta = const VerificationMeta(
+    'waivedMinor',
+  );
+  @override
+  late final GeneratedColumn<int> waivedMinor = GeneratedColumn<int>(
+    'waived_minor',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _olderArrearsMinorMeta = const VerificationMeta(
+    'olderArrearsMinor',
+  );
+  @override
+  late final GeneratedColumn<int> olderArrearsMinor = GeneratedColumn<int>(
+    'older_arrears_minor',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _graceDaysMeta = const VerificationMeta(
+    'graceDays',
+  );
+  @override
+  late final GeneratedColumn<int> graceDays = GeneratedColumn<int>(
+    'grace_days',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(40),
+  );
+  static const VerificationMeta _reactivatedAtMeta = const VerificationMeta(
+    'reactivatedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> reactivatedAt =
+      GeneratedColumn<DateTime>(
+        'reactivated_at',
+        aliasedName,
+        true,
+        type: DriftSqlType.dateTime,
+        requiredDuringInsert: false,
+      );
+  static const VerificationMeta _reactivatedByIdMeta = const VerificationMeta(
+    'reactivatedById',
+  );
+  @override
+  late final GeneratedColumn<int> reactivatedById = GeneratedColumn<int>(
+    'reactivated_by_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _reinstatedMeta = const VerificationMeta(
+    'reinstated',
+  );
+  @override
+  late final GeneratedColumn<bool> reinstated = GeneratedColumn<bool>(
+    'reinstated',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("reinstated" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    memberId,
+    reason,
+    deactivatedAt,
+    deactivatedOn,
+    firstMissedDue,
+    lastPaidUntil,
+    waivedMinor,
+    olderArrearsMinor,
+    graceDays,
+    reactivatedAt,
+    reactivatedById,
+    reinstated,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'member_deactivations';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<MemberDeactivation> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('member_id')) {
+      context.handle(
+        _memberIdMeta,
+        memberId.isAcceptableOrUnknown(data['member_id']!, _memberIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_memberIdMeta);
+    }
+    if (data.containsKey('reason')) {
+      context.handle(
+        _reasonMeta,
+        reason.isAcceptableOrUnknown(data['reason']!, _reasonMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_reasonMeta);
+    }
+    if (data.containsKey('deactivated_at')) {
+      context.handle(
+        _deactivatedAtMeta,
+        deactivatedAt.isAcceptableOrUnknown(
+          data['deactivated_at']!,
+          _deactivatedAtMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_deactivatedAtMeta);
+    }
+    if (data.containsKey('deactivated_on')) {
+      context.handle(
+        _deactivatedOnMeta,
+        deactivatedOn.isAcceptableOrUnknown(
+          data['deactivated_on']!,
+          _deactivatedOnMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_deactivatedOnMeta);
+    }
+    if (data.containsKey('first_missed_due')) {
+      context.handle(
+        _firstMissedDueMeta,
+        firstMissedDue.isAcceptableOrUnknown(
+          data['first_missed_due']!,
+          _firstMissedDueMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_firstMissedDueMeta);
+    }
+    if (data.containsKey('last_paid_until')) {
+      context.handle(
+        _lastPaidUntilMeta,
+        lastPaidUntil.isAcceptableOrUnknown(
+          data['last_paid_until']!,
+          _lastPaidUntilMeta,
+        ),
+      );
+    }
+    if (data.containsKey('waived_minor')) {
+      context.handle(
+        _waivedMinorMeta,
+        waivedMinor.isAcceptableOrUnknown(
+          data['waived_minor']!,
+          _waivedMinorMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_waivedMinorMeta);
+    }
+    if (data.containsKey('older_arrears_minor')) {
+      context.handle(
+        _olderArrearsMinorMeta,
+        olderArrearsMinor.isAcceptableOrUnknown(
+          data['older_arrears_minor']!,
+          _olderArrearsMinorMeta,
+        ),
+      );
+    }
+    if (data.containsKey('grace_days')) {
+      context.handle(
+        _graceDaysMeta,
+        graceDays.isAcceptableOrUnknown(data['grace_days']!, _graceDaysMeta),
+      );
+    }
+    if (data.containsKey('reactivated_at')) {
+      context.handle(
+        _reactivatedAtMeta,
+        reactivatedAt.isAcceptableOrUnknown(
+          data['reactivated_at']!,
+          _reactivatedAtMeta,
+        ),
+      );
+    }
+    if (data.containsKey('reactivated_by_id')) {
+      context.handle(
+        _reactivatedByIdMeta,
+        reactivatedById.isAcceptableOrUnknown(
+          data['reactivated_by_id']!,
+          _reactivatedByIdMeta,
+        ),
+      );
+    }
+    if (data.containsKey('reinstated')) {
+      context.handle(
+        _reinstatedMeta,
+        reinstated.isAcceptableOrUnknown(data['reinstated']!, _reinstatedMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  MemberDeactivation map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return MemberDeactivation(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      memberId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}member_id'],
+      )!,
+      reason: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}reason'],
+      )!,
+      deactivatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}deactivated_at'],
+      )!,
+      deactivatedOn: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}deactivated_on'],
+      )!,
+      firstMissedDue: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}first_missed_due'],
+      )!,
+      lastPaidUntil: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}last_paid_until'],
+      ),
+      waivedMinor: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}waived_minor'],
+      )!,
+      olderArrearsMinor: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}older_arrears_minor'],
+      )!,
+      graceDays: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}grace_days'],
+      )!,
+      reactivatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}reactivated_at'],
+      ),
+      reactivatedById: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}reactivated_by_id'],
+      ),
+      reinstated: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}reinstated'],
+      )!,
+    );
+  }
+
+  @override
+  $MemberDeactivationsTable createAlias(String alias) {
+    return $MemberDeactivationsTable(attachedDatabase, alias);
+  }
+}
+
+class MemberDeactivation extends DataClass
+    implements Insertable<MemberDeactivation> {
+  final int id;
+
+  /// Cascades: a member can only be deleted while no payment is recorded
+  /// against them, and this row describes nobody once they are gone.
+  final int memberId;
+
+  /// `payment_inactivity`. Text rather than an enum so a later kind of
+  /// automatic deactivation needs no migration.
+  final String reason;
+
+  /// The moment it happened, and the gym's calendar day it happened on.
+  final DateTime deactivatedAt;
+  final DateTime deactivatedOn;
+
+  /// The start of the unpaid cycle that ran 40 days without payment.
+  final DateTime firstMissedDue;
+
+  /// The end of the member's last paid cycle before it, if they had one.
+  final DateTime? lastPaidUntil;
+
+  /// The total of the bills written off, in minor units. Each one is an
+  /// [InactivityWaivers] row.
+  final int waivedMinor;
+
+  /// Unpaid months older than [firstMissedDue], which were left owing. Copied
+  /// so the detail screen can say so without recomputing history.
+  final int olderArrearsMinor;
+
+  /// The threshold in force when it happened, since the owner can change it.
+  final int graceDays;
+
+  /// Null while the member is still away. Set when anybody reactivates them,
+  /// which closes this episode.
+  final DateTime? reactivatedAt;
+  final int? reactivatedById;
+
+  /// How it closed. False: they came back after a gap, and what was written
+  /// off stays written off. True: the owner said they had kept coming all
+  /// along, and the write-off was taken back — those months are owed again.
+  final bool reinstated;
+  const MemberDeactivation({
+    required this.id,
+    required this.memberId,
+    required this.reason,
+    required this.deactivatedAt,
+    required this.deactivatedOn,
+    required this.firstMissedDue,
+    this.lastPaidUntil,
+    required this.waivedMinor,
+    required this.olderArrearsMinor,
+    required this.graceDays,
+    this.reactivatedAt,
+    this.reactivatedById,
+    required this.reinstated,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['member_id'] = Variable<int>(memberId);
+    map['reason'] = Variable<String>(reason);
+    map['deactivated_at'] = Variable<DateTime>(deactivatedAt);
+    map['deactivated_on'] = Variable<DateTime>(deactivatedOn);
+    map['first_missed_due'] = Variable<DateTime>(firstMissedDue);
+    if (!nullToAbsent || lastPaidUntil != null) {
+      map['last_paid_until'] = Variable<DateTime>(lastPaidUntil);
+    }
+    map['waived_minor'] = Variable<int>(waivedMinor);
+    map['older_arrears_minor'] = Variable<int>(olderArrearsMinor);
+    map['grace_days'] = Variable<int>(graceDays);
+    if (!nullToAbsent || reactivatedAt != null) {
+      map['reactivated_at'] = Variable<DateTime>(reactivatedAt);
+    }
+    if (!nullToAbsent || reactivatedById != null) {
+      map['reactivated_by_id'] = Variable<int>(reactivatedById);
+    }
+    map['reinstated'] = Variable<bool>(reinstated);
+    return map;
+  }
+
+  MemberDeactivationsCompanion toCompanion(bool nullToAbsent) {
+    return MemberDeactivationsCompanion(
+      id: Value(id),
+      memberId: Value(memberId),
+      reason: Value(reason),
+      deactivatedAt: Value(deactivatedAt),
+      deactivatedOn: Value(deactivatedOn),
+      firstMissedDue: Value(firstMissedDue),
+      lastPaidUntil: lastPaidUntil == null && nullToAbsent
+          ? const Value.absent()
+          : Value(lastPaidUntil),
+      waivedMinor: Value(waivedMinor),
+      olderArrearsMinor: Value(olderArrearsMinor),
+      graceDays: Value(graceDays),
+      reactivatedAt: reactivatedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(reactivatedAt),
+      reactivatedById: reactivatedById == null && nullToAbsent
+          ? const Value.absent()
+          : Value(reactivatedById),
+      reinstated: Value(reinstated),
+    );
+  }
+
+  factory MemberDeactivation.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return MemberDeactivation(
+      id: serializer.fromJson<int>(json['id']),
+      memberId: serializer.fromJson<int>(json['memberId']),
+      reason: serializer.fromJson<String>(json['reason']),
+      deactivatedAt: serializer.fromJson<DateTime>(json['deactivatedAt']),
+      deactivatedOn: serializer.fromJson<DateTime>(json['deactivatedOn']),
+      firstMissedDue: serializer.fromJson<DateTime>(json['firstMissedDue']),
+      lastPaidUntil: serializer.fromJson<DateTime?>(json['lastPaidUntil']),
+      waivedMinor: serializer.fromJson<int>(json['waivedMinor']),
+      olderArrearsMinor: serializer.fromJson<int>(json['olderArrearsMinor']),
+      graceDays: serializer.fromJson<int>(json['graceDays']),
+      reactivatedAt: serializer.fromJson<DateTime?>(json['reactivatedAt']),
+      reactivatedById: serializer.fromJson<int?>(json['reactivatedById']),
+      reinstated: serializer.fromJson<bool>(json['reinstated']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'memberId': serializer.toJson<int>(memberId),
+      'reason': serializer.toJson<String>(reason),
+      'deactivatedAt': serializer.toJson<DateTime>(deactivatedAt),
+      'deactivatedOn': serializer.toJson<DateTime>(deactivatedOn),
+      'firstMissedDue': serializer.toJson<DateTime>(firstMissedDue),
+      'lastPaidUntil': serializer.toJson<DateTime?>(lastPaidUntil),
+      'waivedMinor': serializer.toJson<int>(waivedMinor),
+      'olderArrearsMinor': serializer.toJson<int>(olderArrearsMinor),
+      'graceDays': serializer.toJson<int>(graceDays),
+      'reactivatedAt': serializer.toJson<DateTime?>(reactivatedAt),
+      'reactivatedById': serializer.toJson<int?>(reactivatedById),
+      'reinstated': serializer.toJson<bool>(reinstated),
+    };
+  }
+
+  MemberDeactivation copyWith({
+    int? id,
+    int? memberId,
+    String? reason,
+    DateTime? deactivatedAt,
+    DateTime? deactivatedOn,
+    DateTime? firstMissedDue,
+    Value<DateTime?> lastPaidUntil = const Value.absent(),
+    int? waivedMinor,
+    int? olderArrearsMinor,
+    int? graceDays,
+    Value<DateTime?> reactivatedAt = const Value.absent(),
+    Value<int?> reactivatedById = const Value.absent(),
+    bool? reinstated,
+  }) => MemberDeactivation(
+    id: id ?? this.id,
+    memberId: memberId ?? this.memberId,
+    reason: reason ?? this.reason,
+    deactivatedAt: deactivatedAt ?? this.deactivatedAt,
+    deactivatedOn: deactivatedOn ?? this.deactivatedOn,
+    firstMissedDue: firstMissedDue ?? this.firstMissedDue,
+    lastPaidUntil: lastPaidUntil.present
+        ? lastPaidUntil.value
+        : this.lastPaidUntil,
+    waivedMinor: waivedMinor ?? this.waivedMinor,
+    olderArrearsMinor: olderArrearsMinor ?? this.olderArrearsMinor,
+    graceDays: graceDays ?? this.graceDays,
+    reactivatedAt: reactivatedAt.present
+        ? reactivatedAt.value
+        : this.reactivatedAt,
+    reactivatedById: reactivatedById.present
+        ? reactivatedById.value
+        : this.reactivatedById,
+    reinstated: reinstated ?? this.reinstated,
+  );
+  MemberDeactivation copyWithCompanion(MemberDeactivationsCompanion data) {
+    return MemberDeactivation(
+      id: data.id.present ? data.id.value : this.id,
+      memberId: data.memberId.present ? data.memberId.value : this.memberId,
+      reason: data.reason.present ? data.reason.value : this.reason,
+      deactivatedAt: data.deactivatedAt.present
+          ? data.deactivatedAt.value
+          : this.deactivatedAt,
+      deactivatedOn: data.deactivatedOn.present
+          ? data.deactivatedOn.value
+          : this.deactivatedOn,
+      firstMissedDue: data.firstMissedDue.present
+          ? data.firstMissedDue.value
+          : this.firstMissedDue,
+      lastPaidUntil: data.lastPaidUntil.present
+          ? data.lastPaidUntil.value
+          : this.lastPaidUntil,
+      waivedMinor: data.waivedMinor.present
+          ? data.waivedMinor.value
+          : this.waivedMinor,
+      olderArrearsMinor: data.olderArrearsMinor.present
+          ? data.olderArrearsMinor.value
+          : this.olderArrearsMinor,
+      graceDays: data.graceDays.present ? data.graceDays.value : this.graceDays,
+      reactivatedAt: data.reactivatedAt.present
+          ? data.reactivatedAt.value
+          : this.reactivatedAt,
+      reactivatedById: data.reactivatedById.present
+          ? data.reactivatedById.value
+          : this.reactivatedById,
+      reinstated: data.reinstated.present
+          ? data.reinstated.value
+          : this.reinstated,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('MemberDeactivation(')
+          ..write('id: $id, ')
+          ..write('memberId: $memberId, ')
+          ..write('reason: $reason, ')
+          ..write('deactivatedAt: $deactivatedAt, ')
+          ..write('deactivatedOn: $deactivatedOn, ')
+          ..write('firstMissedDue: $firstMissedDue, ')
+          ..write('lastPaidUntil: $lastPaidUntil, ')
+          ..write('waivedMinor: $waivedMinor, ')
+          ..write('olderArrearsMinor: $olderArrearsMinor, ')
+          ..write('graceDays: $graceDays, ')
+          ..write('reactivatedAt: $reactivatedAt, ')
+          ..write('reactivatedById: $reactivatedById, ')
+          ..write('reinstated: $reinstated')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    memberId,
+    reason,
+    deactivatedAt,
+    deactivatedOn,
+    firstMissedDue,
+    lastPaidUntil,
+    waivedMinor,
+    olderArrearsMinor,
+    graceDays,
+    reactivatedAt,
+    reactivatedById,
+    reinstated,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is MemberDeactivation &&
+          other.id == this.id &&
+          other.memberId == this.memberId &&
+          other.reason == this.reason &&
+          other.deactivatedAt == this.deactivatedAt &&
+          other.deactivatedOn == this.deactivatedOn &&
+          other.firstMissedDue == this.firstMissedDue &&
+          other.lastPaidUntil == this.lastPaidUntil &&
+          other.waivedMinor == this.waivedMinor &&
+          other.olderArrearsMinor == this.olderArrearsMinor &&
+          other.graceDays == this.graceDays &&
+          other.reactivatedAt == this.reactivatedAt &&
+          other.reactivatedById == this.reactivatedById &&
+          other.reinstated == this.reinstated);
+}
+
+class MemberDeactivationsCompanion extends UpdateCompanion<MemberDeactivation> {
+  final Value<int> id;
+  final Value<int> memberId;
+  final Value<String> reason;
+  final Value<DateTime> deactivatedAt;
+  final Value<DateTime> deactivatedOn;
+  final Value<DateTime> firstMissedDue;
+  final Value<DateTime?> lastPaidUntil;
+  final Value<int> waivedMinor;
+  final Value<int> olderArrearsMinor;
+  final Value<int> graceDays;
+  final Value<DateTime?> reactivatedAt;
+  final Value<int?> reactivatedById;
+  final Value<bool> reinstated;
+  const MemberDeactivationsCompanion({
+    this.id = const Value.absent(),
+    this.memberId = const Value.absent(),
+    this.reason = const Value.absent(),
+    this.deactivatedAt = const Value.absent(),
+    this.deactivatedOn = const Value.absent(),
+    this.firstMissedDue = const Value.absent(),
+    this.lastPaidUntil = const Value.absent(),
+    this.waivedMinor = const Value.absent(),
+    this.olderArrearsMinor = const Value.absent(),
+    this.graceDays = const Value.absent(),
+    this.reactivatedAt = const Value.absent(),
+    this.reactivatedById = const Value.absent(),
+    this.reinstated = const Value.absent(),
+  });
+  MemberDeactivationsCompanion.insert({
+    this.id = const Value.absent(),
+    required int memberId,
+    required String reason,
+    required DateTime deactivatedAt,
+    required DateTime deactivatedOn,
+    required DateTime firstMissedDue,
+    this.lastPaidUntil = const Value.absent(),
+    required int waivedMinor,
+    this.olderArrearsMinor = const Value.absent(),
+    this.graceDays = const Value.absent(),
+    this.reactivatedAt = const Value.absent(),
+    this.reactivatedById = const Value.absent(),
+    this.reinstated = const Value.absent(),
+  }) : memberId = Value(memberId),
+       reason = Value(reason),
+       deactivatedAt = Value(deactivatedAt),
+       deactivatedOn = Value(deactivatedOn),
+       firstMissedDue = Value(firstMissedDue),
+       waivedMinor = Value(waivedMinor);
+  static Insertable<MemberDeactivation> custom({
+    Expression<int>? id,
+    Expression<int>? memberId,
+    Expression<String>? reason,
+    Expression<DateTime>? deactivatedAt,
+    Expression<DateTime>? deactivatedOn,
+    Expression<DateTime>? firstMissedDue,
+    Expression<DateTime>? lastPaidUntil,
+    Expression<int>? waivedMinor,
+    Expression<int>? olderArrearsMinor,
+    Expression<int>? graceDays,
+    Expression<DateTime>? reactivatedAt,
+    Expression<int>? reactivatedById,
+    Expression<bool>? reinstated,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (memberId != null) 'member_id': memberId,
+      if (reason != null) 'reason': reason,
+      if (deactivatedAt != null) 'deactivated_at': deactivatedAt,
+      if (deactivatedOn != null) 'deactivated_on': deactivatedOn,
+      if (firstMissedDue != null) 'first_missed_due': firstMissedDue,
+      if (lastPaidUntil != null) 'last_paid_until': lastPaidUntil,
+      if (waivedMinor != null) 'waived_minor': waivedMinor,
+      if (olderArrearsMinor != null) 'older_arrears_minor': olderArrearsMinor,
+      if (graceDays != null) 'grace_days': graceDays,
+      if (reactivatedAt != null) 'reactivated_at': reactivatedAt,
+      if (reactivatedById != null) 'reactivated_by_id': reactivatedById,
+      if (reinstated != null) 'reinstated': reinstated,
+    });
+  }
+
+  MemberDeactivationsCompanion copyWith({
+    Value<int>? id,
+    Value<int>? memberId,
+    Value<String>? reason,
+    Value<DateTime>? deactivatedAt,
+    Value<DateTime>? deactivatedOn,
+    Value<DateTime>? firstMissedDue,
+    Value<DateTime?>? lastPaidUntil,
+    Value<int>? waivedMinor,
+    Value<int>? olderArrearsMinor,
+    Value<int>? graceDays,
+    Value<DateTime?>? reactivatedAt,
+    Value<int?>? reactivatedById,
+    Value<bool>? reinstated,
+  }) {
+    return MemberDeactivationsCompanion(
+      id: id ?? this.id,
+      memberId: memberId ?? this.memberId,
+      reason: reason ?? this.reason,
+      deactivatedAt: deactivatedAt ?? this.deactivatedAt,
+      deactivatedOn: deactivatedOn ?? this.deactivatedOn,
+      firstMissedDue: firstMissedDue ?? this.firstMissedDue,
+      lastPaidUntil: lastPaidUntil ?? this.lastPaidUntil,
+      waivedMinor: waivedMinor ?? this.waivedMinor,
+      olderArrearsMinor: olderArrearsMinor ?? this.olderArrearsMinor,
+      graceDays: graceDays ?? this.graceDays,
+      reactivatedAt: reactivatedAt ?? this.reactivatedAt,
+      reactivatedById: reactivatedById ?? this.reactivatedById,
+      reinstated: reinstated ?? this.reinstated,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (memberId.present) {
+      map['member_id'] = Variable<int>(memberId.value);
+    }
+    if (reason.present) {
+      map['reason'] = Variable<String>(reason.value);
+    }
+    if (deactivatedAt.present) {
+      map['deactivated_at'] = Variable<DateTime>(deactivatedAt.value);
+    }
+    if (deactivatedOn.present) {
+      map['deactivated_on'] = Variable<DateTime>(deactivatedOn.value);
+    }
+    if (firstMissedDue.present) {
+      map['first_missed_due'] = Variable<DateTime>(firstMissedDue.value);
+    }
+    if (lastPaidUntil.present) {
+      map['last_paid_until'] = Variable<DateTime>(lastPaidUntil.value);
+    }
+    if (waivedMinor.present) {
+      map['waived_minor'] = Variable<int>(waivedMinor.value);
+    }
+    if (olderArrearsMinor.present) {
+      map['older_arrears_minor'] = Variable<int>(olderArrearsMinor.value);
+    }
+    if (graceDays.present) {
+      map['grace_days'] = Variable<int>(graceDays.value);
+    }
+    if (reactivatedAt.present) {
+      map['reactivated_at'] = Variable<DateTime>(reactivatedAt.value);
+    }
+    if (reactivatedById.present) {
+      map['reactivated_by_id'] = Variable<int>(reactivatedById.value);
+    }
+    if (reinstated.present) {
+      map['reinstated'] = Variable<bool>(reinstated.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('MemberDeactivationsCompanion(')
+          ..write('id: $id, ')
+          ..write('memberId: $memberId, ')
+          ..write('reason: $reason, ')
+          ..write('deactivatedAt: $deactivatedAt, ')
+          ..write('deactivatedOn: $deactivatedOn, ')
+          ..write('firstMissedDue: $firstMissedDue, ')
+          ..write('lastPaidUntil: $lastPaidUntil, ')
+          ..write('waivedMinor: $waivedMinor, ')
+          ..write('olderArrearsMinor: $olderArrearsMinor, ')
+          ..write('graceDays: $graceDays, ')
+          ..write('reactivatedAt: $reactivatedAt, ')
+          ..write('reactivatedById: $reactivatedById, ')
+          ..write('reinstated: $reinstated')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $InactivityWaiversTable extends InactivityWaivers
+    with TableInfo<$InactivityWaiversTable, InactivityWaiver> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $InactivityWaiversTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _deactivationIdMeta = const VerificationMeta(
+    'deactivationId',
+  );
+  @override
+  late final GeneratedColumn<int> deactivationId = GeneratedColumn<int>(
+    'deactivation_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES member_deactivations (id) ON DELETE CASCADE',
+    ),
+  );
+  static const VerificationMeta _memberIdMeta = const VerificationMeta(
+    'memberId',
+  );
+  @override
+  late final GeneratedColumn<int> memberId = GeneratedColumn<int>(
+    'member_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _membershipPeriodIdMeta =
+      const VerificationMeta('membershipPeriodId');
+  @override
+  late final GeneratedColumn<int> membershipPeriodId = GeneratedColumn<int>(
+    'membership_period_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _membershipIdMeta = const VerificationMeta(
+    'membershipId',
+  );
+  @override
+  late final GeneratedColumn<int> membershipId = GeneratedColumn<int>(
+    'membership_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _periodStartMeta = const VerificationMeta(
+    'periodStart',
+  );
+  @override
+  late final GeneratedColumn<DateTime> periodStart = GeneratedColumn<DateTime>(
+    'period_start',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _periodEndMeta = const VerificationMeta(
+    'periodEnd',
+  );
+  @override
+  late final GeneratedColumn<DateTime> periodEnd = GeneratedColumn<DateTime>(
+    'period_end',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _amountMinorMeta = const VerificationMeta(
+    'amountMinor',
+  );
+  @override
+  late final GeneratedColumn<int> amountMinor = GeneratedColumn<int>(
+    'amount_minor',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    deactivationId,
+    memberId,
+    membershipPeriodId,
+    membershipId,
+    periodStart,
+    periodEnd,
+    amountMinor,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'inactivity_waivers';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<InactivityWaiver> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('deactivation_id')) {
+      context.handle(
+        _deactivationIdMeta,
+        deactivationId.isAcceptableOrUnknown(
+          data['deactivation_id']!,
+          _deactivationIdMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_deactivationIdMeta);
+    }
+    if (data.containsKey('member_id')) {
+      context.handle(
+        _memberIdMeta,
+        memberId.isAcceptableOrUnknown(data['member_id']!, _memberIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_memberIdMeta);
+    }
+    if (data.containsKey('membership_period_id')) {
+      context.handle(
+        _membershipPeriodIdMeta,
+        membershipPeriodId.isAcceptableOrUnknown(
+          data['membership_period_id']!,
+          _membershipPeriodIdMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_membershipPeriodIdMeta);
+    }
+    if (data.containsKey('membership_id')) {
+      context.handle(
+        _membershipIdMeta,
+        membershipId.isAcceptableOrUnknown(
+          data['membership_id']!,
+          _membershipIdMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_membershipIdMeta);
+    }
+    if (data.containsKey('period_start')) {
+      context.handle(
+        _periodStartMeta,
+        periodStart.isAcceptableOrUnknown(
+          data['period_start']!,
+          _periodStartMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_periodStartMeta);
+    }
+    if (data.containsKey('period_end')) {
+      context.handle(
+        _periodEndMeta,
+        periodEnd.isAcceptableOrUnknown(data['period_end']!, _periodEndMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_periodEndMeta);
+    }
+    if (data.containsKey('amount_minor')) {
+      context.handle(
+        _amountMinorMeta,
+        amountMinor.isAcceptableOrUnknown(
+          data['amount_minor']!,
+          _amountMinorMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_amountMinorMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  List<Set<GeneratedColumn>> get uniqueKeys => [
+    {deactivationId, membershipPeriodId},
+  ];
+  @override
+  InactivityWaiver map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return InactivityWaiver(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      deactivationId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}deactivation_id'],
+      )!,
+      memberId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}member_id'],
+      )!,
+      membershipPeriodId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}membership_period_id'],
+      )!,
+      membershipId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}membership_id'],
+      )!,
+      periodStart: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}period_start'],
+      )!,
+      periodEnd: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}period_end'],
+      )!,
+      amountMinor: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}amount_minor'],
+      )!,
+    );
+  }
+
+  @override
+  $InactivityWaiversTable createAlias(String alias) {
+    return $InactivityWaiversTable(attachedDatabase, alias);
+  }
+}
+
+class InactivityWaiver extends DataClass
+    implements Insertable<InactivityWaiver> {
+  final int id;
+  final int deactivationId;
+  final int memberId;
+
+  /// The cycle, and the enrolment it was on — enough to put back a cycle the
+  /// write-off removed, if the owner takes the write-off back.
+  final int membershipPeriodId;
+  final int membershipId;
+
+  /// The cycle as it was billed, before it was written off.
+  final DateTime periodStart;
+  final DateTime periodEnd;
+  final int amountMinor;
+  const InactivityWaiver({
+    required this.id,
+    required this.deactivationId,
+    required this.memberId,
+    required this.membershipPeriodId,
+    required this.membershipId,
+    required this.periodStart,
+    required this.periodEnd,
+    required this.amountMinor,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['deactivation_id'] = Variable<int>(deactivationId);
+    map['member_id'] = Variable<int>(memberId);
+    map['membership_period_id'] = Variable<int>(membershipPeriodId);
+    map['membership_id'] = Variable<int>(membershipId);
+    map['period_start'] = Variable<DateTime>(periodStart);
+    map['period_end'] = Variable<DateTime>(periodEnd);
+    map['amount_minor'] = Variable<int>(amountMinor);
+    return map;
+  }
+
+  InactivityWaiversCompanion toCompanion(bool nullToAbsent) {
+    return InactivityWaiversCompanion(
+      id: Value(id),
+      deactivationId: Value(deactivationId),
+      memberId: Value(memberId),
+      membershipPeriodId: Value(membershipPeriodId),
+      membershipId: Value(membershipId),
+      periodStart: Value(periodStart),
+      periodEnd: Value(periodEnd),
+      amountMinor: Value(amountMinor),
+    );
+  }
+
+  factory InactivityWaiver.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return InactivityWaiver(
+      id: serializer.fromJson<int>(json['id']),
+      deactivationId: serializer.fromJson<int>(json['deactivationId']),
+      memberId: serializer.fromJson<int>(json['memberId']),
+      membershipPeriodId: serializer.fromJson<int>(json['membershipPeriodId']),
+      membershipId: serializer.fromJson<int>(json['membershipId']),
+      periodStart: serializer.fromJson<DateTime>(json['periodStart']),
+      periodEnd: serializer.fromJson<DateTime>(json['periodEnd']),
+      amountMinor: serializer.fromJson<int>(json['amountMinor']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'deactivationId': serializer.toJson<int>(deactivationId),
+      'memberId': serializer.toJson<int>(memberId),
+      'membershipPeriodId': serializer.toJson<int>(membershipPeriodId),
+      'membershipId': serializer.toJson<int>(membershipId),
+      'periodStart': serializer.toJson<DateTime>(periodStart),
+      'periodEnd': serializer.toJson<DateTime>(periodEnd),
+      'amountMinor': serializer.toJson<int>(amountMinor),
+    };
+  }
+
+  InactivityWaiver copyWith({
+    int? id,
+    int? deactivationId,
+    int? memberId,
+    int? membershipPeriodId,
+    int? membershipId,
+    DateTime? periodStart,
+    DateTime? periodEnd,
+    int? amountMinor,
+  }) => InactivityWaiver(
+    id: id ?? this.id,
+    deactivationId: deactivationId ?? this.deactivationId,
+    memberId: memberId ?? this.memberId,
+    membershipPeriodId: membershipPeriodId ?? this.membershipPeriodId,
+    membershipId: membershipId ?? this.membershipId,
+    periodStart: periodStart ?? this.periodStart,
+    periodEnd: periodEnd ?? this.periodEnd,
+    amountMinor: amountMinor ?? this.amountMinor,
+  );
+  InactivityWaiver copyWithCompanion(InactivityWaiversCompanion data) {
+    return InactivityWaiver(
+      id: data.id.present ? data.id.value : this.id,
+      deactivationId: data.deactivationId.present
+          ? data.deactivationId.value
+          : this.deactivationId,
+      memberId: data.memberId.present ? data.memberId.value : this.memberId,
+      membershipPeriodId: data.membershipPeriodId.present
+          ? data.membershipPeriodId.value
+          : this.membershipPeriodId,
+      membershipId: data.membershipId.present
+          ? data.membershipId.value
+          : this.membershipId,
+      periodStart: data.periodStart.present
+          ? data.periodStart.value
+          : this.periodStart,
+      periodEnd: data.periodEnd.present ? data.periodEnd.value : this.periodEnd,
+      amountMinor: data.amountMinor.present
+          ? data.amountMinor.value
+          : this.amountMinor,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('InactivityWaiver(')
+          ..write('id: $id, ')
+          ..write('deactivationId: $deactivationId, ')
+          ..write('memberId: $memberId, ')
+          ..write('membershipPeriodId: $membershipPeriodId, ')
+          ..write('membershipId: $membershipId, ')
+          ..write('periodStart: $periodStart, ')
+          ..write('periodEnd: $periodEnd, ')
+          ..write('amountMinor: $amountMinor')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    deactivationId,
+    memberId,
+    membershipPeriodId,
+    membershipId,
+    periodStart,
+    periodEnd,
+    amountMinor,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is InactivityWaiver &&
+          other.id == this.id &&
+          other.deactivationId == this.deactivationId &&
+          other.memberId == this.memberId &&
+          other.membershipPeriodId == this.membershipPeriodId &&
+          other.membershipId == this.membershipId &&
+          other.periodStart == this.periodStart &&
+          other.periodEnd == this.periodEnd &&
+          other.amountMinor == this.amountMinor);
+}
+
+class InactivityWaiversCompanion extends UpdateCompanion<InactivityWaiver> {
+  final Value<int> id;
+  final Value<int> deactivationId;
+  final Value<int> memberId;
+  final Value<int> membershipPeriodId;
+  final Value<int> membershipId;
+  final Value<DateTime> periodStart;
+  final Value<DateTime> periodEnd;
+  final Value<int> amountMinor;
+  const InactivityWaiversCompanion({
+    this.id = const Value.absent(),
+    this.deactivationId = const Value.absent(),
+    this.memberId = const Value.absent(),
+    this.membershipPeriodId = const Value.absent(),
+    this.membershipId = const Value.absent(),
+    this.periodStart = const Value.absent(),
+    this.periodEnd = const Value.absent(),
+    this.amountMinor = const Value.absent(),
+  });
+  InactivityWaiversCompanion.insert({
+    this.id = const Value.absent(),
+    required int deactivationId,
+    required int memberId,
+    required int membershipPeriodId,
+    required int membershipId,
+    required DateTime periodStart,
+    required DateTime periodEnd,
+    required int amountMinor,
+  }) : deactivationId = Value(deactivationId),
+       memberId = Value(memberId),
+       membershipPeriodId = Value(membershipPeriodId),
+       membershipId = Value(membershipId),
+       periodStart = Value(periodStart),
+       periodEnd = Value(periodEnd),
+       amountMinor = Value(amountMinor);
+  static Insertable<InactivityWaiver> custom({
+    Expression<int>? id,
+    Expression<int>? deactivationId,
+    Expression<int>? memberId,
+    Expression<int>? membershipPeriodId,
+    Expression<int>? membershipId,
+    Expression<DateTime>? periodStart,
+    Expression<DateTime>? periodEnd,
+    Expression<int>? amountMinor,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (deactivationId != null) 'deactivation_id': deactivationId,
+      if (memberId != null) 'member_id': memberId,
+      if (membershipPeriodId != null)
+        'membership_period_id': membershipPeriodId,
+      if (membershipId != null) 'membership_id': membershipId,
+      if (periodStart != null) 'period_start': periodStart,
+      if (periodEnd != null) 'period_end': periodEnd,
+      if (amountMinor != null) 'amount_minor': amountMinor,
+    });
+  }
+
+  InactivityWaiversCompanion copyWith({
+    Value<int>? id,
+    Value<int>? deactivationId,
+    Value<int>? memberId,
+    Value<int>? membershipPeriodId,
+    Value<int>? membershipId,
+    Value<DateTime>? periodStart,
+    Value<DateTime>? periodEnd,
+    Value<int>? amountMinor,
+  }) {
+    return InactivityWaiversCompanion(
+      id: id ?? this.id,
+      deactivationId: deactivationId ?? this.deactivationId,
+      memberId: memberId ?? this.memberId,
+      membershipPeriodId: membershipPeriodId ?? this.membershipPeriodId,
+      membershipId: membershipId ?? this.membershipId,
+      periodStart: periodStart ?? this.periodStart,
+      periodEnd: periodEnd ?? this.periodEnd,
+      amountMinor: amountMinor ?? this.amountMinor,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (deactivationId.present) {
+      map['deactivation_id'] = Variable<int>(deactivationId.value);
+    }
+    if (memberId.present) {
+      map['member_id'] = Variable<int>(memberId.value);
+    }
+    if (membershipPeriodId.present) {
+      map['membership_period_id'] = Variable<int>(membershipPeriodId.value);
+    }
+    if (membershipId.present) {
+      map['membership_id'] = Variable<int>(membershipId.value);
+    }
+    if (periodStart.present) {
+      map['period_start'] = Variable<DateTime>(periodStart.value);
+    }
+    if (periodEnd.present) {
+      map['period_end'] = Variable<DateTime>(periodEnd.value);
+    }
+    if (amountMinor.present) {
+      map['amount_minor'] = Variable<int>(amountMinor.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('InactivityWaiversCompanion(')
+          ..write('id: $id, ')
+          ..write('deactivationId: $deactivationId, ')
+          ..write('memberId: $memberId, ')
+          ..write('membershipPeriodId: $membershipPeriodId, ')
+          ..write('membershipId: $membershipId, ')
+          ..write('periodStart: $periodStart, ')
+          ..write('periodEnd: $periodEnd, ')
+          ..write('amountMinor: $amountMinor')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class $AuditEventsTable extends AuditEvents
     with TableInfo<$AuditEventsTable, AuditEvent> {
   @override
@@ -11891,6 +13377,10 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     this,
   );
   late final $MemberNotesTable memberNotes = $MemberNotesTable(this);
+  late final $MemberDeactivationsTable memberDeactivations =
+      $MemberDeactivationsTable(this);
+  late final $InactivityWaiversTable inactivityWaivers =
+      $InactivityWaiversTable(this);
   late final $AuditEventsTable auditEvents = $AuditEventsTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
@@ -11913,6 +13403,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     receiptCounters,
     whatsAppMessages,
     memberNotes,
+    memberDeactivations,
+    inactivityWaivers,
     auditEvents,
   ];
   @override
@@ -11965,6 +13457,20 @@ abstract class _$AppDatabase extends GeneratedDatabase {
         limitUpdateKind: UpdateKind.delete,
       ),
       result: [TableUpdate('payment_reminders', kind: UpdateKind.delete)],
+    ),
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'members',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [TableUpdate('member_deactivations', kind: UpdateKind.delete)],
+    ),
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'member_deactivations',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [TableUpdate('inactivity_waivers', kind: UpdateKind.delete)],
     ),
   ]);
 }
@@ -12720,6 +14226,8 @@ typedef $$GymSettingsTableCreateCompanionBuilder =
       Value<String?> whatsappReminderTemplate,
       Value<String> whatsappReminderTemplateLanguage,
       Value<String?> paymentInstructions,
+      Value<bool> autoDeactivateUnpaid,
+      Value<int> inactivityGraceDays,
     });
 typedef $$GymSettingsTableUpdateCompanionBuilder =
     GymSettingsCompanion Function({
@@ -12767,6 +14275,8 @@ typedef $$GymSettingsTableUpdateCompanionBuilder =
       Value<String?> whatsappReminderTemplate,
       Value<String> whatsappReminderTemplateLanguage,
       Value<String?> paymentInstructions,
+      Value<bool> autoDeactivateUnpaid,
+      Value<int> inactivityGraceDays,
     });
 
 class $$GymSettingsTableFilterComposer
@@ -13005,6 +14515,16 @@ class $$GymSettingsTableFilterComposer
     column: $table.paymentInstructions,
     builder: (column) => ColumnFilters(column),
   );
+
+  ColumnFilters<bool> get autoDeactivateUnpaid => $composableBuilder(
+    column: $table.autoDeactivateUnpaid,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get inactivityGraceDays => $composableBuilder(
+    column: $table.inactivityGraceDays,
+    builder: (column) => ColumnFilters(column),
+  );
 }
 
 class $$GymSettingsTableOrderingComposer
@@ -13238,6 +14758,16 @@ class $$GymSettingsTableOrderingComposer
     column: $table.paymentInstructions,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<bool> get autoDeactivateUnpaid => $composableBuilder(
+    column: $table.autoDeactivateUnpaid,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get inactivityGraceDays => $composableBuilder(
+    column: $table.inactivityGraceDays,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$GymSettingsTableAnnotationComposer
@@ -13456,6 +14986,16 @@ class $$GymSettingsTableAnnotationComposer
     column: $table.paymentInstructions,
     builder: (column) => column,
   );
+
+  GeneratedColumn<bool> get autoDeactivateUnpaid => $composableBuilder(
+    column: $table.autoDeactivateUnpaid,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get inactivityGraceDays => $composableBuilder(
+    column: $table.inactivityGraceDays,
+    builder: (column) => column,
+  );
 }
 
 class $$GymSettingsTableTableManager
@@ -13537,6 +15077,8 @@ class $$GymSettingsTableTableManager
                 Value<String> whatsappReminderTemplateLanguage =
                     const Value.absent(),
                 Value<String?> paymentInstructions = const Value.absent(),
+                Value<bool> autoDeactivateUnpaid = const Value.absent(),
+                Value<int> inactivityGraceDays = const Value.absent(),
               }) => GymSettingsCompanion(
                 id: id,
                 gymName: gymName,
@@ -13585,6 +15127,8 @@ class $$GymSettingsTableTableManager
                 whatsappReminderTemplateLanguage:
                     whatsappReminderTemplateLanguage,
                 paymentInstructions: paymentInstructions,
+                autoDeactivateUnpaid: autoDeactivateUnpaid,
+                inactivityGraceDays: inactivityGraceDays,
               ),
           createCompanionCallback:
               ({
@@ -13636,6 +15180,8 @@ class $$GymSettingsTableTableManager
                 Value<String> whatsappReminderTemplateLanguage =
                     const Value.absent(),
                 Value<String?> paymentInstructions = const Value.absent(),
+                Value<bool> autoDeactivateUnpaid = const Value.absent(),
+                Value<int> inactivityGraceDays = const Value.absent(),
               }) => GymSettingsCompanion.insert(
                 id: id,
                 gymName: gymName,
@@ -13684,6 +15230,8 @@ class $$GymSettingsTableTableManager
                 whatsappReminderTemplateLanguage:
                     whatsappReminderTemplateLanguage,
                 paymentInstructions: paymentInstructions,
+                autoDeactivateUnpaid: autoDeactivateUnpaid,
+                inactivityGraceDays: inactivityGraceDays,
               ),
           withReferenceMapper: (p0) => p0
               .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
@@ -14189,6 +15737,30 @@ final class $$MembersTableReferences
       manager.$state.copyWith(prefetchedData: cache),
     );
   }
+
+  static MultiTypedResultKey<
+    $MemberDeactivationsTable,
+    List<MemberDeactivation>
+  >
+  _memberDeactivationsRefsTable(_$AppDatabase db) =>
+      MultiTypedResultKey.fromTable(
+        db.memberDeactivations,
+        aliasName: 'members__id__member_deactivations__member_id',
+      );
+
+  $$MemberDeactivationsTableProcessedTableManager get memberDeactivationsRefs {
+    final manager = $$MemberDeactivationsTableTableManager(
+      $_db,
+      $_db.memberDeactivations,
+    ).filter((f) => f.memberId.id.sqlEquals($_itemColumn<int>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(
+      _memberDeactivationsRefsTable($_db),
+    );
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
 }
 
 class $$MembersTableFilterComposer
@@ -14406,6 +15978,31 @@ class $$MembersTableFilterComposer
           }) => $$MemberNotesTableFilterComposer(
             $db: $db,
             $table: $db.memberNotes,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<bool> memberDeactivationsRefs(
+    Expression<bool> Function($$MemberDeactivationsTableFilterComposer f) f,
+  ) {
+    final $$MemberDeactivationsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.memberDeactivations,
+      getReferencedColumn: (t) => t.memberId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$MemberDeactivationsTableFilterComposer(
+            $db: $db,
+            $table: $db.memberDeactivations,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -14699,6 +16296,32 @@ class $$MembersTableAnnotationComposer
     );
     return f(composer);
   }
+
+  Expression<T> memberDeactivationsRefs<T extends Object>(
+    Expression<T> Function($$MemberDeactivationsTableAnnotationComposer a) f,
+  ) {
+    final $$MemberDeactivationsTableAnnotationComposer composer =
+        $composerBuilder(
+          composer: this,
+          getCurrentColumn: (t) => t.id,
+          referencedTable: $db.memberDeactivations,
+          getReferencedColumn: (t) => t.memberId,
+          builder:
+              (
+                joinBuilder, {
+                $addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer,
+              }) => $$MemberDeactivationsTableAnnotationComposer(
+                $db: $db,
+                $table: $db.memberDeactivations,
+                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+                joinBuilder: joinBuilder,
+                $removeJoinBuilderFromRootComposer:
+                    $removeJoinBuilderFromRootComposer,
+              ),
+        );
+    return f(composer);
+  }
 }
 
 class $$MembersTableTableManager
@@ -14721,6 +16344,7 @@ class $$MembersTableTableManager
             bool paymentRemindersRefs,
             bool whatsAppMessagesRefs,
             bool memberNotesRefs,
+            bool memberDeactivationsRefs,
           })
         > {
   $$MembersTableTableManager(_$AppDatabase db, $MembersTable table)
@@ -14810,6 +16434,7 @@ class $$MembersTableTableManager
                 paymentRemindersRefs = false,
                 whatsAppMessagesRefs = false,
                 memberNotesRefs = false,
+                memberDeactivationsRefs = false,
               }) {
                 return PrefetchHooks(
                   db: db,
@@ -14820,6 +16445,7 @@ class $$MembersTableTableManager
                     if (paymentRemindersRefs) db.paymentReminders,
                     if (whatsAppMessagesRefs) db.whatsAppMessages,
                     if (memberNotesRefs) db.memberNotes,
+                    if (memberDeactivationsRefs) db.memberDeactivations,
                   ],
                   addJoins: null,
                   getPrefetchedDataCallback: (items) async {
@@ -14950,6 +16576,27 @@ class $$MembersTableTableManager
                               ),
                           typedResults: items,
                         ),
+                      if (memberDeactivationsRefs)
+                        await $_getPrefetchedData<
+                          Member,
+                          $MembersTable,
+                          MemberDeactivation
+                        >(
+                          currentTable: table,
+                          referencedTable: $$MembersTableReferences
+                              ._memberDeactivationsRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$MembersTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).memberDeactivationsRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.memberId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
                     ];
                   },
                 );
@@ -14977,6 +16624,7 @@ typedef $$MembersTableProcessedTableManager =
         bool paymentRemindersRefs,
         bool whatsAppMessagesRefs,
         bool memberNotesRefs,
+        bool memberDeactivationsRefs,
       })
     >;
 typedef $$MembershipsTableCreateCompanionBuilder =
@@ -20740,6 +22388,1000 @@ typedef $$MemberNotesTableProcessedTableManager =
       MemberNote,
       PrefetchHooks Function({bool memberId, bool createdById})
     >;
+typedef $$MemberDeactivationsTableCreateCompanionBuilder =
+    MemberDeactivationsCompanion Function({
+      Value<int> id,
+      required int memberId,
+      required String reason,
+      required DateTime deactivatedAt,
+      required DateTime deactivatedOn,
+      required DateTime firstMissedDue,
+      Value<DateTime?> lastPaidUntil,
+      required int waivedMinor,
+      Value<int> olderArrearsMinor,
+      Value<int> graceDays,
+      Value<DateTime?> reactivatedAt,
+      Value<int?> reactivatedById,
+      Value<bool> reinstated,
+    });
+typedef $$MemberDeactivationsTableUpdateCompanionBuilder =
+    MemberDeactivationsCompanion Function({
+      Value<int> id,
+      Value<int> memberId,
+      Value<String> reason,
+      Value<DateTime> deactivatedAt,
+      Value<DateTime> deactivatedOn,
+      Value<DateTime> firstMissedDue,
+      Value<DateTime?> lastPaidUntil,
+      Value<int> waivedMinor,
+      Value<int> olderArrearsMinor,
+      Value<int> graceDays,
+      Value<DateTime?> reactivatedAt,
+      Value<int?> reactivatedById,
+      Value<bool> reinstated,
+    });
+
+final class $$MemberDeactivationsTableReferences
+    extends
+        BaseReferences<
+          _$AppDatabase,
+          $MemberDeactivationsTable,
+          MemberDeactivation
+        > {
+  $$MemberDeactivationsTableReferences(
+    super.$_db,
+    super.$_table,
+    super.$_typedResult,
+  );
+
+  static $MembersTable _memberIdTable(_$AppDatabase db) =>
+      db.members.createAlias('member_deactivations__member_id__members__id');
+
+  $$MembersTableProcessedTableManager get memberId {
+    final $_column = $_itemColumn<int>('member_id')!;
+
+    final manager = $$MembersTableTableManager(
+      $_db,
+      $_db.members,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_memberIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+
+  static MultiTypedResultKey<$InactivityWaiversTable, List<InactivityWaiver>>
+  _inactivityWaiversRefsTable(_$AppDatabase db) =>
+      MultiTypedResultKey.fromTable(
+        db.inactivityWaivers,
+        aliasName:
+            'member_deactivations__id__inactivity_waivers__deactivation_id',
+      );
+
+  $$InactivityWaiversTableProcessedTableManager get inactivityWaiversRefs {
+    final manager = $$InactivityWaiversTableTableManager(
+      $_db,
+      $_db.inactivityWaivers,
+    ).filter((f) => f.deactivationId.id.sqlEquals($_itemColumn<int>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(
+      _inactivityWaiversRefsTable($_db),
+    );
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+}
+
+class $$MemberDeactivationsTableFilterComposer
+    extends Composer<_$AppDatabase, $MemberDeactivationsTable> {
+  $$MemberDeactivationsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get reason => $composableBuilder(
+    column: $table.reason,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get deactivatedAt => $composableBuilder(
+    column: $table.deactivatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get deactivatedOn => $composableBuilder(
+    column: $table.deactivatedOn,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get firstMissedDue => $composableBuilder(
+    column: $table.firstMissedDue,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get lastPaidUntil => $composableBuilder(
+    column: $table.lastPaidUntil,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get waivedMinor => $composableBuilder(
+    column: $table.waivedMinor,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get olderArrearsMinor => $composableBuilder(
+    column: $table.olderArrearsMinor,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get graceDays => $composableBuilder(
+    column: $table.graceDays,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get reactivatedAt => $composableBuilder(
+    column: $table.reactivatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get reactivatedById => $composableBuilder(
+    column: $table.reactivatedById,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get reinstated => $composableBuilder(
+    column: $table.reinstated,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$MembersTableFilterComposer get memberId {
+    final $$MembersTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.memberId,
+      referencedTable: $db.members,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$MembersTableFilterComposer(
+            $db: $db,
+            $table: $db.members,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  Expression<bool> inactivityWaiversRefs(
+    Expression<bool> Function($$InactivityWaiversTableFilterComposer f) f,
+  ) {
+    final $$InactivityWaiversTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.inactivityWaivers,
+      getReferencedColumn: (t) => t.deactivationId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$InactivityWaiversTableFilterComposer(
+            $db: $db,
+            $table: $db.inactivityWaivers,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+}
+
+class $$MemberDeactivationsTableOrderingComposer
+    extends Composer<_$AppDatabase, $MemberDeactivationsTable> {
+  $$MemberDeactivationsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get reason => $composableBuilder(
+    column: $table.reason,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get deactivatedAt => $composableBuilder(
+    column: $table.deactivatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get deactivatedOn => $composableBuilder(
+    column: $table.deactivatedOn,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get firstMissedDue => $composableBuilder(
+    column: $table.firstMissedDue,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get lastPaidUntil => $composableBuilder(
+    column: $table.lastPaidUntil,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get waivedMinor => $composableBuilder(
+    column: $table.waivedMinor,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get olderArrearsMinor => $composableBuilder(
+    column: $table.olderArrearsMinor,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get graceDays => $composableBuilder(
+    column: $table.graceDays,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get reactivatedAt => $composableBuilder(
+    column: $table.reactivatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get reactivatedById => $composableBuilder(
+    column: $table.reactivatedById,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get reinstated => $composableBuilder(
+    column: $table.reinstated,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$MembersTableOrderingComposer get memberId {
+    final $$MembersTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.memberId,
+      referencedTable: $db.members,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$MembersTableOrderingComposer(
+            $db: $db,
+            $table: $db.members,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$MemberDeactivationsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $MemberDeactivationsTable> {
+  $$MemberDeactivationsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get reason =>
+      $composableBuilder(column: $table.reason, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get deactivatedAt => $composableBuilder(
+    column: $table.deactivatedAt,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get deactivatedOn => $composableBuilder(
+    column: $table.deactivatedOn,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get firstMissedDue => $composableBuilder(
+    column: $table.firstMissedDue,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get lastPaidUntil => $composableBuilder(
+    column: $table.lastPaidUntil,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get waivedMinor => $composableBuilder(
+    column: $table.waivedMinor,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get olderArrearsMinor => $composableBuilder(
+    column: $table.olderArrearsMinor,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get graceDays =>
+      $composableBuilder(column: $table.graceDays, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get reactivatedAt => $composableBuilder(
+    column: $table.reactivatedAt,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get reactivatedById => $composableBuilder(
+    column: $table.reactivatedById,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get reinstated => $composableBuilder(
+    column: $table.reinstated,
+    builder: (column) => column,
+  );
+
+  $$MembersTableAnnotationComposer get memberId {
+    final $$MembersTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.memberId,
+      referencedTable: $db.members,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$MembersTableAnnotationComposer(
+            $db: $db,
+            $table: $db.members,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  Expression<T> inactivityWaiversRefs<T extends Object>(
+    Expression<T> Function($$InactivityWaiversTableAnnotationComposer a) f,
+  ) {
+    final $$InactivityWaiversTableAnnotationComposer composer =
+        $composerBuilder(
+          composer: this,
+          getCurrentColumn: (t) => t.id,
+          referencedTable: $db.inactivityWaivers,
+          getReferencedColumn: (t) => t.deactivationId,
+          builder:
+              (
+                joinBuilder, {
+                $addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer,
+              }) => $$InactivityWaiversTableAnnotationComposer(
+                $db: $db,
+                $table: $db.inactivityWaivers,
+                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+                joinBuilder: joinBuilder,
+                $removeJoinBuilderFromRootComposer:
+                    $removeJoinBuilderFromRootComposer,
+              ),
+        );
+    return f(composer);
+  }
+}
+
+class $$MemberDeactivationsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $MemberDeactivationsTable,
+          MemberDeactivation,
+          $$MemberDeactivationsTableFilterComposer,
+          $$MemberDeactivationsTableOrderingComposer,
+          $$MemberDeactivationsTableAnnotationComposer,
+          $$MemberDeactivationsTableCreateCompanionBuilder,
+          $$MemberDeactivationsTableUpdateCompanionBuilder,
+          (MemberDeactivation, $$MemberDeactivationsTableReferences),
+          MemberDeactivation,
+          PrefetchHooks Function({bool memberId, bool inactivityWaiversRefs})
+        > {
+  $$MemberDeactivationsTableTableManager(
+    _$AppDatabase db,
+    $MemberDeactivationsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$MemberDeactivationsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$MemberDeactivationsTableOrderingComposer(
+                $db: db,
+                $table: table,
+              ),
+          createComputedFieldComposer: () =>
+              $$MemberDeactivationsTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<int> memberId = const Value.absent(),
+                Value<String> reason = const Value.absent(),
+                Value<DateTime> deactivatedAt = const Value.absent(),
+                Value<DateTime> deactivatedOn = const Value.absent(),
+                Value<DateTime> firstMissedDue = const Value.absent(),
+                Value<DateTime?> lastPaidUntil = const Value.absent(),
+                Value<int> waivedMinor = const Value.absent(),
+                Value<int> olderArrearsMinor = const Value.absent(),
+                Value<int> graceDays = const Value.absent(),
+                Value<DateTime?> reactivatedAt = const Value.absent(),
+                Value<int?> reactivatedById = const Value.absent(),
+                Value<bool> reinstated = const Value.absent(),
+              }) => MemberDeactivationsCompanion(
+                id: id,
+                memberId: memberId,
+                reason: reason,
+                deactivatedAt: deactivatedAt,
+                deactivatedOn: deactivatedOn,
+                firstMissedDue: firstMissedDue,
+                lastPaidUntil: lastPaidUntil,
+                waivedMinor: waivedMinor,
+                olderArrearsMinor: olderArrearsMinor,
+                graceDays: graceDays,
+                reactivatedAt: reactivatedAt,
+                reactivatedById: reactivatedById,
+                reinstated: reinstated,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required int memberId,
+                required String reason,
+                required DateTime deactivatedAt,
+                required DateTime deactivatedOn,
+                required DateTime firstMissedDue,
+                Value<DateTime?> lastPaidUntil = const Value.absent(),
+                required int waivedMinor,
+                Value<int> olderArrearsMinor = const Value.absent(),
+                Value<int> graceDays = const Value.absent(),
+                Value<DateTime?> reactivatedAt = const Value.absent(),
+                Value<int?> reactivatedById = const Value.absent(),
+                Value<bool> reinstated = const Value.absent(),
+              }) => MemberDeactivationsCompanion.insert(
+                id: id,
+                memberId: memberId,
+                reason: reason,
+                deactivatedAt: deactivatedAt,
+                deactivatedOn: deactivatedOn,
+                firstMissedDue: firstMissedDue,
+                lastPaidUntil: lastPaidUntil,
+                waivedMinor: waivedMinor,
+                olderArrearsMinor: olderArrearsMinor,
+                graceDays: graceDays,
+                reactivatedAt: reactivatedAt,
+                reactivatedById: reactivatedById,
+                reinstated: reinstated,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$MemberDeactivationsTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback:
+              ({memberId = false, inactivityWaiversRefs = false}) {
+                return PrefetchHooks(
+                  db: db,
+                  explicitlyWatchedTables: [
+                    if (inactivityWaiversRefs) db.inactivityWaivers,
+                  ],
+                  addJoins:
+                      <
+                        T extends TableManagerState<
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic
+                        >
+                      >(state) {
+                        if (memberId) {
+                          state =
+                              state.withJoin(
+                                    currentTable: table,
+                                    currentColumn: table.memberId,
+                                    referencedTable:
+                                        $$MemberDeactivationsTableReferences
+                                            ._memberIdTable(db),
+                                    referencedColumn:
+                                        $$MemberDeactivationsTableReferences
+                                            ._memberIdTable(db)
+                                            .id,
+                                  )
+                                  as T;
+                        }
+
+                        return state;
+                      },
+                  getPrefetchedDataCallback: (items) async {
+                    return [
+                      if (inactivityWaiversRefs)
+                        await $_getPrefetchedData<
+                          MemberDeactivation,
+                          $MemberDeactivationsTable,
+                          InactivityWaiver
+                        >(
+                          currentTable: table,
+                          referencedTable: $$MemberDeactivationsTableReferences
+                              ._inactivityWaiversRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$MemberDeactivationsTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).inactivityWaiversRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.deactivationId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
+                    ];
+                  },
+                );
+              },
+        ),
+      );
+}
+
+typedef $$MemberDeactivationsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $MemberDeactivationsTable,
+      MemberDeactivation,
+      $$MemberDeactivationsTableFilterComposer,
+      $$MemberDeactivationsTableOrderingComposer,
+      $$MemberDeactivationsTableAnnotationComposer,
+      $$MemberDeactivationsTableCreateCompanionBuilder,
+      $$MemberDeactivationsTableUpdateCompanionBuilder,
+      (MemberDeactivation, $$MemberDeactivationsTableReferences),
+      MemberDeactivation,
+      PrefetchHooks Function({bool memberId, bool inactivityWaiversRefs})
+    >;
+typedef $$InactivityWaiversTableCreateCompanionBuilder =
+    InactivityWaiversCompanion Function({
+      Value<int> id,
+      required int deactivationId,
+      required int memberId,
+      required int membershipPeriodId,
+      required int membershipId,
+      required DateTime periodStart,
+      required DateTime periodEnd,
+      required int amountMinor,
+    });
+typedef $$InactivityWaiversTableUpdateCompanionBuilder =
+    InactivityWaiversCompanion Function({
+      Value<int> id,
+      Value<int> deactivationId,
+      Value<int> memberId,
+      Value<int> membershipPeriodId,
+      Value<int> membershipId,
+      Value<DateTime> periodStart,
+      Value<DateTime> periodEnd,
+      Value<int> amountMinor,
+    });
+
+final class $$InactivityWaiversTableReferences
+    extends
+        BaseReferences<
+          _$AppDatabase,
+          $InactivityWaiversTable,
+          InactivityWaiver
+        > {
+  $$InactivityWaiversTableReferences(
+    super.$_db,
+    super.$_table,
+    super.$_typedResult,
+  );
+
+  static $MemberDeactivationsTable _deactivationIdTable(_$AppDatabase db) =>
+      db.memberDeactivations.createAlias(
+        'inactivity_waivers__deactivation_id__member_deactivations__id',
+      );
+
+  $$MemberDeactivationsTableProcessedTableManager get deactivationId {
+    final $_column = $_itemColumn<int>('deactivation_id')!;
+
+    final manager = $$MemberDeactivationsTableTableManager(
+      $_db,
+      $_db.memberDeactivations,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_deactivationIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$InactivityWaiversTableFilterComposer
+    extends Composer<_$AppDatabase, $InactivityWaiversTable> {
+  $$InactivityWaiversTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get memberId => $composableBuilder(
+    column: $table.memberId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get membershipPeriodId => $composableBuilder(
+    column: $table.membershipPeriodId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get membershipId => $composableBuilder(
+    column: $table.membershipId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get periodStart => $composableBuilder(
+    column: $table.periodStart,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get periodEnd => $composableBuilder(
+    column: $table.periodEnd,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get amountMinor => $composableBuilder(
+    column: $table.amountMinor,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$MemberDeactivationsTableFilterComposer get deactivationId {
+    final $$MemberDeactivationsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.deactivationId,
+      referencedTable: $db.memberDeactivations,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$MemberDeactivationsTableFilterComposer(
+            $db: $db,
+            $table: $db.memberDeactivations,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$InactivityWaiversTableOrderingComposer
+    extends Composer<_$AppDatabase, $InactivityWaiversTable> {
+  $$InactivityWaiversTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get memberId => $composableBuilder(
+    column: $table.memberId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get membershipPeriodId => $composableBuilder(
+    column: $table.membershipPeriodId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get membershipId => $composableBuilder(
+    column: $table.membershipId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get periodStart => $composableBuilder(
+    column: $table.periodStart,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get periodEnd => $composableBuilder(
+    column: $table.periodEnd,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get amountMinor => $composableBuilder(
+    column: $table.amountMinor,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$MemberDeactivationsTableOrderingComposer get deactivationId {
+    final $$MemberDeactivationsTableOrderingComposer composer =
+        $composerBuilder(
+          composer: this,
+          getCurrentColumn: (t) => t.deactivationId,
+          referencedTable: $db.memberDeactivations,
+          getReferencedColumn: (t) => t.id,
+          builder:
+              (
+                joinBuilder, {
+                $addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer,
+              }) => $$MemberDeactivationsTableOrderingComposer(
+                $db: $db,
+                $table: $db.memberDeactivations,
+                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+                joinBuilder: joinBuilder,
+                $removeJoinBuilderFromRootComposer:
+                    $removeJoinBuilderFromRootComposer,
+              ),
+        );
+    return composer;
+  }
+}
+
+class $$InactivityWaiversTableAnnotationComposer
+    extends Composer<_$AppDatabase, $InactivityWaiversTable> {
+  $$InactivityWaiversTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<int> get memberId =>
+      $composableBuilder(column: $table.memberId, builder: (column) => column);
+
+  GeneratedColumn<int> get membershipPeriodId => $composableBuilder(
+    column: $table.membershipPeriodId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get membershipId => $composableBuilder(
+    column: $table.membershipId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get periodStart => $composableBuilder(
+    column: $table.periodStart,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get periodEnd =>
+      $composableBuilder(column: $table.periodEnd, builder: (column) => column);
+
+  GeneratedColumn<int> get amountMinor => $composableBuilder(
+    column: $table.amountMinor,
+    builder: (column) => column,
+  );
+
+  $$MemberDeactivationsTableAnnotationComposer get deactivationId {
+    final $$MemberDeactivationsTableAnnotationComposer composer =
+        $composerBuilder(
+          composer: this,
+          getCurrentColumn: (t) => t.deactivationId,
+          referencedTable: $db.memberDeactivations,
+          getReferencedColumn: (t) => t.id,
+          builder:
+              (
+                joinBuilder, {
+                $addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer,
+              }) => $$MemberDeactivationsTableAnnotationComposer(
+                $db: $db,
+                $table: $db.memberDeactivations,
+                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+                joinBuilder: joinBuilder,
+                $removeJoinBuilderFromRootComposer:
+                    $removeJoinBuilderFromRootComposer,
+              ),
+        );
+    return composer;
+  }
+}
+
+class $$InactivityWaiversTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $InactivityWaiversTable,
+          InactivityWaiver,
+          $$InactivityWaiversTableFilterComposer,
+          $$InactivityWaiversTableOrderingComposer,
+          $$InactivityWaiversTableAnnotationComposer,
+          $$InactivityWaiversTableCreateCompanionBuilder,
+          $$InactivityWaiversTableUpdateCompanionBuilder,
+          (InactivityWaiver, $$InactivityWaiversTableReferences),
+          InactivityWaiver,
+          PrefetchHooks Function({bool deactivationId})
+        > {
+  $$InactivityWaiversTableTableManager(
+    _$AppDatabase db,
+    $InactivityWaiversTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$InactivityWaiversTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$InactivityWaiversTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$InactivityWaiversTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<int> deactivationId = const Value.absent(),
+                Value<int> memberId = const Value.absent(),
+                Value<int> membershipPeriodId = const Value.absent(),
+                Value<int> membershipId = const Value.absent(),
+                Value<DateTime> periodStart = const Value.absent(),
+                Value<DateTime> periodEnd = const Value.absent(),
+                Value<int> amountMinor = const Value.absent(),
+              }) => InactivityWaiversCompanion(
+                id: id,
+                deactivationId: deactivationId,
+                memberId: memberId,
+                membershipPeriodId: membershipPeriodId,
+                membershipId: membershipId,
+                periodStart: periodStart,
+                periodEnd: periodEnd,
+                amountMinor: amountMinor,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required int deactivationId,
+                required int memberId,
+                required int membershipPeriodId,
+                required int membershipId,
+                required DateTime periodStart,
+                required DateTime periodEnd,
+                required int amountMinor,
+              }) => InactivityWaiversCompanion.insert(
+                id: id,
+                deactivationId: deactivationId,
+                memberId: memberId,
+                membershipPeriodId: membershipPeriodId,
+                membershipId: membershipId,
+                periodStart: periodStart,
+                periodEnd: periodEnd,
+                amountMinor: amountMinor,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$InactivityWaiversTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({deactivationId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (deactivationId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.deactivationId,
+                                referencedTable:
+                                    $$InactivityWaiversTableReferences
+                                        ._deactivationIdTable(db),
+                                referencedColumn:
+                                    $$InactivityWaiversTableReferences
+                                        ._deactivationIdTable(db)
+                                        .id,
+                              )
+                              as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$InactivityWaiversTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $InactivityWaiversTable,
+      InactivityWaiver,
+      $$InactivityWaiversTableFilterComposer,
+      $$InactivityWaiversTableOrderingComposer,
+      $$InactivityWaiversTableAnnotationComposer,
+      $$InactivityWaiversTableCreateCompanionBuilder,
+      $$InactivityWaiversTableUpdateCompanionBuilder,
+      (InactivityWaiver, $$InactivityWaiversTableReferences),
+      InactivityWaiver,
+      PrefetchHooks Function({bool deactivationId})
+    >;
 typedef $$AuditEventsTableCreateCompanionBuilder =
     AuditEventsCompanion Function({
       Value<int> id,
@@ -21170,6 +23812,10 @@ class $AppDatabaseManager {
       $$WhatsAppMessagesTableTableManager(_db, _db.whatsAppMessages);
   $$MemberNotesTableTableManager get memberNotes =>
       $$MemberNotesTableTableManager(_db, _db.memberNotes);
+  $$MemberDeactivationsTableTableManager get memberDeactivations =>
+      $$MemberDeactivationsTableTableManager(_db, _db.memberDeactivations);
+  $$InactivityWaiversTableTableManager get inactivityWaivers =>
+      $$InactivityWaiversTableTableManager(_db, _db.inactivityWaivers);
   $$AuditEventsTableTableManager get auditEvents =>
       $$AuditEventsTableTableManager(_db, _db.auditEvents);
 }

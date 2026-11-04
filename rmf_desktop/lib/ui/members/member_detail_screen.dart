@@ -18,6 +18,8 @@ import '../widgets/page_scaffold.dart';
 import '../widgets/status_badge.dart';
 import 'billing_day_action.dart';
 import 'member_form_screen.dart';
+import 'missed_payment_choice.dart';
+import 'missed_payment_panel.dart';
 import 'restart_billing_action.dart';
 
 class MemberDetailScreen extends StatelessWidget {
@@ -49,6 +51,15 @@ class _MemberDetailView extends StatelessWidget {
   ) async {
     final bloc = context.read<MemberDetailBloc>();
     final deactivating = row.member.deactivatedAt == null;
+
+    // Deactivated by the app for missed payments: whether they kept coming
+    // decides what happens to the write-off, so that is asked instead.
+    if (!deactivating && row.missedPaymentDeactivation != null) {
+      if (await resolveMissedPaymentLapse(context, member: row)) {
+        bloc.add(const MemberDetailRequested(afterChange: true));
+      }
+      return;
+    }
 
     // A member coming back after a gap starts again from the day they came
     // back, so reactivating them asks for that day. One still inside time
@@ -404,6 +415,7 @@ class _Body extends StatelessWidget {
               ),
             ),
           ),
+          MissedPaymentPanel(member: row.member, onReactivate: onToggleActive),
           if (error != null) ...[
             const SizedBox(height: 18),
             Container(

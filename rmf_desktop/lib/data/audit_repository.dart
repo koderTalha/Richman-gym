@@ -18,6 +18,33 @@ abstract final class AuditAction {
   static const memberDeactivated = 'member.deactivated';
   static const memberReactivated = 'member.reactivated';
 
+  /// The app deactivated a member who left a month unpaid for 40 days, and
+  /// wrote off the bills of that lapse. Never written by the member screen, so
+  /// the ledger importer can tell this apart from the owner's own decision.
+  /// See `services/payment_inactivity_service.dart`.
+  static const memberDeactivatedForMissedPayments =
+      'member.deactivated_missed_payments';
+
+  /// The owner switched automatic missed-payment deactivation on or off.
+  static const autoDeactivationSwitched = 'billing.auto_deactivation_switched';
+
+  /// The owner changed how many unpaid days it takes.
+  static const inactivityThresholdChanged =
+      'billing.inactivity_threshold_changed';
+
+  /// The owner said a member deactivated for missed payments had kept coming
+  /// all along: the write-off was taken back and the member made active, with
+  /// those months owed again. Distinct from [memberReactivated], where the
+  /// member came back after a gap and the write-off stands.
+  static const memberReinstated = 'member.reinstated';
+
+  /// A payment was recorded for a member while they were deactivated for
+  /// missed payments. Nothing is undone: the write-off stands and the member
+  /// stays inactive. Recorded so the owner can decide whether the money was
+  /// for a month that was written off.
+  static const paymentAfterMissedPaymentWaiver =
+      'billing.payment_after_waiver';
+
   /// The owner edited a member's profile — name, phone, email, gender,
   /// address, emergency contact or joining date — with one "Field: before →
   /// after" line per change. Fee and plan changes are [memberFeeChanged]'s.

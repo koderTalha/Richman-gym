@@ -17,7 +17,10 @@ class _BrokenService extends ReminderService {
   bool broken = true;
 
   @override
-  Future<List<ReminderCandidate>> buildQueue({DateTime? now}) async {
+  Future<List<ReminderCandidate>> buildQueue({
+    DateTime? now,
+    bool recordSkipped = true,
+  }) async {
     if (broken) throw StateError('database is locked');
     return const [];
   }

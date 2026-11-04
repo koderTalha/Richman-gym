@@ -16,6 +16,7 @@ import '../widgets/segmented_filter.dart';
 import 'backup_card.dart';
 import 'delete_members_card.dart';
 import 'historical_review_screen.dart';
+import 'missed_payment_card.dart';
 import 'plan_price_change_dialog.dart';
 import 'send_to_developer_card.dart';
 import 'unsaved_changes.dart';
@@ -134,6 +135,7 @@ class _SettingsViewState extends State<_SettingsView> {
             _SettingsTab.gym: [
               _GymInfoCard(settings: state.settings!),
               _PlansCard(plans: state.plans),
+              MissedPaymentCard(card: card),
             ],
             _SettingsTab.account: [
               const _AccountCard(),

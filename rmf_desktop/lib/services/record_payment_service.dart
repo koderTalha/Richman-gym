@@ -22,6 +22,7 @@ import '../domain/reminder_schedule.dart';
 import 'billing_cycle_service.dart';
 import 'logo_storage.dart';
 import 'billing_month_checker.dart';
+import 'payment_inactivity_service.dart';
 import 'receipt_renderer.dart';
 import 'receipt_storage.dart';
 import 'whatsapp/message_texts.dart';
@@ -531,6 +532,15 @@ class RecordPaymentService {
     }
 
     // --- Past this line the money is safely recorded ------------------------
+    await flagPaymentAfterWaiver(
+      db,
+      memberId: member.id,
+      paymentId: committed.paymentId,
+      amountMinor: input.amountMinor,
+      receiptNumber: receiptNumber,
+      audit: _audit,
+    );
+
     if (!input.sendWhatsApp) {
       return RecordPaymentResult(
         paymentId: committed.paymentId,
@@ -817,6 +827,15 @@ class RecordPaymentService {
       _log.severe('Recording the advance payment failed', error, stack);
       rethrow;
     }
+
+    await flagPaymentAfterWaiver(
+      db,
+      memberId: member.id,
+      paymentId: committed.paymentId,
+      amountMinor: input.amountMinor,
+      receiptNumber: receiptNumber,
+      audit: _audit,
+    );
 
     if (!input.sendWhatsApp) {
       return RecordPaymentResult(

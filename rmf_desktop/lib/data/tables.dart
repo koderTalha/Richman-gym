@@ -62,6 +62,17 @@ enum CyclePricingSource {
   /// billed 4,000 under a plan that now costs 2,500 could have been either
   /// plan price at the time, and inventing the answer is how the gym got here.
   unknown,
+
+  /// Written off because the member was deactivated for missed payments. The
+  /// bill it replaced is this row's `previousAmountMinor`, and the matching
+  /// [InactivityWaivers] row says which deactivation did it. See
+  /// `services/payment_inactivity_service.dart`.
+  inactivityWaiver,
+
+  /// A write-off taken back: the owner said the member had kept coming all
+  /// along, so the bill [inactivityWaiver] forgave is owed again. See
+  /// `PaymentInactivityService.reinstate`.
+  inactivityRestored,
 }
 
 /// What an audit event is about, so the Logs screen can group and filter
@@ -289,6 +300,21 @@ class GymSettings extends Table {
   /// has shipped to so far.
   TextColumn get paymentInstructions =>
       text().nullable().withDefault(const Constant('Pay Cash/Online'))();
+
+  /// Whether a member who leaves a month unpaid for 40 days is deactivated, and
+  /// that month written off, without anybody pressing a button.
+  ///
+  /// Off by default, on every install and every upgrade, like
+  /// [reminderAutoSend]: switching it on is the owner's decision, made after
+  /// seeing who it would deactivate on the day. See
+  /// `services/payment_inactivity_service.dart`.
+  BoolColumn get autoDeactivateUnpaid =>
+      boolean().withDefault(const Constant(false))();
+
+  /// How many days a month may go unpaid, from its due date, before that
+  /// happens. One of `inactivityGraceDayChoices`.
+  IntColumn get inactivityGraceDays =>
+      integer().withDefault(const Constant(40))();
 
   @override
   Set<Column> get primaryKey => {id};
@@ -674,6 +700,99 @@ class MembershipChanges extends Table {
 
   TextColumn get reason => text().nullable()();
   IntColumn get actorId => integer().nullable()();
+}
+
+/// One row each time a member is deactivated for missed payments.
+///
+/// [Members.deactivatedAt] says *that* a member is inactive, and nothing more:
+/// a member the owner deactivated and one the app deactivated look the same
+/// there. This is the rest — why, which unpaid month started it, and what was
+/// written off — kept as its own row so a second lapse, after a reactivation,
+/// is a second row rather than an overwrite of the first.
+///
+/// [deactivatedOn] and [firstMissedDue] are deliberately separate. The member
+/// stopped paying on the second and was deactivated on the first; recording
+/// only one would either back-date the deactivation or lose where the debt
+/// began.
+class MemberDeactivations extends Table {
+  IntColumn get id => integer().autoIncrement()();
+
+  /// Cascades: a member can only be deleted while no payment is recorded
+  /// against them, and this row describes nobody once they are gone.
+  IntColumn get memberId =>
+      integer().references(Members, #id, onDelete: KeyAction.cascade)();
+
+  /// `payment_inactivity`. Text rather than an enum so a later kind of
+  /// automatic deactivation needs no migration.
+  TextColumn get reason => text()();
+
+  /// The moment it happened, and the gym's calendar day it happened on.
+  DateTimeColumn get deactivatedAt => dateTime()();
+  DateTimeColumn get deactivatedOn => dateTime()();
+
+  /// The start of the unpaid cycle that ran 40 days without payment.
+  DateTimeColumn get firstMissedDue => dateTime()();
+
+  /// The end of the member's last paid cycle before it, if they had one.
+  DateTimeColumn get lastPaidUntil => dateTime().nullable()();
+
+  /// The total of the bills written off, in minor units. Each one is an
+  /// [InactivityWaivers] row.
+  IntColumn get waivedMinor => integer()();
+
+  /// Unpaid months older than [firstMissedDue], which were left owing. Copied
+  /// so the detail screen can say so without recomputing history.
+  IntColumn get olderArrearsMinor =>
+      integer().withDefault(const Constant(0))();
+
+  /// The threshold in force when it happened, since the owner can change it.
+  IntColumn get graceDays => integer().withDefault(const Constant(40))();
+
+  /// Null while the member is still away. Set when anybody reactivates them,
+  /// which closes this episode.
+  DateTimeColumn get reactivatedAt => dateTime().nullable()();
+  IntColumn get reactivatedById => integer().nullable()();
+
+  /// How it closed. False: they came back after a gap, and what was written
+  /// off stays written off. True: the owner said they had kept coming all
+  /// along, and the write-off was taken back — those months are owed again.
+  BoolColumn get reinstated => boolean().withDefault(const Constant(false))();
+}
+
+/// One bill written off by a [MemberDeactivations] row.
+///
+/// The cycle itself is re-priced to nothing and closed, which is what takes it
+/// out of every balance, status and reminder in the app without any of them
+/// knowing waivers exist — the same shape as the ledger import's free months.
+/// This row is the receipt for that: what the bill was, over which days, and
+/// which deactivation forgave it.
+///
+/// The cycle is copied rather than referenced, like [AuditEvents]: restarting
+/// a returning member's billing may later reshape their cycles, and the record
+/// of what was forgiven must not go with them.
+class InactivityWaivers extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  IntColumn get deactivationId => integer()
+      .references(MemberDeactivations, #id, onDelete: KeyAction.cascade)();
+  IntColumn get memberId => integer()();
+
+  /// The cycle, and the enrolment it was on — enough to put back a cycle the
+  /// write-off removed, if the owner takes the write-off back.
+  IntColumn get membershipPeriodId => integer()();
+  IntColumn get membershipId => integer()();
+
+  /// The cycle as it was billed, before it was written off.
+  DateTimeColumn get periodStart => dateTime()();
+  DateTimeColumn get periodEnd => dateTime()();
+  IntColumn get amountMinor => integer()();
+
+  /// One deactivation writes a bill off once; SQLite refuses a second. A
+  /// bill reinstated and later written off again belongs to a second
+  /// deactivation, so the cycle alone is not unique.
+  @override
+  List<Set<Column>> get uniqueKeys => [
+        {deactivationId, membershipPeriodId},
+      ];
 }
 
 /// One row per meaningful business mutation, written for the owner to read.
