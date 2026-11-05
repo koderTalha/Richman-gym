@@ -1,12 +1,13 @@
 import 'dart:typed_data';
 
-import 'package:flutter/material.dart' show Color;
+import 'package:flutter/material.dart' show Brightness, Color;
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
 import '../theme/branding_config.dart';
 import '../theme/theme_preset.dart';
+import 'receipt_ticket.dart';
 
 /// Everything printed on a receipt, already formatted for display.
 class ReceiptData {
@@ -26,7 +27,18 @@ class ReceiptData {
     this.gymAddress,
     this.branding = const BrandingConfig(),
     this.logoBytes,
+    this.brightness = Brightness.dark,
   });
+
+  /// The app's light/dark mode when the receipt was made, from the settings
+  /// row's `theme_mode` — see [brightnessFor]. Only the Ticket template reads
+  /// it; the other three are dark whatever the app is showing.
+  final Brightness brightness;
+
+  /// Maps the stored theme mode to a receipt brightness. Anything but an
+  /// explicit "light" is dark, matching how the app itself reads the column.
+  static Brightness brightnessFor(String? storedThemeMode) =>
+      storedThemeMode == 'light' ? Brightness.light : Brightness.dark;
 
   final String gymName;
   final String receiptNumber;
@@ -115,7 +127,14 @@ const _pageHeight = 640.0;
 class ReceiptRenderer {
   Future<RenderedReceipt> render(ReceiptData data) async {
     final pdfBytes = await buildPdf(data);
-    final png = await rasterise(pdfBytes);
+    // The Ticket page is the design's 540 × 960 canvas; 144 dpi makes the
+    // image exactly the 1080 × 1920 it was designed at.
+    final png = await rasterise(
+      pdfBytes,
+      dpi: data.branding.receiptTemplate == ReceiptTemplate.ticket
+          ? TicketReceipt.dpi
+          : 150,
+    );
     return RenderedReceipt(pdf: pdfBytes, png: png);
   }
 
@@ -127,6 +146,12 @@ class ReceiptRenderer {
   /// still reads in a WhatsApp thread.
   Future<Uint8List> buildPdf(ReceiptData data) async {
     final doc = pw.Document();
+    // The Ticket shares nothing with the other three but the data and this
+    // pipeline: different canvas, typeface and structure. See receipt_ticket.
+    if (data.branding.receiptTemplate == ReceiptTemplate.ticket) {
+      doc.addPage(await TicketReceipt.page(data));
+      return doc.save();
+    }
     final palette = _ReceiptPalette(data.branding.effectivePreset);
     final logo = data.logoBytes == null
         ? null
@@ -285,7 +310,10 @@ class ReceiptRenderer {
           ],
         );
 
+      // The Ticket never reaches here (buildPdf hands it off first); it is
+      // listed so the switch stays exhaustive.
       case ReceiptTemplate.classic:
+      case ReceiptTemplate.ticket:
         return pw.Column(
           children: [
             if (logo != null) ...[

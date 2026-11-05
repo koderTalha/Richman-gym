@@ -137,6 +137,20 @@ flutter:
           weight: 700
         - asset: assets/fonts/Inter-ExtraBold.ttf
           weight: 800
+    # Manrope, the typeface of the Ticket receipt. Registered as a family so
+    # the Appearance thumbnail can use it, and read straight from the bundle
+    # by ReceiptRenderer, which embeds it in the PDF. Bundled for the same
+    # offline reason as Inter. Licence: assets/fonts/Manrope-LICENSE.txt.
+    - family: Manrope
+      fonts:
+        - asset: assets/fonts/Manrope-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/Manrope-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/Manrope-Bold.ttf
+          weight: 700
+        - asset: assets/fonts/Manrope-ExtraBold.ttf
+          weight: 800
 
   # To add assets to your application, add an assets section, like this:
   # assets:

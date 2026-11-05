@@ -284,13 +284,31 @@ class _AppShellState extends State<AppShell> {
   }
 }
 
+/// Tracking on the sidebar wordmark. Named because the centring correction in
+/// [_Sidebar] has to use the same value: Flutter adds letter spacing after every
+/// glyph, the last one included, so spaced capitals carry a trailing gap that
+/// would leave a centred wordmark sitting visibly left of the logo above it.
+const _wordmarkTracking = 2.0;
+
 /// The gym's logo in the sidebar header, or nothing when none is set.
 ///
 /// Watches [BrandingCubit] so an upload appears immediately rather than after a
 /// restart. Sized by height with `BoxFit.contain`, so a wide mark and a square
 /// one both sit correctly and neither is stretched.
+///
+/// Centred over the wordmark as one lockup, and exactly as wide as it: [width]
+/// is the wordmark's measured ink width, so the mark and the title share both
+/// edges. Height follows the logo's own proportions, capped at [width] so a
+/// portrait logo cannot push the navigation down the screen.
+///
+/// The corners are rounded so a logo supplied on a solid square background
+/// reads as a deliberate app-icon tile rather than a box pasted onto the
+/// sidebar; a transparent logo is unaffected, because clipping removes nothing
+/// it draws.
 class _SidebarLogo extends StatelessWidget {
-  const _SidebarLogo();
+  const _SidebarLogo({required this.width});
+
+  final double width;
 
   @override
   Widget build(BuildContext context) {
@@ -303,16 +321,24 @@ class _SidebarLogo extends StatelessWidget {
         if (path == null) return const SizedBox.shrink();
 
         return Padding(
-          padding: const EdgeInsets.only(bottom: 12),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxHeight: 44, maxWidth: 192),
-            child: Image.file(
-              File(path),
-              fit: BoxFit.contain,
-              alignment: Alignment.centerLeft,
-              // A deleted or unreadable file must not put a broken-image box in
-              // the sidebar — the wordmark below is enough on its own.
-              errorBuilder: (context, error, stack) => const SizedBox.shrink(),
+          padding: const EdgeInsets.only(bottom: 14),
+          child: Center(
+            child: ConstrainedBox(
+              constraints: BoxConstraints.tightFor(width: width)
+                  .copyWith(maxHeight: width),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: Image.file(
+                  File(path),
+                  fit: BoxFit.contain,
+                  filterQuality: FilterQuality.medium,
+                  semanticLabel: 'Gym logo',
+                  // A deleted or unreadable file must not put a broken-image
+                  // box in the sidebar — the wordmark below is enough alone.
+                  errorBuilder: (context, error, stack) =>
+                      const SizedBox.shrink(),
+                ),
+              ),
             ),
           ),
         );
@@ -329,6 +355,31 @@ class _Sidebar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final wordmark = TextSpan(
+      style: TextStyle(
+        fontSize: 13,
+        fontWeight: FontWeight.w800,
+        letterSpacing: _wordmarkTracking,
+        color: context.palette.textPrimary,
+      ),
+      children: [
+        const TextSpan(text: 'RICH MAN'),
+        TextSpan(
+          text: ' FITNESS',
+          style: TextStyle(color: context.palette.accent),
+        ),
+      ],
+    );
+    // The logo is sized to the wordmark's ink, so measure the same span the
+    // RichText below draws, with the same (unscaled) text scaler RichText uses.
+    // The trailing tracking after the last glyph is not ink, so it is taken off.
+    final painter = TextPainter(
+      text: wordmark,
+      textDirection: TextDirection.ltr,
+    )..layout();
+    final wordmarkWidth = painter.width - _wordmarkTracking;
+    painter.dispose();
+
     return Container(
       width: 216,
       decoration: BoxDecoration(
@@ -339,33 +390,26 @@ class _Sidebar extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Container(
-            padding: const EdgeInsets.fromLTRB(20, 22, 20, 20),
+            padding: const EdgeInsets.fromLTRB(16, 22, 16, 20),
             decoration: BoxDecoration(
               border: Border(bottom: BorderSide(color: context.palette.border)),
             ),
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              // Logo and wordmark are one centred lockup: a centred mark over
+              // a left-aligned title reads as misaligned rather than designed.
+              crossAxisAlignment: CrossAxisAlignment.center,
               mainAxisSize: MainAxisSize.min,
               children: [
                 // The gym's own mark, above the wordmark. Absent when no logo
-                // is configured, so the header collapses back to exactly what
-                // it looked like before this feature existed.
-                const _SidebarLogo(),
-                RichText(
-                  text: TextSpan(
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 2,
-                      color: context.palette.textPrimary,
-                    ),
-                    children: [
-                      const TextSpan(text: 'RICH MAN'),
-                      TextSpan(
-                        text: ' FITNESS',
-                        style: TextStyle(color: context.palette.accent),
-                      ),
-                    ],
+                // is configured, so the header is just the centred wordmark.
+                _SidebarLogo(width: wordmarkWidth),
+                Padding(
+                  // Cancels the trailing tracking after the final "S" so the
+                  // letters themselves, not their spacing, are centred.
+                  padding: const EdgeInsets.only(left: _wordmarkTracking),
+                  child: RichText(
+                    textAlign: TextAlign.center,
+                    text: wordmark,
                   ),
                 ),
               ],

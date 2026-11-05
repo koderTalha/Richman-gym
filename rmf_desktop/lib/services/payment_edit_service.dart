@@ -394,6 +394,7 @@ class PaymentEditService {
           // different gym than the one beside it.
           branding: SettingsRepository.brandingFrom(settings),
           logoBytes: await LogoStorage.read(settings.logoPath),
+          brightness: ReceiptData.brightnessFor(settings.themeMode),
         ));
       } catch (error, stack) {
         // Not fatal to the correction: the money is what matters and the
