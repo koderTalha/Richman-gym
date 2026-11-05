@@ -53,12 +53,12 @@ class ObscuredText extends StatelessWidget {
 /// The one eye that hides or shows every revenue figure at once, through
 /// [RevenueVisibilityCubit].
 ///
-/// It lives in the page's actions beside Refresh rather than next to any one
-/// figure: it governs the greeting and both stats below it, and an eye beside
-/// a single figure reads as if it hid only that one. Drawn as an icon-only
-/// [GhostButton] — same colour, corner and hover wash, at the height of the
-/// button beside it — with the tooltip as its label for the mouse and for a
-/// screen reader.
+/// It sits at the right end of the dashboard's stats row, after all the
+/// figures rather than beside any one of them: an eye next to a single figure
+/// reads as if it hid only that one, and it governs both revenue stats and the
+/// greeting's figure. Drawn like an icon-only [GhostButton] — same colour,
+/// corner and hover wash — with the tooltip as its label for the mouse and for
+/// a screen reader.
 class RevenueVisibilityButton extends StatelessWidget {
   const RevenueVisibilityButton({super.key});
 

@@ -21,6 +21,8 @@ class ReceiptStyleCard extends StatelessWidget {
         'receipts use.',
     ReceiptTemplate.modern: 'Brand-coloured header band with the logo.',
     ReceiptTemplate.minimal: 'Quiet type and hairline rules.',
+    ReceiptTemplate.ticket: 'Big amount card and a tear-off ticket. '
+        'Follows light or dark mode.',
   };
 
   @override
@@ -119,6 +121,7 @@ class _TemplateOption extends StatelessWidget {
                         ReceiptTemplate.classic => 'Classic',
                         ReceiptTemplate.modern => 'Modern',
                         ReceiptTemplate.minimal => 'Minimal',
+                        ReceiptTemplate.ticket => 'Ticket',
                       },
                       style: TextStyle(
                         fontSize: 13,
@@ -159,6 +162,12 @@ class _ReceiptThumb extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (template == ReceiptTemplate.ticket) {
+      return _TicketThumb(
+        preset: preset,
+        light: Theme.of(context).brightness == Brightness.light,
+      );
+    }
     return ClipRRect(
       borderRadius: BorderRadius.circular(8),
       child: Container(
@@ -233,6 +242,108 @@ class _ReceiptThumb extends StatelessWidget {
                     : null,
               ),
               child: Container(height: 6, width: 46, color: preset.accentText),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// The Ticket in miniature: brand bar, the amount card in the brand colour,
+/// and the ticket with its tear line.
+///
+/// Drawn in the mode the app is in right now, because that is the mode a
+/// receipt made right now will be drawn in — the one template that follows
+/// light/dark rather than always being dark.
+class _TicketThumb extends StatelessWidget {
+  const _TicketThumb({required this.preset, required this.light});
+
+  final ThemePreset preset;
+  final bool light;
+
+  @override
+  Widget build(BuildContext context) {
+    // The receipt's own tokens (see receipt_ticket.dart), not the app's.
+    final background = light ? const Color(0xFFEEF2F7) : const Color(0xFF0F172A);
+    final surface = light ? Colors.white : const Color(0xFF17233F);
+    final border = light ? const Color(0xFFE2E8F0) : const Color(0xFF26334F);
+    final ink = light ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC);
+    final muted = light ? const Color(0xFFCBD5E1) : const Color(0xFF334155);
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        height: 104,
+        width: double.infinity,
+        color: background,
+        padding: const EdgeInsets.all(8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // Brand bar: logo tile, name, receipt number.
+            Row(
+              children: [
+                Container(
+                  width: 10,
+                  height: 10,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF0F172A),
+                    borderRadius: BorderRadius.circular(3),
+                    border: Border.all(color: border, width: 0.5),
+                  ),
+                ),
+                const SizedBox(width: 4),
+                Container(height: 4, width: 44, color: ink),
+                const Spacer(),
+                Container(height: 3, width: 22, color: muted),
+              ],
+            ),
+            const SizedBox(height: 5),
+            // Amount card.
+            Container(
+              height: 24,
+              padding: const EdgeInsets.symmetric(horizontal: 6),
+              alignment: Alignment.centerLeft,
+              decoration: BoxDecoration(
+                color: preset.primary,
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Container(height: 8, width: 40, color: preset.onAccent),
+            ),
+            const SizedBox(height: 5),
+            // Ticket: field rows, tear line, footer.
+            Expanded(
+              child: Container(
+                padding: const EdgeInsets.fromLTRB(6, 6, 6, 4),
+                decoration: BoxDecoration(
+                  color: surface,
+                  borderRadius: BorderRadius.circular(4),
+                  border: Border.all(color: border, width: 0.5),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    for (final width in [46.0, 30.0]) ...[
+                      Row(
+                        children: [
+                          Container(
+                              width: 3, height: 3, color: preset.primary),
+                          const SizedBox(width: 3),
+                          Container(height: 3, width: width, color: muted),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                    ],
+                    const Spacer(),
+                    Container(height: 0.5, color: border),
+                    const SizedBox(height: 3),
+                    Center(
+                      child: Container(height: 3, width: 50, color: muted),
+                    ),
+                  ],
+                ),
+              ),
             ),
           ],
         ),

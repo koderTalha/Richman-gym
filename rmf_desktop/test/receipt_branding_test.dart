@@ -9,6 +9,10 @@ import 'package:rich_man_fitness/theme/theme_preset.dart';
 /// The receipt is what a member actually receives, so the branding has to reach
 /// it — and the payment details have to survive the branding.
 void main() {
+  // The loops below cover every template, and the Ticket reads its typeface
+  // from the asset bundle.
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   ReceiptData dataWith({
     BrandingConfig branding = const BrandingConfig(),
     Uint8List? logo,
@@ -109,7 +113,7 @@ void main() {
         reason: 'an embedded image makes the document bigger');
   });
 
-  test('a logo is embedded in all three templates', () async {
+  test('a logo is embedded in every template', () async {
     for (final template in ReceiptTemplate.values) {
       final branding = BrandingConfig(receiptTemplate: template);
       final without =

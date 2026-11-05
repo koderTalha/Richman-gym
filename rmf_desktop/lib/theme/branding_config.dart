@@ -18,7 +18,12 @@ enum ReceiptTemplate {
   modern,
 
   /// Quiet typography and hairline rules, no filled blocks.
-  minimal;
+  minimal,
+
+  /// The 1080 × 1920 design: a brand bar, the amount on a card in the brand
+  /// colour, and the details on a tear-off ticket. Unlike the other three it
+  /// follows the app's light/dark mode rather than always being dark.
+  ticket;
 
   static ReceiptTemplate parse(String? stored) {
     for (final template in values) {

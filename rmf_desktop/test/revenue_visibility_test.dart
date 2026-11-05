@@ -16,7 +16,6 @@ import 'package:rich_man_fitness/domain/money.dart';
 import 'package:rich_man_fitness/theme/app_theme.dart';
 import 'package:rich_man_fitness/theme/branding_config.dart';
 import 'package:rich_man_fitness/ui/dashboard_screen.dart';
-import 'package:rich_man_fitness/ui/widgets/page_scaffold.dart';
 import 'package:rich_man_fitness/ui/widgets/revenue_visibility.dart';
 
 import 'support/still_motion.dart';
@@ -162,16 +161,25 @@ void main() {
     expect(tester.getTopLeft(hint), before);
   });
 
-  testWidgets('the eye sits beside Refresh, at its height', (tester) async {
+  testWidgets('the eye ends the stats row, after every figure',
+      (tester) async {
     await pumpDashboard(tester);
 
     final eye = tester.getRect(find.byType(RevenueVisibilityButton));
-    final refresh = tester.getRect(find.ancestor(
-        of: find.text('Refresh'), matching: find.byType(GhostButton)));
+    // StatFigure draws its labels in capitals.
+    final today = tester.getRect(find.text('TODAY'));
+    final members = tester.getRect(find.text('ACTIVE MEMBERS'));
 
-    expect(eye.right, lessThanOrEqualTo(refresh.left));
-    expect(eye.center.dy, moreOrLessEquals(refresh.center.dy, epsilon: 1));
-    expect(eye.height, moreOrLessEquals(refresh.height, epsilon: 2));
+    // On the stats row, not up in the header beside Refresh.
+    expect(eye.bottom, greaterThan(today.top));
+    expect(eye.top, lessThan(members.bottom + 40));
+    // Past the last figure, at the row's right end.
+    expect(eye.left, greaterThan(members.right));
+    expect(find.descendant(
+            of: find.ancestor(
+                of: find.text('Refresh'), matching: find.byType(Row)),
+            matching: find.byType(RevenueVisibilityButton)),
+        findsNothing);
   });
 
   testWidgets('stays hidden when the dashboard is opened again',

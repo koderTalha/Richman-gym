@@ -76,7 +76,6 @@ class _DashboardView extends StatelessWidget {
             revenueMonthMinor: state.revenueMonthMinor,
           ),
           actions: [
-            const RevenueVisibilityButton(),
             GhostButton(
               label: 'Refresh',
               icon: Icons.refresh,
@@ -393,6 +392,27 @@ class _SecondaryStats extends StatelessWidget {
     final fraction = total == 0 ? 0.0 : active / total;
     final revenueVisible = context.watch<RevenueVisibilityCubit>().state;
 
+    // The eye sits at the right end of this row, the row that holds the
+    // figures it hides. It still hides the month's figure in the greeting too.
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Expanded(child: _statsWrap(state, palette, revenueVisible, active,
+            total, fraction)),
+        const SizedBox(width: 16),
+        const RevenueVisibilityButton(),
+      ],
+    );
+  }
+
+  Widget _statsWrap(
+    DashboardState state,
+    AppPalette palette,
+    bool revenueVisible,
+    int active,
+    int total,
+    double fraction,
+  ) {
     return Wrap(
       spacing: 40,
       runSpacing: 20,

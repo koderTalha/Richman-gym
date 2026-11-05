@@ -434,6 +434,7 @@ class RecordPaymentService {
       // WhatsApp sends is this exact file.
       branding: SettingsRepository.brandingFrom(settings),
       logoBytes: await LogoStorage.read(settings.logoPath),
+      brightness: ReceiptData.brightnessFor(settings.themeMode),
     ));
 
     final pngPath = await storage.save('$receiptNumber.png', rendered.png);
@@ -730,6 +731,7 @@ class RecordPaymentService {
       // WhatsApp sends is this exact file.
       branding: SettingsRepository.brandingFrom(settings),
       logoBytes: await LogoStorage.read(settings.logoPath),
+      brightness: ReceiptData.brightnessFor(settings.themeMode),
     ));
 
     final pngPath = await storage.save('$receiptNumber.png', rendered.png);
